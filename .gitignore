@@ -361,3 +361,26 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# --- Graphics Development Additions ---
+
+# Compiled Shader Objects (DX12 编译后的着色器二进制文件)
+*.cso
+*.chi
+*.hlsli.h
+
+# MiniEngine / DirectX 特有的编译产物
+# 如果你使用了 MiniEngine 的编译脚本，可能会产生这些
+[Output]/
+ModelViewer/
+*.hlsl.h
+
+# Vcpkg (如果你使用 vcpkg 管理库，这个文件夹非常大)
+vcpkg_installed/
+vcpkg/
+
+# 外部资源目录 (可选)
+# 如果你的模型和贴图文件太大（比如好几个GB），建议不要直接传 Git
+# 而是放在一个特定的 Assets/ 文件夹并使用 Git LFS 管理
+# 或者暂时忽略它们，在 README 中提供下载链接
+# Assets/Models/HugeScene/

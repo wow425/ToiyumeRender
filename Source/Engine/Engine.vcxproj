@@ -19,14 +19,27 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Core\Graphics\GpuResource\ColorBuffer.h" />
+    <ClInclude Include="Core\Graphics\GpuResource\BufferManager.h" />
+    <ClInclude Include="Core\Graphics\Command\CommandAllocatorPool.h" />
+    <ClInclude Include="Core\Graphics\Command\CommandContext.h" />
+    <ClInclude Include="Core\Graphics\Command\CommandListManager.h" />
     <ClInclude Include="Core\Graphics\GpuResource\GpuResource.h" />
     <ClInclude Include="Core\Utility\d3dx12.h" />
     <ClInclude Include="Core\Utility\PCH.h" />
     <ClInclude Include="Core\Graphics\GpuResource\UploadBuffer.h" />
     <ClInclude Include="Core\Utility\Utility.h" />
     <ClInclude Include="Core\Graphics\GraphicsCore.h" />
+    <ClInclude Include="Core\Graphics\GpuResource\GpuBuffer.h" />
+    <ClInclude Include="Core\Graphics\GpuResource\DepthBuffer.h" />
+    <ClInclude Include="Core\Graphics\GpuResource\ShadowBuffer.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Core\Graphics\GpuResource\ColorBuffer.cpp" />
+    <ClCompile Include="Core\Graphics\GpuResource\BufferManager.cpp" />
+    <ClCompile Include="Core\Graphics\Command\CommandAllocatorPool.cpp" />
+    <ClCompile Include="Core\Graphics\Command\CommandContext.cpp" />
+    <ClCompile Include="Core\Graphics\Command\CommandListManager.cpp" />
     <ClCompile Include="Core\Graphics\GpuResource\GpuResource.cpp" />
     <ClCompile Include="Core\Utility\PCH.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -35,6 +48,9 @@
     <ClCompile Include="Core\Graphics\GpuResource\UploadBuffer.cpp" />
     <ClCompile Include="Core\Utility\Utility.cpp" />
     <ClCompile Include="Core\Graphics\GraphicsCore.cpp" />
+    <ClCompile Include="Core\Graphics\GpuResource\GpuBuffer.cpp" />
+    <ClCompile Include="Core\Graphics\GpuResource\DepthBuffer.cpp" />
+    <ClCompile Include="Core\Graphics\GpuResource\ShadowBuffer.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

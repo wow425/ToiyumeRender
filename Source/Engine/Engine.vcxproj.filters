@@ -33,6 +33,30 @@
     <ClInclude Include="Core\Graphics\GraphicsCore.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Graphics\Command\CommandListManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\Command\CommandContext.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\Command\CommandAllocatorPool.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\GpuResource\GpuBuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\GpuResource\BufferManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\GpuResource\ColorBuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\GpuResource\DepthBuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\GpuResource\ShadowBuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\Graphics\GpuResource\GpuResource.cpp">
@@ -48,6 +72,30 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="Core\Graphics\GraphicsCore.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\Command\CommandListManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\Command\CommandContext.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\Command\CommandAllocatorPool.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\GpuResource\GpuBuffer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\GpuResource\BufferManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\GpuResource\ColorBuffer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\GpuResource\DepthBuffer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\GpuResource\ShadowBuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
