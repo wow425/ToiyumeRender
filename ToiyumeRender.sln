@@ -1,0 +1,65 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35825.156
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Source", "Source", "{3227ADC5-38F5-4FB4-9BB9-B7515B611937}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shaders", "Shaders", "{E2884410-E2BE-4398-8493-F5F6B164D68F}"
+	ProjectSection(SolutionItems) = preProject
+		Source\Shaders\Default.hlsl = Source\Shaders\Default.hlsl
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ThirdParty", "ThirdParty", "{66929B25-1F08-4DD2-8104-E46311D73FC3}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Engine", "Source\Engine\Engine.vcxproj", "{B5747012-C989-43EE-8528-FE76C7B874C6}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "App", "Source\App\App.vcxproj", "{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}"
+	ProjectSection(ProjectDependencies) = postProject
+		{B5747012-C989-43EE-8528-FE76C7B874C6} = {B5747012-C989-43EE-8528-FE76C7B874C6}
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PBR", "PBR", "{A73A807C-F187-43DF-AE2F-F8E6A117DFAA}"
+	ProjectSection(SolutionItems) = preProject
+		BRDF.hlsl = BRDF.hlsl
+		BRDFHelp.hlsl = BRDFHelp.hlsl
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B5747012-C989-43EE-8528-FE76C7B874C6}.Debug|x64.ActiveCfg = Debug|x64
+		{B5747012-C989-43EE-8528-FE76C7B874C6}.Debug|x64.Build.0 = Debug|x64
+		{B5747012-C989-43EE-8528-FE76C7B874C6}.Debug|x86.ActiveCfg = Debug|Win32
+		{B5747012-C989-43EE-8528-FE76C7B874C6}.Debug|x86.Build.0 = Debug|Win32
+		{B5747012-C989-43EE-8528-FE76C7B874C6}.Release|x64.ActiveCfg = Release|x64
+		{B5747012-C989-43EE-8528-FE76C7B874C6}.Release|x64.Build.0 = Release|x64
+		{B5747012-C989-43EE-8528-FE76C7B874C6}.Release|x86.ActiveCfg = Release|Win32
+		{B5747012-C989-43EE-8528-FE76C7B874C6}.Release|x86.Build.0 = Release|Win32
+		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Debug|x64.ActiveCfg = Debug|x64
+		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Debug|x64.Build.0 = Debug|x64
+		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Debug|x86.ActiveCfg = Debug|Win32
+		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Debug|x86.Build.0 = Debug|Win32
+		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Release|x64.ActiveCfg = Release|x64
+		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Release|x64.Build.0 = Release|x64
+		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Release|x86.ActiveCfg = Release|Win32
+		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E2884410-E2BE-4398-8493-F5F6B164D68F} = {3227ADC5-38F5-4FB4-9BB9-B7515B611937}
+		{B5747012-C989-43EE-8528-FE76C7B874C6} = {3227ADC5-38F5-4FB4-9BB9-B7515B611937}
+		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE} = {3227ADC5-38F5-4FB4-9BB9-B7515B611937}
+		{A73A807C-F187-43DF-AE2F-F8E6A117DFAA} = {E2884410-E2BE-4398-8493-F5F6B164D68F}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {0CF201BC-B8F7-4BAC-BB3C-2EF3E12449CD}
+	EndGlobalSection
+EndGlobal
