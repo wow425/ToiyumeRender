@@ -27,12 +27,6 @@
     <ClCompile Include="Ssao\FrameResource.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Ssao\Ssao.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="Ssao\SsaoApp.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="Common\Camera.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -57,12 +51,12 @@
     <ClCompile Include="Model\Model.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Ssao\TAAMain.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Ssao\FrameResource.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="Ssao\Ssao.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="Common\Camera.h">
@@ -93,6 +87,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="Model\Model.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Ssao\HaltonJitter.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

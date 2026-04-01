@@ -25,7 +25,9 @@ struct MaterialData
 };
 
 
-
+// SRV, t0-t9被用，t0 s1被用。
+// t1-t4的s1被TAA的SRV占用(Current, History, Depth, Velocity).
+// u0-u1的s1被TAA的UAV占用
 Texture2D gTextureMaps[10] : register(t0); // SRV, 纹理数组，对纹理的大小和格式不做要求
 StructuredBuffer<MaterialData> gMaterialData : register(t0, space1); // 材质
 
