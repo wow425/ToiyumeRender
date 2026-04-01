@@ -8,10 +8,13 @@ struct ObjectConstants
 {
     DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
+    // 【新增】物体上一帧的世界矩阵 (用于处理动态物体的运动)
+    DirectX::XMFLOAT4X4 PrevWorld = MathHelper::Identity4x4();
 	UINT     MaterialIndex;
 	UINT     ObjPad0;
 	UINT     ObjPad1;
 	UINT     ObjPad2;
+
 };
 
 struct PassConstants
@@ -35,31 +38,12 @@ struct PassConstants
 
     DirectX::XMFLOAT4 AmbientLight = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-    // Indices [0, NUM_DIR_LIGHTS) are directional lights;
-    // indices [NUM_DIR_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHTS) are point lights;
-    // indices [NUM_DIR_LIGHTS+NUM_POINT_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHT+NUM_SPOT_LIGHTS)
-    // are spot lights for a maximum of MaxLights per object.
-    Light Lights[MaxLights];
+    // 【新增】上一帧的 ViewProj 矩阵 (用于处理摄像机的运动)
+// 强烈建议：算速度用的矩阵必须是【去除了 Jitter 抖动】的纯净矩阵，否则速度缓冲会被污染！
+    DirectX::XMFLOAT4X4 PrevViewProj;
 };
 
-struct SsaoConstants
-{
-    DirectX::XMFLOAT4X4 Proj;
-    DirectX::XMFLOAT4X4 InvProj;
-    DirectX::XMFLOAT4X4 ProjTex;
-    DirectX::XMFLOAT4   OffsetVectors[14];
 
-    // For SsaoBlur.hlsl
-    DirectX::XMFLOAT4 BlurWeights[3];
-
-    DirectX::XMFLOAT2 InvRenderTargetSize = { 0.0f, 0.0f };
-
-    // Coordinates given in view space.
-    float OcclusionRadius  = 0.5f;
-    float OcclusionFadeStart = 0.2f;
-    float OcclusionFadeEnd = 2.0f;
-    float SurfaceEpsilon = 0.05f;
-};
 
 struct MaterialData
 {
@@ -103,7 +87,6 @@ public:
     // that reference it.  So each frame needs their own cbuffers.
     std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
     std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
-    std::unique_ptr<UploadBuffer<SsaoConstants>> SsaoCB = nullptr;
 
 	std::unique_ptr<UploadBuffer<MaterialData>> MaterialBuffer = nullptr;
 

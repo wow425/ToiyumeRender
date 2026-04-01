@@ -72,6 +72,7 @@ public:
 
 	std::unique_ptr<Model> Saber = std::make_unique<Model>();
 
+	DirectX::XMFLOAT4X4 mPrevCleanViewProj = MathHelper::Identity4x4(); // TAA用，新增
 private:
     virtual void CreateRtvAndDsvDescriptorHeaps()override;
     virtual void OnResize()override;
@@ -222,6 +223,8 @@ bool SsaoApp::Initialize()
     BuildRenderItems();
     BuildFrameResources();
     BuildPSOs();
+
+	
 
     // Execute the initialization commands.
     ThrowIfFailed(mCommandList->Close());
@@ -452,16 +455,19 @@ void SsaoApp::UpdateObjectCBs(const GameTimer& gt)
 		if(e->NumFramesDirty > 0)
 		{
 			XMMATRIX world = XMLoadFloat4x4(&e->World);
+			XMMATRIX prevWorld = XMLoadFloat4x4(&e->PrevWorld); // 获取逻辑层的上一帧
 			XMMATRIX texTransform = XMLoadFloat4x4(&e->TexTransform);
 
 			ObjectConstants objConstants;
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
+			// 存入 CB
+			XMStoreFloat4x4(&objConstants.PrevWorld, XMMatrixTranspose(prevWorld));
+
 			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
 			objConstants.MaterialIndex = e->Mat->MatCBIndex;
 
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
-			// Next FrameResource need to be updated too.
 			e->NumFramesDirty--;
 		}
 	}

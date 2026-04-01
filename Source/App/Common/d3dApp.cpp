@@ -125,7 +125,8 @@ bool D3DApp::Initialize()
 void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 {
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc;
-    rtvHeapDesc.NumDescriptors = SwapChainBufferCount;
+    // 原本可能是 SwapChainBufferCount (通常是 2)，现在加上 TAA 的 2 个
+rtvHeapDesc.NumDescriptors = SwapChainBufferCount + 2;
     rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	rtvHeapDesc.NodeMask = 0;
