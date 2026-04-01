@@ -249,9 +249,40 @@ bool SsaoApp::Initialize()
 	if (!D3DApp::Initialize())
 		return false;
 
+
+
+	// Reset the command list to prep for initialization commands.
+	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+
+	mCamera.SetPosition(0.0f, 2.0f, -15.0f);
+
+	// 模型加载
+	Saber->LoadFromFile("../../Assets/Models/Saber_Emiya/Saber_Emiya.glb"); 
+	if (Saber->LoadFromFile("../../Assets/Models/Saber_Emiya/Saber_Emiya.glb"))
+	{
+		// 2. 打印检验报告
+		Saber->PrintTextureInfo();
+	}
+	// 模型加载
+
+	// TAA
+	mTaaCB = std::make_unique<UploadBuffer<TAA::TAAConstants>>(md3dDevice.Get(), 1, true);
+
+
+
+	LoadTextures();
+	BuildRootSignature();
+	BuildDescriptorHeaps();
+	BuildShadersAndInputLayout();
+	BuildShapeGeometry();
+	BuildMaterials();
+	BuildRenderItems();
+	BuildFrameResources();
+	BuildPSOs();
+
 	// TAA
 
-	// 1. 定义资源描述 (Texture2D)
+// 1. 定义资源描述 (Texture2D)
 	D3D12_RESOURCE_DESC texDesc = {};
 	texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	texDesc.Alignment = 0;
@@ -269,10 +300,10 @@ bool SsaoApp::Initialize()
 	CD3DX12_HEAP_PROPERTIES defaultHeapProps(D3D12_HEAP_TYPE_DEFAULT);
 
 	// 3. 定义优化的清屏颜色 (极大提升 ClearRenderTargetView 的性能)
-	CD3DX12_CLEAR_VALUE optClear(DXGI_FORMAT_R16G16B16A16_FLOAT, Colors::Black);
+	CD3DX12_CLEAR_VALUE optClear(DXGI_FORMAT_R8G8B8A8_UNORM, Colors::Black);
 
 	// 4. 为 CurrentColor 分配物理内存
-	texDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	ThrowIfFailed(md3dDevice->CreateCommittedResource(
 		&defaultHeapProps,
 		D3D12_HEAP_FLAG_NONE,
@@ -294,7 +325,7 @@ bool SsaoApp::Initialize()
 
 	// 6. 为 TAA History 纹理 (Ping-Pong 0 和 1) 分配物理内存
 // History 图在 Compute Shader 中被用作 UAV (Unordered Access View) 写入
-	texDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
 	// 极其重要：仅作为 UAV 使用的资源，创建时 ClearValue 必须为 nullptr
@@ -332,37 +363,50 @@ bool SsaoApp::Initialize()
 		&depthOptClear,
 		IID_PPV_ARGS(&taa.DepthBuffer)));
 
-	// Reset the command list to prep for initialization commands.
-	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
-
-	mCamera.SetPosition(0.0f, 2.0f, -15.0f);
-
-	// 模型加载
-	Saber->LoadFromFile("../../Assets/Models/Saber_Emiya/Saber_Emiya.glb"); 
-	if (Saber->LoadFromFile("../../Assets/Models/Saber_Emiya/Saber_Emiya.glb"))
-	{
-		// 2. 打印检验报告
-		Saber->PrintTextureInfo();
-	}
-	// 模型加载
-
-	// TAA
-	mTaaCB = std::make_unique<UploadBuffer<TAA::TAAConstants>>(md3dDevice.Get(), 1, true);
 
 
+	// ==========================================
+	// 3. 获取 TAA RTV 的 CPU 句柄偏移
+	// ==========================================
+	// 游标先跳过 SwapChain 占用的槽位
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(
+		mRtvHeap->GetCPUDescriptorHandleForHeapStart(),
+		SwapChainBufferCount,
+		mRtvDescriptorSize);
 
-	LoadTextures();
-	BuildRootSignature();
-	BuildDescriptorHeaps();
-	BuildShadersAndInputLayout();
-	BuildShapeGeometry();
-	BuildMaterials();
-	BuildRenderItems();
-	BuildFrameResources();
-	BuildPSOs();
+	// 4. 为 CurrentColor 创建 RTV
+	taa.m_CurrentColorRtvHandle = rtvHeapHandle; // 记录下来给 Draw 用
+	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+	md3dDevice->CreateRenderTargetView(taa.m_CurrentColor, &rtvDesc, taa.m_CurrentColorRtvHandle);
 
-	
+	// 5. 偏移游标，为 VelocityBuffer 创建 RTV
+	rtvHeapHandle.Offset(1, mRtvDescriptorSize);
+	taa.m_VelocityBUfferRtvHandle = rtvHeapHandle; // 记录下来给 Draw 用
+	rtvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+	md3dDevice->CreateRenderTargetView(taa.VelocityBuffer, &rtvDesc, taa.m_VelocityBUfferRtvHandle);
 
+	// ==========================================
+	// 【新增点 2：为 TAA 的独立深度图创建 DSV】
+	// ==========================================
+	// 假设第 0 个槽位是给交换链默认深度图用的。我们偏移 1 个位置给 TAA 用。
+	// （如果你的 Shadow Map 占了第 1 个位置，这里就把偏移改成 2，以此类推）
+	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHeapHandle(
+		mDsvHeap->GetCPUDescriptorHandleForHeapStart(),
+		1, // 偏移量，跳过前面的默认深度图
+		mDsvDescriptorSize);
+
+	taa.m_DepthDsvHandle = dsvHeapHandle; // 保存这个句柄，Draw 函数里清屏和绑定都会用到它
+
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	// 极其关键：物理内存是 TYPELESS，这里必须明确解释为 D32_FLOAT 才能作为深度图写入
+	dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+	dsvDesc.Texture2D.MipSlice = 0;
+
+	md3dDevice->CreateDepthStencilView(taa.DepthBuffer, &dsvDesc, taa.m_DepthDsvHandle);
 	// Execute the initialization commands.
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
@@ -397,48 +441,7 @@ void SsaoApp::CreateRtvAndDsvDescriptorHeaps()
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
 		&dsvHeapDesc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
 
-	// ==========================================
-	// 3. 获取 TAA RTV 的 CPU 句柄偏移
-	// ==========================================
-	// 游标先跳过 SwapChain 占用的槽位
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(
-		mRtvHeap->GetCPUDescriptorHandleForHeapStart(),
-		SwapChainBufferCount,
-		mRtvDescriptorSize);
-
-	// 4. 为 CurrentColor 创建 RTV
-	taa.m_CurrentColorRtvHandle = rtvHeapHandle; // 记录下来给 Draw 用
-	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-	rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-	md3dDevice->CreateRenderTargetView(taa.m_CurrentColor, &rtvDesc, taa.m_CurrentColorRtvHandle);
-
-	// 5. 偏移游标，为 VelocityBuffer 创建 RTV
-	rtvHeapHandle.Offset(1, mRtvDescriptorSize);
-	taa.m_VelocityBUfferRtvHandle = rtvHeapHandle; // 记录下来给 Draw 用
-	rtvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
-	md3dDevice->CreateRenderTargetView(taa.VelocityBuffer, &rtvDesc, taa.m_VelocityBUfferRtvHandle);
-
-	// ==========================================
-	// 【新增点 2：为 TAA 的独立深度图创建 DSV】
-	// ==========================================
-	// 假设第 0 个槽位是给交换链默认深度图用的。我们偏移 1 个位置给 TAA 用。
-	// （如果你的 Shadow Map 占了第 1 个位置，这里就把偏移改成 2，以此类推）
-	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHeapHandle(
-		mDsvHeap->GetCPUDescriptorHandleForHeapStart(),
-		1, // 偏移量，跳过前面的默认深度图
-		mDsvDescriptorSize);
-
-	taa.m_DepthDsvHandle = dsvHeapHandle; // 保存这个句柄，Draw 函数里清屏和绑定都会用到它
-
-	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
-	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
-	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-	// 极其关键：物理内存是 TYPELESS，这里必须明确解释为 D32_FLOAT 才能作为深度图写入
-	dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
-	dsvDesc.Texture2D.MipSlice = 0;
-
-	md3dDevice->CreateDepthStencilView(taa.DepthBuffer, &dsvDesc, taa.m_DepthDsvHandle);
+	
 }
 
 void SsaoApp::OnResize()
@@ -616,7 +619,7 @@ void SsaoApp::Draw(const GameTimer& gt)
 
 	// 3. 绑定 TAA 常量缓冲区 (b2)
 	D3D12_GPU_VIRTUAL_ADDRESS taaCBAddress = mTaaCB->Resource()->GetGPUVirtualAddress();
-	mCommandList->SetComputeRootConstantBufferView(2, taaCBAddress); // 对应 register(b2)
+	mCommandList->SetComputeRootConstantBufferView(5, taaCBAddress); // 对应 register(b2)
 
 	// 4. 绑定 SRV 和 UAV (t1~t4, u0)
 	mCommandList->SetComputeRootDescriptorTable(4, taa.m_TaaGpuHandles[taa.CurrentHistoryIndex]);
@@ -1352,9 +1355,12 @@ void SsaoApp::BuildPSOs()
 	// 【修改点：必须在创建 PSO 之前设置 MRT 参数】
 	opaquePsoDesc.NumRenderTargets = 2;
 	// 对应 SV_Target0 (Color)
-	opaquePsoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	opaquePsoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	// 对应 SV_Target1 (Velocity)
 	opaquePsoDesc.RTVFormats[1] = DXGI_FORMAT_R16G16_FLOAT;
+
+	// 【新增这一行】强制指定深度格式为 D32_FLOAT，与 TAA 深度图匹配
+	opaquePsoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
 
