@@ -30,7 +30,7 @@ public:
     const D3D12_CPU_DESCRIPTOR_HANDLE& GetSRV(void) const { return m_SRV; }
 
     // 2. 根常量视图创建和获取
-    D3D12_CPU_DESCRIPTOR_HANDLE CreateConstantBufferView(uint32_t Offfset, uint32_t Size) const;
+    D3D12_CPU_DESCRIPTOR_HANDLE CreateConstantBufferView(uint32_t Offset, uint32_t Size) const;
     D3D12_GPU_VIRTUAL_ADDRESS RootConstantBufferView(void) const { return m_GpuVirtualAddress; }
 
     // 3. 获取VBV，IBV
@@ -120,6 +120,7 @@ public:
     ByteAddressBuffer& GetCounterBuffer(void) { return m_CounterBuffer; }
 
     const D3D12_CPU_DESCRIPTOR_HANDLE& GetCounterSRV(CommandContext& Context);
+	const D3D12_CPU_DESCRIPTOR_HANDLE& GetCounterUAV(CommandContext& Context);
 
 private:
     ByteAddressBuffer m_CounterBuffer;

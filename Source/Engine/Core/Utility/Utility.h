@@ -61,16 +61,25 @@ namespace Utility
 
 // 开放版
 #ifdef RELEASE
-#define ASSERT_SUCCEEDED(hr,..) (void)(hr)
 
+    #define ASSERT_SUCCEEDED(hr,..) (void)(hr)
+    #define ASSERT( isTrue, ...) (void)(isTrue)
 #else // 非开放版
 
     // 双重宏展开，先展开为数字，再转换为字符串
-#define STRINGIFY(x) #x
-#define STRINGIFY_BUILTIN(x) STRINGIFY(x) 
-// __FILE__当前源代码文件的完整路径。__LINE__当前代码所在的行号。
-// 变长参数与错误消息 (__VA_ARGS__) 允许在检查 hr 的同时，传入一段自定义的文字描述。
-// __debugbreak()向CPU发送中断指令，停在报错的那行代码上
+    #define STRINGIFY(x) #x
+    #define STRINGIFY_BUILTIN(x) STRINGIFY(x) 
+    #define ASSERT( isFalse, ... ) \
+            if (!(bool)(isFalse)) { \
+                Utility::Print("\nAssertion failed in " STRINGIFY_BUILTIN(__FILE__) " @ " STRINGIFY_BUILTIN(__LINE__) "\n"); \
+                Utility::PrintSubMessage("\'" #isFalse "\' is false"); \
+                Utility::PrintSubMessage(__VA_ARGS__); \
+                Utility::Print("\n"); \
+                __debugbreak(); \
+            }
+    // __FILE__当前源代码文件的完整路径。__LINE__当前代码所在的行号。
+    // 变长参数与错误消息 (__VA_ARGS__) 允许在检查 hr 的同时，传入一段自定义的文字描述。
+    // __debugbreak()向CPU发送中断指令，停在报错的那行代码上
 #define ASSERT_SUCCEEDED(hr,...) \
 		if (FAILED(hr)) {\
 	            Utility::Print("\nHRESULT failed in " STRINGIFY_BUILTIN(__FILE__) " @ " STRINGIFY_BUILTIN(__LINE__) "\n"); \
