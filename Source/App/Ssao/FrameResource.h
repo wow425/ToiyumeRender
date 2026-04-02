@@ -23,7 +23,7 @@ struct PassConstants
     DirectX::XMFLOAT4X4 InvView = MathHelper::Identity4x4();
     DirectX::XMFLOAT4X4 Proj = MathHelper::Identity4x4();
     DirectX::XMFLOAT4X4 InvProj = MathHelper::Identity4x4();
-    DirectX::XMFLOAT4X4 ViewProj = MathHelper::Identity4x4();
+    DirectX::XMFLOAT4X4 jitteredViewProj = MathHelper::Identity4x4();
     DirectX::XMFLOAT4X4 InvViewProj = MathHelper::Identity4x4();
     DirectX::XMFLOAT4X4 ViewProjTex = MathHelper::Identity4x4();
     DirectX::XMFLOAT4X4 ShadowTransform = MathHelper::Identity4x4();
@@ -38,9 +38,9 @@ struct PassConstants
 
     DirectX::XMFLOAT4 AmbientLight = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-    // 【新增】上一帧的 ViewProj 矩阵 (用于处理摄像机的运动)
-// 强烈建议：算速度用的矩阵必须是【去除了 Jitter 抖动】的纯净矩阵，否则速度缓冲会被污染！
-    DirectX::XMFLOAT4X4 PrevViewProj;
+
+    DirectX::XMFLOAT4X4 cleanViewProj; // 纯净vp，用于计算运动矢量
+    DirectX::XMFLOAT4X4 PrevViewProj; // 纯净上一帧vp，用于计算运动矢量
 };
 
 

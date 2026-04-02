@@ -54,7 +54,7 @@ void CS(uint3 dtid : SV_DispatchThreadID)
     float2 velocity = gVelocity.SampleLevel(gsamPointClamp, uv, 0);
     float2 historyUV = uv - velocity;
     
-    // 3. 边界检查：注意这里使用 0.0f 和 1.0f，避免类型歧义
+        // 3. 边界检查：注意这里使用 0.0f 和 1.0f，避免类型歧义
     if (any(historyUV < 0.0f) || any(historyUV > 1.0f))
     {
         gOutputColor[dtid.xy] = currColor; // 直接用上面声明好的 currColor

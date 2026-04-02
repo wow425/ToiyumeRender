@@ -149,12 +149,10 @@ void D3DApp::OnResize()
 	assert(mSwapChain);
     assert(mDirectCmdListAlloc);
 
-	// Flush before changing any resources.
 	FlushCommandQueue();
 
     ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 
-	// Release the previous resources we will be recreating.
 	for (int i = 0; i < SwapChainBufferCount; ++i)
 		mSwapChainBuffer[i].Reset();
     mDepthStencilBuffer.Reset();
@@ -167,7 +165,7 @@ void D3DApp::OnResize()
 		DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH));
 
 	mCurrBackBuffer = 0;
- 
+ // 创RTV,DSV
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
 	for (UINT i = 0; i < SwapChainBufferCount; i++)
 	{
@@ -176,7 +174,6 @@ void D3DApp::OnResize()
 		rtvHeapHandle.Offset(1, mRtvDescriptorSize);
 	}
 
-    // Create the depth/stencil buffer and view.
     D3D12_RESOURCE_DESC depthStencilDesc;
     depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     depthStencilDesc.Alignment = 0;
@@ -202,22 +199,20 @@ void D3DApp::OnResize()
         &optClear,
         IID_PPV_ARGS(mDepthStencilBuffer.GetAddressOf())));
 
-    // Create descriptor to mip level 0 of entire resource using the format of the resource.
     md3dDevice->CreateDepthStencilView(mDepthStencilBuffer.Get(), nullptr, DepthStencilView());
 
-    // Transition the resource from its initial state to be used as a depth buffer.
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
 		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
 	
-    // Execute the resize commands.
+
     ThrowIfFailed(mCommandList->Close());
     ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
     mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
-	// Wait until resize is complete.
+
 	FlushCommandQueue();
 
-	// Update the viewport transform to cover the client area.
+
 	mScreenViewport.TopLeftX = 0;
 	mScreenViewport.TopLeftY = 0;
 	mScreenViewport.Width    = static_cast<float>(mClientWidth);

@@ -48,7 +48,7 @@ cbuffer cbPass : register(b1)
     float4x4 gInvView;
     float4x4 gProj;
     float4x4 gInvProj;
-    float4x4 gViewProj;
+    float4x4 gjitteredViewProj;
     float4x4 gInvViewProj;
     float4x4 gViewProjTex;
     float4x4 gShadowTransform;
@@ -61,9 +61,9 @@ cbuffer cbPass : register(b1)
     float gTotalTime;
     float gDeltaTime;
     float4 gAmbientLight;
-    // 【新增】上一帧的 ViewProj 矩阵 (用于处理摄像机的运动)
-    // 强烈建议：算速度用的矩阵必须是【去除了 Jitter 抖动】的纯净矩阵，否则速度缓冲会被污染！
-    float4x4 gPrevViewProj;
+    // TAA
+    float4x4 gCleanViewProj; // 纯净vp，用于计算运动矢量
+    float4x4 gPrevViewProj; // 纯净上一帧vp，用于计算运动矢量
 };
 
 struct VertexIn
@@ -87,7 +87,6 @@ struct VertexOut
     float4 PrevPosH : POSITION4;
 };
 
-// 【新增】MRT 输出结构体
 struct PixelOut
 {
     float4 Color : SV_Target0; // 输出到 gCurrentColor 纹理
@@ -99,22 +98,16 @@ VertexOut VS(VertexIn vin)
 	VertexOut vout = (VertexOut)0.0f;
 	MaterialData matData = gMaterialData[gMaterialIndex];
 	
-// 1. 常规的当前帧位置计算
     float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
     vout.PosW = posW.xyz;
     vout.NormalW = mul(vin.NormalL, (float3x3) gWorld);
     vout.TangentW = mul(vin.TangentU, (float3x3) gWorld);
-    vout.PosH = mul(posW, gViewProj);
+    vout.PosH = mul(posW, gjitteredViewProj);
     
-    // 【新增】保存当前帧未被光栅化修改的齐次裁剪坐标
-    vout.CurrPosH = vout.PosH;
-
-// 2. 【新增】计算上一帧的裁剪空间位置
-    
+    vout.CurrPosH = mul(posW, gCleanViewProj); // 计算运动矢量必须用纯净的VP，避免抖动带来误差
     float4 prevPosW = mul(float4(vin.PosL, 1.0f), gPrevWorld);
     vout.PrevPosH = mul(prevPosW, gPrevViewProj);
 
-// 3. 纹理 UV
     float4 texC = mul(float4(vin.TexC, 0.0f, 1.0f), gTexTransform);
     vout.TexC = mul(texC, matData.MatTransform).xy;
 
@@ -125,38 +118,21 @@ PixelOut PS(VertexOut pin)
 {
     PixelOut pout;
 
-    // ==========================================
-    // 1. 常规颜色计算 (Color)
-    // ==========================================
     MaterialData matData = gMaterialData[gMaterialIndex];
     float4 diffuseAlbedo = matData.DiffuseAlbedo;
     diffuseAlbedo *= gTextureMaps[matData.DiffuseMapIndex].Sample(gsamAnisotropicWrap, pin.TexC);
-    
-    // 省略光照计算，直接输出漫反射
     pout.Color = diffuseAlbedo;
 
-// ==========================================
+    // ==========================================
     // 2. 运动矢量计算 (Velocity)
     // ==========================================
     // 透视除法，转换到 NDC (Normalized Device Coordinates) 空间 [-1, 1]
-// 预防分母极小值或 0 导致的 INF/NaN
-    float currW = abs(pin.CurrPosH.w) < 1e-5f ? 1e-5f : pin.CurrPosH.w;
-    float prevW = abs(pin.PrevPosH.w) < 1e-5f ? 1e-5f : pin.PrevPosH.w;
-
-    float2 currNDC = pin.CurrPosH.xy / currW;
-    float2 prevNDC = pin.PrevPosH.xy / prevW;
-
-    // 将 NDC 坐标映射到 UV 空间 [0, 1]
-    // UV 和 NDC 的关系：
-    // U = NDC.x * 0.5 + 0.5
-    // V = -NDC.y * 0.5 + 0.5 (注意 DirectX 中 V 轴向下，NDC Y轴向上)
+    float2 currNDC = pin.CurrPosH.xy / pin.CurrPosH.w;
+    float2 prevNDC = pin.PrevPosH.xy / pin.PrevPosH.w;
     
-    // Velocity = CurrUV - PrevUV
-    float2 velocity;
-    velocity.x = (currNDC.x - prevNDC.x) * 0.5f;
-    velocity.y = -(currNDC.y - prevNDC.y) * 0.5f; // 注意负号翻转 Y 轴
-
-    pout.Velocity = velocity;
+    // Velocity = CurrUV - PrevUV 计算 NDC 差值并缩放
+    pout.Velocity.x = (currNDC.x - prevNDC.x) * 0.5f;
+    pout.Velocity.y = -(currNDC.y - prevNDC.y) * 0.5f; // 注意负号翻转 Y 轴
 
     return pout;
 }

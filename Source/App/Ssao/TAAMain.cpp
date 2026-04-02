@@ -75,30 +75,23 @@ struct RenderItem
 	RenderItem() = default;
 	RenderItem(const RenderItem& rhs) = delete;
 
-	// World matrix of the shape that describes the object's local space
-	// relative to the world space, which defines the position, orientation,
-	// and scale of the object in the world.
-	XMFLOAT4X4 World = MathHelper::Identity4x4();
+
+	XMFLOAT4X4 World = MathHelper::Identity4x4();              // 顶点世界矩阵
 	DirectX::XMFLOAT4X4 PrevWorld = MathHelper::Identity4x4(); // 【新增】逻辑层的上一帧矩阵
+	XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();       // UV偏移矩阵
 
-	XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
 
-	// Dirty flag indicating the object data has changed and we need to update the constant buffer.
-	// Because we have an object cbuffer for each FrameResource, we have to apply the
-	// update to each FrameResource.  Thus, when we modify obect data we should set 
-	// NumFramesDirty = gNumFrameResources so that each frame resource gets the update.
 	int NumFramesDirty = gNumFrameResources;
 
-	// Index into GPU constant buffer corresponding to the ObjectCB for this render item.
-	UINT ObjCBIndex = -1;
 
+
+	UINT ObjCBIndex = -1;
 	Material* Mat = nullptr;
 	MeshGeometry* Geo = nullptr;
 
-	// Primitive topology.
-	D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
-	// DrawIndexedInstanced parameters.
+	D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	// 绘制三要素
 	UINT IndexCount = 0;
 	UINT StartIndexLocation = 0;
 	int BaseVertexLocation = 0;
@@ -265,11 +258,8 @@ bool SsaoApp::Initialize()
 	}
 	// 模型加载
 
-	// TAA
+// TAA
 	mTaaCB = std::make_unique<UploadBuffer<TAA::TAAConstants>>(md3dDevice.Get(), 1, true);
-
-	// TAA
-
 // 1. 定义资源描述 (Texture2D)
 	D3D12_RESOURCE_DESC texDesc = {};
 	texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -457,13 +447,10 @@ void SsaoApp::Update(const GameTimer& gt)
 {
 	OnKeyboardInput(gt);
 
-	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
 	mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
 	FrameCount++;
 
-	// Has the GPU finished processing the commands of the current frame resource?
-	// If not, wait until the GPU has completed commands up to this fence point.
 	if (mCurrFrameResource->Fence != 0 && mFence->GetCompletedValue() < mCurrFrameResource->Fence)
 	{
 		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
@@ -472,26 +459,12 @@ void SsaoApp::Update(const GameTimer& gt)
 		CloseHandle(eventHandle);
 	}
 
-	//
-	// Animate the lights (and hence shadows).
-	//
 
-	mLightRotationAngle += 0.1f * gt.DeltaTime();
-
-	XMMATRIX R = XMMatrixRotationY(mLightRotationAngle);
-	for (int i = 0; i < 3; ++i)
-	{
-		XMVECTOR lightDir = XMLoadFloat3(&mBaseLightDirections[i]);
-		lightDir = XMVector3TransformNormal(lightDir, R);
-		XMStoreFloat3(&mRotatedLightDirections[i], lightDir);
-	}
-
-	// AnimateMaterials(gt);
 	UpdateObjectCBs(gt);
 	UpdateMaterialBuffer(gt);
 	UpdateMainPassCB(gt);
 
-// TAA
+// TAA CB Update
 	TAA::TAAConstants taaData;
 	taaData.ScreenSize = XMFLOAT2((float)mClientWidth, (float)mClientHeight);
 
@@ -503,7 +476,7 @@ void SsaoApp::Update(const GameTimer& gt)
 	}
 	else
 	{
-		taaData.Alpha = 0.1f; // 正常运行，新画面占 10%，历史占 90%
+		taaData.Alpha = 0.05f; // 正常运行，新画面占 5%，历史占 95%
 	}
 	taaData.pad = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
 
@@ -713,8 +686,6 @@ void SsaoApp::UpdateObjectCBs(const GameTimer& gt)
 	auto currObjectCB = mCurrFrameResource->ObjectCB.get();
 	for (auto& e : mAllRitems)
 	{
-		// Only update the cbuffer data if the constants have changed.  
-		// This needs to be tracked per frame resource.
 		if (e->NumFramesDirty > 0)
 		{
 			XMMATRIX world = XMLoadFloat4x4(&e->World);
@@ -725,14 +696,14 @@ void SsaoApp::UpdateObjectCBs(const GameTimer& gt)
 			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
 			objConstants.MaterialIndex = e->Mat->MatCBIndex;
 
-			// 【补上这行关键代码】将上一帧的矩阵转置后存入常量缓冲区
+			// TAA 上一帧的世界矩阵
 			XMMATRIX prevWorld = XMLoadFloat4x4(&e->PrevWorld);
 			XMStoreFloat4x4(&objConstants.PrevWorld, XMMatrixTranspose(prevWorld));
 
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
-			// Next FrameResource need to be updated too.
 			e->NumFramesDirty--;
+			prevWorld = world; // 更新上一帧矩阵为当前帧矩阵，为下一帧做准备
 		}
 	}
 }
@@ -742,8 +713,6 @@ void SsaoApp::UpdateMaterialBuffer(const GameTimer& gt)
 	auto currMaterialBuffer = mCurrFrameResource->MaterialBuffer.get();
 	for (auto& e : mMaterials)
 	{
-		// Only update the cbuffer data if the constants have changed.  If the cbuffer
-		// data changes, it needs to be updated for each FrameResource.
 		Material* mat = e.second.get();
 		if (mat->NumFramesDirty > 0)
 		{
@@ -759,7 +728,6 @@ void SsaoApp::UpdateMaterialBuffer(const GameTimer& gt)
 
 			currMaterialBuffer->CopyData(mat->MatCBIndex, matData);
 
-			// Next FrameResource need to be updated too.
 			mat->NumFramesDirty--;
 		}
 	}
@@ -770,53 +738,27 @@ void SsaoApp::UpdateMaterialBuffer(const GameTimer& gt)
 void SsaoApp::UpdateMainPassCB(const GameTimer& gt)
 {
 	XMMATRIX view = mCamera.GetView();
-	XMMATRIX proj = mCamera.GetProj(); // 这是纯净的投影矩阵 (Clean Proj)
-
-	// 1. 获取纯净的 ViewProj
+	XMMATRIX proj = mCamera.GetProj(); 
+// TAA
+	// 1. 获取纯净的 ViewProj (用于生成速度缓冲 Velocity Buffer 和 Reprojection)
 	XMMATRIX cleanViewProj = XMMatrixMultiply(view, proj);
 
-	// 2. 生成带 TAA 抖动的投影矩阵 (Jittered Proj)
-	XMMATRIX jitteredProj = proj;
-	// ... 在这里对 jitteredProj 的 m[2][0] 和 m[2][1] 添加 Jitter 偏移 ...
-
-	// 1. 获取本帧的 Jitter 像素偏移
-// 假设这个函数返回的值已经在 [-0.5, 0.5] 范围内
-	DirectX::XMFLOAT2 jitterPixel = GenerateHaltonJitter(FrameCount, (float)mClientWidth, (float)mClientHeight);
-
-	// 2. 将像素级别的偏移转换为 NDC (Normalized Device Coordinates) 空间的偏移
-	// NDC 空间的宽度和高度跨度都是 2.0 (从 -1 到 1)
+	// 2. 生成jitteredViewProj，用于本帧光栅化渲染 (SV_Position)
+	DirectX::XMFLOAT2 jitterPixel = GenerateHaltonJitter(FrameCount, mClientWidth, mClientHeight);
 	float jitterX_NDC = (jitterPixel.x * 2.0f) / (float)mClientWidth;
 	float jitterY_NDC = (jitterPixel.y * 2.0f) / (float)mClientHeight;
-
-
-
-	// 4. 应用 Jitter 偏移
-	// --- 方法 A：通过 XMFLOAT4X4 结构体修改 (可读性好，推荐) ---
-	DirectX::XMFLOAT4X4 projFloat;
-	XMStoreFloat4x4(&projFloat, jitteredProj);
-
-	projFloat.m[2][0] += jitterX_NDC;
-	// 注意 DX 中 NDC 的 Y 轴是向上的，具体加减符号需要根据你的 TAA 采样的方向来匹配
-	projFloat.m[2][1] += jitterY_NDC;
-
-	jitteredProj = XMLoadFloat4x4(&projFloat);
-
-	// 3. 生成带抖动的 ViewProj，用于光栅化渲染 (SV_Position)
+	XMMATRIX jitterTranslation = XMMatrixTranslation(jitterX_NDC, jitterY_NDC, 0.0f);
+	XMMATRIX jitteredProj = XMMatrixMultiply(proj, jitterTranslation);
 	XMMATRIX jitteredViewProj = XMMatrixMultiply(view, jitteredProj);
 
+	XMStoreFloat4x4(&mMainPassCB.jitteredViewProj, XMMatrixTranspose(jitteredViewProj)); // TAA：jitteredViewProj传给着色器做顶点变换
 
-	// 存入 CB
-	XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));
-	// 注意：传给着色器做常规顶点变换的必须是带 Jitter 的
-	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(jitteredViewProj));
+	XMStoreFloat4x4(&mMainPassCB.PrevViewProj, XMMatrixTranspose(XMLoadFloat4x4(&mPrevCleanViewProj))); // 传入mPrevCleanViewProj 供 TAA 计算速度和重投影使用
+	XMStoreFloat4x4(&mMainPassCB.cleanViewProj, XMMatrixTranspose(cleanViewProj));						 // 传入ViewProj 供 TAA 计算速度和重投影使用
 
-	// 【新增】传入上一帧的纯净 ViewProj
-	XMStoreFloat4x4(&mMainPassCB.PrevViewProj, XMMatrixTranspose(XMLoadFloat4x4(&mPrevCleanViewProj)));
+	XMStoreFloat4x4(&mPrevCleanViewProj, cleanViewProj);                                             // 将上一帧纯净vp更新为当前帧纯净vp，为下一帧做准备                      
+// TAA
 
-
-	XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
-	XMMATRIX invProj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
-	XMMATRIX invViewProj = XMMatrixInverse(&XMMatrixDeterminant(cleanViewProj), cleanViewProj);
 
 	// Transform NDC space [-1,+1]^2 to texture space [0,1]^2
 	XMMATRIX T(
@@ -826,14 +768,18 @@ void SsaoApp::UpdateMainPassCB(const GameTimer& gt)
 		0.5f, 0.5f, 0.0f, 1.0f);
 
 	XMMATRIX viewProjTex = XMMatrixMultiply(cleanViewProj, T);
+	XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
+	XMMATRIX invProj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
+	XMMATRIX invViewProj = XMMatrixInverse(&XMMatrixDeterminant(cleanViewProj), cleanViewProj);
 
-
-	XMStoreFloat4x4(&mMainPassCB.InvView, XMMatrixTranspose(invView));
+	XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));
 	XMStoreFloat4x4(&mMainPassCB.Proj, XMMatrixTranspose(proj));
-	XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
-	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(cleanViewProj));
-	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
+
 	XMStoreFloat4x4(&mMainPassCB.ViewProjTex, XMMatrixTranspose(viewProjTex));
+	XMStoreFloat4x4(&mMainPassCB.InvView, XMMatrixTranspose(invView));
+	XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
+	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
+
 
 	mMainPassCB.EyePosW = mCamera.GetPosition3f();
 	mMainPassCB.RenderTargetSize = XMFLOAT2((float)mClientWidth, (float)mClientHeight);
@@ -844,18 +790,8 @@ void SsaoApp::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.DeltaTime = gt.DeltaTime();
 	mMainPassCB.AmbientLight = { 0.4f, 0.4f, 0.6f, 1.0f };
 
-	//mMainPassCB.Lights[0].Direction = mRotatedLightDirections[0];
-	//mMainPassCB.Lights[0].Strength = { 0.4f, 0.4f, 0.5f };
-	//mMainPassCB.Lights[1].Direction = mRotatedLightDirections[1];
-	//mMainPassCB.Lights[1].Strength = { 0.1f, 0.1f, 0.1f };
-	//mMainPassCB.Lights[2].Direction = mRotatedLightDirections[2];
-	//mMainPassCB.Lights[2].Strength = { 0.0f, 0.0f, 0.0f };
-
 	auto currPassCB = mCurrFrameResource->PassCB.get();
 	currPassCB->CopyData(0, mMainPassCB);
-
-	// 【极其重要】在函数末尾，把本帧的纯净 ViewProj 保存下来，留给下一帧使用！
-	XMStoreFloat4x4(&mPrevCleanViewProj, cleanViewProj);
 }
 
 
