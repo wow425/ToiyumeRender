@@ -16,16 +16,16 @@ const int gNumFrameResources = 3;
 struct TAA
 {
 	// 1. 资源
-	ID3D12Resource* m_CurrentColor; // 本帧前序写
-	ID3D12Resource* DepthBuffer;    // 前序写 
-	ID3D12Resource* VelocityBuffer;  // 前序写
+	Microsoft::WRL::ComPtr<ID3D12Resource> m_CurrentColor; // 本帧前序写
+	Microsoft::WRL::ComPtr<ID3D12Resource> DepthBuffer;    // 前序写 
+	Microsoft::WRL::ComPtr<ID3D12Resource> VelocityBuffer;  // 前序写
 
 	D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentColorRtvHandle;
 	D3D12_CPU_DESCRIPTOR_HANDLE m_VelocityBUfferRtvHandle;
 	D3D12_CPU_DESCRIPTOR_HANDLE m_DepthDsvHandle;
 
 	// 用于 Ping-Pong 的两张纹理
-	ID3D12Resource* m_TaaHistoryTextures[2]; // history和output
+	Microsoft::WRL::ComPtr<ID3D12Resource> m_TaaHistoryTextures[2]; // history和output
 	UINT    CurrentHistoryIndex = 0; // 0/1
 	D3D12_GPU_DESCRIPTOR_HANDLE m_TaaGpuHandles[2];
 	// 用于绑定的两组 GPU 句柄起点.上帧与本帧color图
@@ -54,7 +54,7 @@ struct TAA
 
 	} Constants;
 
-	ID3D12Resource* ConstantBuffer;
+	Microsoft::WRL::ComPtr<ID3D12Resource> ConstantBuffer;
 };
 // TAA
 
@@ -268,18 +268,6 @@ bool SsaoApp::Initialize()
 	// TAA
 	mTaaCB = std::make_unique<UploadBuffer<TAA::TAAConstants>>(md3dDevice.Get(), 1, true);
 
-
-
-	LoadTextures();
-	BuildRootSignature();
-	BuildDescriptorHeaps();
-	BuildShadersAndInputLayout();
-	BuildShapeGeometry();
-	BuildMaterials();
-	BuildRenderItems();
-	BuildFrameResources();
-	BuildPSOs();
-
 	// TAA
 
 // 1. 定义资源描述 (Texture2D)
@@ -300,7 +288,7 @@ bool SsaoApp::Initialize()
 	CD3DX12_HEAP_PROPERTIES defaultHeapProps(D3D12_HEAP_TYPE_DEFAULT);
 
 	// 3. 定义优化的清屏颜色 (极大提升 ClearRenderTargetView 的性能)
-	CD3DX12_CLEAR_VALUE optClear(DXGI_FORMAT_R8G8B8A8_UNORM, Colors::Black);
+	CD3DX12_CLEAR_VALUE optClear(DXGI_FORMAT_R8G8B8A8_UNORM, Colors::White);
 
 	// 4. 为 CurrentColor 分配物理内存
 	texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -308,7 +296,7 @@ bool SsaoApp::Initialize()
 		&defaultHeapProps,
 		D3D12_HEAP_FLAG_NONE,
 		&texDesc,
-		D3D12_RESOURCE_STATE_COMMON, // 初始状态，之后在 Draw 里用 Barrier 转为 RENDER_TARGET
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, // 初始状态，之后在 Draw 里用 Barrier 转为 RENDER_TARGET
 		&optClear,
 		IID_PPV_ARGS(&taa.m_CurrentColor)));
 
@@ -319,7 +307,7 @@ bool SsaoApp::Initialize()
 		&defaultHeapProps,
 		D3D12_HEAP_FLAG_NONE,
 		&texDesc,
-		D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 		&optClear,
 		IID_PPV_ARGS(&taa.VelocityBuffer)));
 
@@ -333,7 +321,7 @@ bool SsaoApp::Initialize()
 		&defaultHeapProps,
 		D3D12_HEAP_FLAG_NONE,
 		&texDesc,
-		D3D12_RESOURCE_STATE_COMMON, // 初始状态，之后通过 Barrier 转换
+		D3D12_RESOURCE_STATE_COPY_SOURCE, // 初始状态，之后通过 Barrier 转换
 		nullptr,
 		IID_PPV_ARGS(&taa.m_TaaHistoryTextures[0])));
 
@@ -341,7 +329,7 @@ bool SsaoApp::Initialize()
 		&defaultHeapProps,
 		D3D12_HEAP_FLAG_NONE,
 		&texDesc,
-		D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 		nullptr,
 		IID_PPV_ARGS(&taa.m_TaaHistoryTextures[1])));
 
@@ -359,7 +347,7 @@ bool SsaoApp::Initialize()
 		&defaultHeapProps,
 		D3D12_HEAP_FLAG_NONE,
 		&texDesc,
-		D3D12_RESOURCE_STATE_COMMON,
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 		&depthOptClear,
 		IID_PPV_ARGS(&taa.DepthBuffer)));
 
@@ -379,13 +367,13 @@ bool SsaoApp::Initialize()
 	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
 	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-	md3dDevice->CreateRenderTargetView(taa.m_CurrentColor, &rtvDesc, taa.m_CurrentColorRtvHandle);
+	md3dDevice->CreateRenderTargetView(taa.m_CurrentColor.Get(), &rtvDesc, taa.m_CurrentColorRtvHandle);
 
 	// 5. 偏移游标，为 VelocityBuffer 创建 RTV
 	rtvHeapHandle.Offset(1, mRtvDescriptorSize);
 	taa.m_VelocityBUfferRtvHandle = rtvHeapHandle; // 记录下来给 Draw 用
 	rtvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
-	md3dDevice->CreateRenderTargetView(taa.VelocityBuffer, &rtvDesc, taa.m_VelocityBUfferRtvHandle);
+	md3dDevice->CreateRenderTargetView(taa.VelocityBuffer.Get(), &rtvDesc, taa.m_VelocityBUfferRtvHandle);
 
 	// ==========================================
 	// 【新增点 2：为 TAA 的独立深度图创建 DSV】
@@ -406,7 +394,19 @@ bool SsaoApp::Initialize()
 	dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	dsvDesc.Texture2D.MipSlice = 0;
 
-	md3dDevice->CreateDepthStencilView(taa.DepthBuffer, &dsvDesc, taa.m_DepthDsvHandle);
+	LoadTextures();
+	BuildRootSignature();
+	BuildDescriptorHeaps();
+	BuildShadersAndInputLayout();
+	BuildShapeGeometry();
+	BuildMaterials();
+	BuildRenderItems();
+	BuildFrameResources();
+	BuildPSOs();
+
+	
+
+	md3dDevice->CreateDepthStencilView(taa.DepthBuffer.Get(), &dsvDesc, taa.m_DepthDsvHandle);
 	// Execute the initialization commands.
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
@@ -496,7 +496,15 @@ void SsaoApp::Update(const GameTimer& gt)
 	taaData.ScreenSize = XMFLOAT2((float)mClientWidth, (float)mClientHeight);
 
 	taaData.Jitter = GenerateHaltonJitter(FrameCount, taaData.ScreenSize.x, taaData.ScreenSize.y);
-	taaData.Alpha = 0.1f; // 例如历史帧占 90%，当前帧占 10%
+	// 核心修复：如果是最初的前几帧（可以放宽到第 0 帧），不混合历史数据
+	if (FrameCount == 0)
+	{
+		taaData.Alpha = 1.0f; // 100% 使用 CurrentColor，完全无视带有垃圾数据的 History
+	}
+	else
+	{
+		taaData.Alpha = 0.1f; // 正常运行，新画面占 10%，历史占 90%
+	}
 	taaData.pad = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
 
 	// 将数据拷贝到 Upload Heap 中，索引为 0
@@ -514,24 +522,17 @@ void SsaoApp::Draw(const GameTimer& gt)
 	// =========================================================
 	// 阶段 1：离屏前向渲染 (Off-screen Forward Rendering)
 	// =========================================================
-	// 注意：不要再用 CurrentBackBuffer()！
-	// 必须清空并绑定 TAA 结构体中的 CurrentColor 和 VelocityBuffer
+
 
 // 1. 设置资源屏障：将上一帧用于读取的 SRV 状态，转换回写入状态
 	D3D12_RESOURCE_BARRIER beginBarriers[3];
-
-	// CurrentColor: SRV -> RENDER_TARGET
-	beginBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(taa.m_CurrentColor,
+	beginBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(taa.m_CurrentColor.Get(),
 		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-	// VelocityBuffer: SRV -> RENDER_TARGET
-	beginBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(taa.VelocityBuffer,
+	beginBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(taa.VelocityBuffer.Get(),
 		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-
 	// DepthBuffer: SRV -> DEPTH_WRITE (注意！深度缓冲是 DEPTH_WRITE，绝对不是 RENDER_TARGET)
-	beginBarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(taa.DepthBuffer,
+	beginBarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(taa.DepthBuffer.Get(),
 		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-
 	mCommandList->ResourceBarrier(3, beginBarriers);
 
 	// 2. 设置 MRT (多渲染目标)
@@ -540,26 +541,18 @@ void SsaoApp::Draw(const GameTimer& gt)
 		taa.m_CurrentColorRtvHandle,
 		taa.m_VelocityBUfferRtvHandle
 	};
-	// 使用 TAA 专用的深度缓冲句柄！(需要你在初始化堆时自己创建并保存这个句柄)
 	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = taa.m_DepthDsvHandle;
-
-	mCommandList->ClearRenderTargetView(rtvs[0], Colors::Black, 0, nullptr);
-	mCommandList->ClearRenderTargetView(rtvs[1], Colors::Black, 0, nullptr);
+	mCommandList->ClearRenderTargetView(rtvs[0], Colors::White, 0, nullptr);
+	mCommandList->ClearRenderTargetView(rtvs[1], Colors::White, 0, nullptr);
 	mCommandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-	// 绑定 MRT 和 专属深度图
 	mCommandList->OMSetRenderTargets(2, rtvs, false, &dsvHandle);
 
 	// 3. 执行常规的 Opaque 绘制 (你的 Graphics Root Signature 等逻辑保持不变)
-	// 前提：你的 Default.hlsl 的 PS 输出必须改为 struct 包含 SV_Target0 (Color) 和 SV_Target1 (Velocity)
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get()); // 根签名绑定
-
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
-
 	// 材质绑定
 	auto matBuffer = mCurrFrameResource->MaterialBuffer->Resource();
 	mCommandList->SetGraphicsRootShaderResourceView(2, matBuffer->GetGPUVirtualAddress());
@@ -568,7 +561,6 @@ void SsaoApp::Draw(const GameTimer& gt)
 	// 过程CB绑定
 	auto passCB = mCurrFrameResource->PassCB->Resource();
 	mCommandList->SetGraphicsRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
-
 	// opaque队列绘制
 	mCommandList->SetPipelineState(mPSOs["opaque"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
@@ -576,55 +568,36 @@ void SsaoApp::Draw(const GameTimer& gt)
 	// =========================================================
 		// 阶段 2：TAA Compute Shader 阶段
 		// =========================================================
-
-		// 1. 设置资源屏障：转换资源状态供 Compute Shader 读取/写入
-		// CurrentColor -> NON_PIXEL_SHADER_RESOURCE (SRV)
-		// DepthBuffer -> NON_PIXEL_SHADER_RESOURCE (SRV)
-		// VelocityBuffer -> NON_PIXEL_SHADER_RESOURCE (SRV)
-		// m_TaaHistoryTextures[HistoryWriteIndex] -> UNORDERED_ACCESS (UAV)
-		// ... (补充 ResourceBarrier 代码) ...
-
+		// 
 	// 计算 Ping-Pong 索引
 	UINT readIndex = taa.CurrentHistoryIndex;
 	UINT writeIndex = (taa.CurrentHistoryIndex + 1) % 2;
 
-	// 1. 设置资源屏障：打包提交以提升性能
+
 	D3D12_RESOURCE_BARRIER computeBarriers[5];
-
-	// 从前向渲染的输出状态，转为 Compute Shader 的读取状态 (SRV)
-	computeBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(taa.m_CurrentColor,
+	computeBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(taa.m_CurrentColor.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
-	computeBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(taa.DepthBuffer,
+	computeBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(taa.DepthBuffer.Get(),
 		D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
-	computeBarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(taa.VelocityBuffer,
+	computeBarriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(taa.VelocityBuffer.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
 	// TAA 历史帧资源状态流转
 	// 上一帧的 WriteTexture 在 Phase 3 被转成了 COPY_SOURCE，现在它变成了本帧的 ReadTexture
-	computeBarriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(taa.m_TaaHistoryTextures[readIndex],
+	computeBarriers[3] = CD3DX12_RESOURCE_BARRIER::Transition(taa.m_TaaHistoryTextures[readIndex].Get(),
 		D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
 	// 上一帧的 ReadTexture 是 NON_PIXEL_SHADER_RESOURCE，现在变成了本帧的 WriteTexture
-	computeBarriers[4] = CD3DX12_RESOURCE_BARRIER::Transition(taa.m_TaaHistoryTextures[writeIndex],
+	computeBarriers[4] = CD3DX12_RESOURCE_BARRIER::Transition(taa.m_TaaHistoryTextures[writeIndex].Get(),
 		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-	// 一次性提交 5 个屏障
 	mCommandList->ResourceBarrier(5, computeBarriers);
 
-		// 2. 切换到 Compute 模式
+	// 2. 切换到 Compute 模式
 	mCommandList->SetPipelineState(mPSOs["taaCS"].Get());
-	mCommandList->SetComputeRootSignature(mRootSignature.Get()); // 需要一个专门给 Compute 用的根签名
-
+	mCommandList->SetComputeRootSignature(mRootSignature.Get()); 
 	// 3. 绑定 TAA 常量缓冲区 (b2)
 	D3D12_GPU_VIRTUAL_ADDRESS taaCBAddress = mTaaCB->Resource()->GetGPUVirtualAddress();
-	mCommandList->SetComputeRootConstantBufferView(5, taaCBAddress); // 对应 register(b2)
-
+	mCommandList->SetComputeRootConstantBufferView(5, taaCBAddress); 
 	// 4. 绑定 SRV 和 UAV (t1~t4, u0)
 	mCommandList->SetComputeRootDescriptorTable(4, taa.m_TaaGpuHandles[taa.CurrentHistoryIndex]);
-
-
 	// 5. 派发线程组 (Dispatch)
 	// 你的 shader 是 [numthreads(8, 8, 1)]
 	UINT dispatchX = (mClientWidth + 7) / 8;
@@ -635,21 +608,14 @@ void SsaoApp::Draw(const GameTimer& gt)
 	// =========================================================
 	// 阶段 3：上屏 (Copy / Blit) 与 Ping-Pong
 	// =========================================================
-	ID3D12Resource* taaOutput = taa.m_TaaHistoryTextures[writeIndex]; // 本帧计算得出的全新图像
-	// 1. 将 BackBuffer 从 PRESENT 转为 COPY_DEST
-	// 将 TAA 的输出纹理从 UNORDERED_ACCESS 转为 COPY_SOURCE
-	// ... (补充 ResourceBarrier 代码) ...
+	ID3D12Resource* taaOutput = taa.m_TaaHistoryTextures[writeIndex].Get(); // 本帧计算得出的全新图像
 
-	// 1. 将 BackBuffer 从 PRESENT 转为 COPY_DEST，将 TAA 输出转为 COPY_SOURCE
-	D3D12_RESOURCE_BARRIER copyBarriers[2];
+	D3D12_RESOURCE_BARRIER copyBarriers[4];
 	copyBarriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST);
-
 	copyBarriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(taaOutput,
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
-
 	mCommandList->ResourceBarrier(2, copyBarriers);
-
 	// 2. 拷贝资源上屏
 	mCommandList->CopyResource(CurrentBackBuffer(), taaOutput);
 
@@ -660,16 +626,6 @@ void SsaoApp::Draw(const GameTimer& gt)
 
 	// 4. 更新 Ping-Pong 索引，为下一帧做准备
 	taa.CurrentHistoryIndex = writeIndex;
-
-	// 【极其重要的提示】：
-	// 在你下一帧进入 Draw() 的 Phase 1 (Opaque 绘制) 之前，
-	// 必须把 taa.m_CurrentColor 和 taa.VelocityBuffer 从 NON_PIXEL_SHADER_RESOURCE 转回 RENDER_TARGET！
-	// 把 DepthBuffer 从 NON_PIXEL_SHADER_RESOURCE 转回 DEPTH_WRITE！
-	// 
-
-
-
-
 
 	// 关闭命令列表并执行
 	ThrowIfFailed(mCommandList->Close());
@@ -768,6 +724,10 @@ void SsaoApp::UpdateObjectCBs(const GameTimer& gt)
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
 			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
 			objConstants.MaterialIndex = e->Mat->MatCBIndex;
+
+			// 【补上这行关键代码】将上一帧的矩阵转置后存入常量缓冲区
+			XMMATRIX prevWorld = XMLoadFloat4x4(&e->PrevWorld);
+			XMStoreFloat4x4(&objConstants.PrevWorld, XMMatrixTranspose(prevWorld));
 
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
@@ -1135,29 +1095,29 @@ void SsaoApp::BuildDescriptorHeaps()
 		int writeIndex = 1 - i;
 	
 		// current color SRV(两组都读同一张当前帧)
-		taaSrvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-		md3dDevice->CreateShaderResourceView(taa.m_CurrentColor, &taaSrvDesc, hDescriptor);
+		taaSrvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		md3dDevice->CreateShaderResourceView(taa.m_CurrentColor.Get(), &taaSrvDesc, hDescriptor);
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 
 		// history color SRV(ping-pong 绑定readIndex)
-		md3dDevice->CreateShaderResourceView(taa.m_TaaHistoryTextures[readIndex], &taaSrvDesc, hDescriptor);
+		md3dDevice->CreateShaderResourceView(taa.m_TaaHistoryTextures[readIndex].Get(), &taaSrvDesc, hDescriptor);
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 
 		// depth SRV (两组固定)
 		taaSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
-		md3dDevice->CreateShaderResourceView(taa.DepthBuffer, &taaSrvDesc, hDescriptor);
+		md3dDevice->CreateShaderResourceView(taa.DepthBuffer.Get(), &taaSrvDesc, hDescriptor);
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 
 		// velocity SRV (两组固定
 		taaSrvDesc.Format = DXGI_FORMAT_R16G16_FLOAT; // 速度图常用格式
-		md3dDevice->CreateShaderResourceView(taa.VelocityBuffer, &taaSrvDesc, hDescriptor);
+		md3dDevice->CreateShaderResourceView(taa.VelocityBuffer.Get(), &taaSrvDesc, hDescriptor);
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 
 		// output UAV (ping-pong 绑定writeIndex)
 		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-		uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-		md3dDevice->CreateUnorderedAccessView(taa.m_TaaHistoryTextures[writeIndex], nullptr, &uavDesc, hDescriptor);
+		uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		md3dDevice->CreateUnorderedAccessView(taa.m_TaaHistoryTextures[writeIndex].Get(), nullptr, &uavDesc, hDescriptor);
 		hDescriptor.Offset(1, mCbvSrvUavDescriptorSize);
 
 		gpuHandle.ptr += 5 * mCbvSrvUavDescriptorSize; 

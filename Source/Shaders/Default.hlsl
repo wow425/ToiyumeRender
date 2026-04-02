@@ -139,8 +139,12 @@ PixelOut PS(VertexOut pin)
     // 2. 运动矢量计算 (Velocity)
     // ==========================================
     // 透视除法，转换到 NDC (Normalized Device Coordinates) 空间 [-1, 1]
-    float2 currNDC = pin.CurrPosH.xy / pin.CurrPosH.w;
-    float2 prevNDC = pin.PrevPosH.xy / pin.PrevPosH.w;
+// 预防分母极小值或 0 导致的 INF/NaN
+    float currW = abs(pin.CurrPosH.w) < 1e-5f ? 1e-5f : pin.CurrPosH.w;
+    float prevW = abs(pin.PrevPosH.w) < 1e-5f ? 1e-5f : pin.PrevPosH.w;
+
+    float2 currNDC = pin.CurrPosH.xy / currW;
+    float2 prevNDC = pin.PrevPosH.xy / prevW;
 
     // 将 NDC 坐标映射到 UV 空间 [0, 1]
     // UV 和 NDC 的关系：

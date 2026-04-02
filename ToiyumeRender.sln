@@ -8,7 +8,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shaders", "Shaders", "{E2884410-E2BE-4398-8493-F5F6B164D68F}"
 	ProjectSection(SolutionItems) = preProject
 		Source\Shaders\Default.hlsl = Source\Shaders\Default.hlsl
-		TAA.hlsl = TAA.hlsl
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ThirdParty", "ThirdParty", "{66929B25-1F08-4DD2-8104-E46311D73FC3}"

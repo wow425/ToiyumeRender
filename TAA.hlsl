@@ -28,6 +28,24 @@ SamplerState gsamAnisotropicClamp : register(s5);
 [numthreads(8, 8, 1)]
 void CS(uint3 dtid : SV_DispatchThreadID)
 {
+    
+    
+    float4 currColor = gCurrentColor[dtid.xy];
+
+    // 【核心修改】：处理冷启动/相机瞬移 (Alpha == 1.0)
+    // 提示：在 Shader 中比较浮点数，使用 >= 0.999f 比直接 == 1.0f 更安全
+    if (gAlpha >= 0.999f)
+    {
+        // 此时完全不需要算速度、算 3x3 邻域、读历史纹理
+        // 直接输出当前颜色，并结束该线程
+        gOutputColor[dtid.xy] = currColor;
+        return;
+    }
+    
+    
+    
+    
+    
     float2 uv = (dtid.xy + 0.5f) / gScreenSize;
     
     // 1. 获取速度矢量并计算重投影坐标
