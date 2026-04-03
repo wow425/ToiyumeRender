@@ -17,6 +17,14 @@ using namespace Graphics;
 
 CommandContext::CommandContext(D3D12_COMMAND_LIST_TYPE Type) : m_Type(Type) {}
 
+//CommandContext& CommandContext::Begin(const std::wstring ID)
+//{
+//    CommandContext* NewContext = g_ContextManager.AllocateContext(D3D12_COMMAND_LIST_TYPE_DIRECT);
+//    NewContext->SetID(ID);
+//    if (ID.length() > 0)
+//        EngineProfiling::BeginBlock(ID, NewContext);
+//    return *NewContext;
+//}
 
 //CommandContext& CommandContext::Begin(const std::wstring ID)
 //{
@@ -33,3 +41,14 @@ void CommandContext::TransitionResource(GpuResource& Resource, D3D12_RESOURCE_ST
 //	CommandContext& InitContext = CommandContext::Begin();
 //
 //}
+
+void InitializeTexture(GpuResource& Dest, UINT NumSubresources, D3D12_SUBRESOURCE_DATA SubData[])
+{
+	// 计算uploadbuffer大小。资源，起始子资源索引，子资源数量
+	UINT64 uploadBufferSize = GetRequiredIntermediateSize(Dest.GetResource(), 0, NumSubresources);
+
+	CommandContext& InitContext = CommandContext::Begin();
+
+
+
+}

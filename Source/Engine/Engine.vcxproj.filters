@@ -60,6 +60,21 @@
     <ClInclude Include="Core\Math\Common.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Graphics\GpuResource\Texture.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Utility\DDSTextureLoader.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Utility\dds.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Utility\assert.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\GpuResource\LinearAllocator.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\Graphics\GpuResource\GpuResource.cpp">
@@ -99,6 +114,15 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="Core\Graphics\GpuResource\ShadowBuffer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\GpuResource\Texture.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Utility\DDSTextureLoader.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\GpuResource\LinearAllocator.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

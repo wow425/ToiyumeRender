@@ -54,6 +54,8 @@ public:
 
 	void TransitionResource(GpuResource& Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate = false);
 
+	static void InitializeTexture(GpuResource& Dest, UINT NumSubresources, D3D12_SUBRESOURCE_DATA SubData[]);
+
 protected:
 
 	D3D12_COMMAND_LIST_TYPE m_Type;

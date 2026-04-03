@@ -48,7 +48,7 @@ public:
 
 protected:
 
-	Microsoft::WRL::ComPtr<ID3D12Resource> m_pResource;
+	Microsoft::WRL::ComPtr<ID3D12Resource> m_pResource; // 资源指针
 
 	D3D12_RESOURCE_STATES m_UsageState; // 当前资源状态
 	D3D12_RESOURCE_STATES m_TransitioningState; // 过渡状态
