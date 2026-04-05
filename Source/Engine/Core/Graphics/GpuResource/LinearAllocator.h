@@ -106,8 +106,6 @@ public:
 	LinearAllocationPage* RequestPage(void);
 	LinearAllocationPage* CreateNewPage(size_t PageSize = 0);
 
-	// 丢弃的内存页回收，用于固定大小的内存页
-	// Discarded pages will get recycled.  This is for fixed size pages.
 	void DiscardPages(uint64_t FenceID, const std::vector<LinearAllocationPage*>& Pages);
 
 	// 释放的内存页将在其对应的 Fence（栅栏）信号通过后被销毁。这适用于单次使用的“大”尺寸内存页。
