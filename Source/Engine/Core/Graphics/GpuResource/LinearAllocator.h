@@ -7,8 +7,6 @@
 // 请求新内存页的操作是通过互斥锁（ミューテックスロック / Mutex lock）进行保护的，以确保线程安全。
 //当命令上下文执行完毕后，它会收到一个 フェンスID（Fence ID），用于指示何时可以安全地回收已使用的资源。
 // 此时必须调用 CleanupUsedPages() 方法，以便在 フェンス（Fence）清除（GPU处理完成）后，将这些已使用的内存页重新安排进入复用队列喵。
-
-
 // Description:  This is a dynamic graphics memory allocator for DX12.  It's designed to work in concert
 // with the CommandContext class and to do so in a thread-safe manner.  There may be many command contexts,
 // each with its own linear allocators.  They act as windows into a global memory pool by reserving a
@@ -30,21 +28,6 @@
 // Constant blocks must be multiples of 16 constants @ 16 bytes each
 #define DEFAULT_ALIGNMENT 256
 
-
-// 内存动态分配：资源对象，偏移，大小，CPU端可写地址，GPU端地址
-struct DynAlloc
-{
-	DynAlloc(GpuResource& BaseResource, size_t ThisOffset, size_t ThisSize)
-		: Buffer(BaseResource), Offset(ThisOffset), Size(ThisSize) {}
-
-	GpuResource& Buffer; // 资源对象 The D3D buffer associated with this memory
-	size_t Offset;		// 资源相对于起始位置的偏移 Offset from the start of the resource
-	size_t Size;        // 内存大小 Reserved size of this allocation
-	void* DataPtr;      // CPU端可写地址 the CPU_writeable address
-	D3D12_GPU_VIRTUAL_ADDRESS GpuAddress; // GPU端地址 The GPU-visible address
-};
-
-
 enum LinearAllocatorType
 {
 	kInvalidAllocator = -1,
@@ -55,11 +38,24 @@ enum LinearAllocatorType
 	kNumAllocatorTypes
 };
 
-
 enum
 {
 	kGpuAllocatorPageSize = 0x10000,	// 64K
 	kCpuAllocatorPageSize = 0x200000	// 2MB
+};
+
+
+// 产出供给前端使用
+struct DynAlloc
+{
+	DynAlloc(GpuResource& BaseResource, size_t ThisOffset, size_t ThisSize)
+		: Buffer(BaseResource), Offset(ThisOffset), Size(ThisSize) {}
+
+	GpuResource& Buffer; // 资源对象 The D3D buffer associated with this memory
+	size_t Offset;		// 资源相对于起始位置的偏移 Offset from the start of the resource
+	size_t Size;        // 内存大小 Reserved size of this allocation
+	void* DataPtr;      // CPU端可写地址 the CPU_writeable address
+	D3D12_GPU_VIRTUAL_ADDRESS GpuAddress; // GPU端地址 The GPU-visible address
 };
 
 
@@ -103,9 +99,9 @@ class LinearAllocatorPageManager
 {
 public:
 	LinearAllocatorPageManager();
+	
 	LinearAllocationPage* RequestPage(void);
 	LinearAllocationPage* CreateNewPage(size_t PageSize = 0);
-
 	void DiscardPages(uint64_t FenceID, const std::vector<LinearAllocationPage*>& Pages);
 
 	// 释放的内存页将在其对应的 Fence（栅栏）信号通过后被销毁。这适用于单次使用的“大”尺寸内存页。
