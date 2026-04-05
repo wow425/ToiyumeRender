@@ -49,3 +49,4 @@
 #include <functional> // 常用于命令录制的回调或者事件系统
 
 #include "Utility.h"
+#include "../Math/Common.h" // 数学库

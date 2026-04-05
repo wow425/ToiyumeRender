@@ -30,6 +30,8 @@
 // Constant blocks must be multiples of 16 constants @ 16 bytes each
 #define DEFAULT_ALIGNMENT 256
 
+
+// 内存动态分配：资源对象，偏移，大小，CPU端可写地址，GPU端地址
 struct DynAlloc
 {
 	DynAlloc(GpuResource& BaseResource, size_t ThisOffset, size_t ThisSize)
@@ -42,6 +44,7 @@ struct DynAlloc
 	D3D12_GPU_VIRTUAL_ADDRESS GpuAddress; // GPU端地址 The GPU-visible address
 };
 
+
 enum LinearAllocatorType
 {
 	kInvalidAllocator = -1,
@@ -52,12 +55,15 @@ enum LinearAllocatorType
 	kNumAllocatorTypes
 };
 
+
 enum
 {
 	kGpuAllocatorPageSize = 0x10000,	// 64K
 	kCpuAllocatorPageSize = 0x200000	// 2MB
 };
 
+
+// 页面
 class LinearAllocationPage : public GpuResource
 {
 public:
@@ -86,12 +92,16 @@ public:
 			m_CpuVirtualAddress = nullptr;
 		}
 	}
+
 	void* m_CpuVirtualAddress;
 	D3D12_GPU_VIRTUAL_ADDRESS m_GpuVirtualAddress;
 };
 
+
+// 负责物理层面的全局页面管理器
 class LinearAllocatorPageManager
 {
+public:
 	LinearAllocatorPageManager();
 	LinearAllocationPage* RequestPage(void);
 	LinearAllocationPage* CreateNewPage(size_t PageSize = 0);
@@ -109,16 +119,57 @@ class LinearAllocatorPageManager
 
 private:
 
+	static LinearAllocatorType sm_AutoType; // 静态成员变量，表示自动分配类型，可能是GPU独占或CPU可写
 	LinearAllocatorType m_AllocationType;
-	std::vector<std::unique_ptr<LinearAllocationPage> > m_PagePool;
-	std::queue<std::pair<uint64_t, LinearAllocationPage*> > m_RetiredPages;
-	std::queue<std::pair<uint64_t, LinearAllocationPage*> > m_DeletionQueue;
-	std::queue<LinearAllocationPage*> m_AvailablePages;
-	std::mutex m_Mutex;
+
+	std::vector<std::unique_ptr<LinearAllocationPage> > m_PagePool; // 页面池，存储所有创建的内存页
+
+	std::queue<std::pair<uint64_t, LinearAllocationPage*> > m_RetiredPagesQueue; // 退休页面队列(cpu用完，gpu还在用的)等待回收
+
+	std::queue<std::pair<uint64_t, LinearAllocationPage*> > m_DeletionQueue; // 删除页面队列，等待销毁
+
+	std::queue<LinearAllocationPage*> m_AvailablePagesQueue; // 可用页面队列，存储当前可供分配使用的内存页
+
+	std::mutex m_Mutex; // 锁
 
 };
 
+
+
+// 面向前端的分配器
 class LinearAllocator
 {
+public:
+
+	LinearAllocator(LinearAllocatorType Type) : m_AllocationType(Type), m_PageSize(0), m_CurOffset(~(size_t)0), m_CurPage(nullptr)
+	{
+		ASSERT(Type > kInvalidAllocator && Type < kNumAllocatorTypes);
+		m_PageSize = (Type == kGpuExclusive ? kGpuAllocatorPageSize : kCpuAllocatorPageSize);
+	}
+
+	DynAlloc Allocate(size_t SizeInBytes, size_t Alignment = DEFAULT_ALIGNMENT);
+
+	void CleanupUsedPages(uint64_t FenceID);
+
+	static void DestroyAll(void)
+	{
+		sm_PageManager[0].Destroy();
+		sm_PageManager[1].Destroy();
+	}
+
+private:
+
+	DynAlloc AllocateLargePage(size_t SizeInBytes);
+
+	// 2个页面管理器，0Gpu，1Cpu，使用自动注册设计模式
+	static LinearAllocatorPageManager sm_PageManager[2];
+
+	LinearAllocatorType m_AllocationType;
+	size_t m_PageSize;
+	size_t m_CurOffset; // 当前偏移
+
+	LinearAllocationPage* m_CurPage; // 当前页面
+	std::vector<LinearAllocationPage*> m_RetiredPages;
+	std::vector<LinearAllocationPage*> m_LargePageList;
 
 };

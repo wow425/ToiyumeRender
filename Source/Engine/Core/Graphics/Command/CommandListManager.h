@@ -56,6 +56,8 @@ private:
 
 };
 
+
+// 命令列表管理器，管理图形，计算，复制三种类型的命令队列
 class CommandListManager
 {
 	friend class CommandContext;
@@ -63,11 +65,32 @@ class CommandListManager
 public:
 
 
+	CommandQueue& GetQueue(D3D12_COMMAND_LIST_TYPE Type)
+	{
+		switch (Type)
+		{
+		case D3D12_COMMAND_LIST_TYPE_COMPUTE: return m_ComputeQueue;
+		case D3D12_COMMAND_LIST_TYPE_COPY: return m_CopyQueue;
+		default: return m_GraphicsQueue;
+		}
+	}
+
+	// 查询围栏值对应的队列的任务是否完成
+	bool IsFenceComplete(uint64_t FenceValue)
+	{
+		// FenceValue64位，右移56位，去除任务ID，前8位为队列类型
+		// 解压->类型转换->查询队列->查询任务是否完成
+		return GetQueue(D3D12_COMMAND_LIST_TYPE(FenceValue >> 56)).IsFenceComplete(FenceValue);
+	}
+
+	// CPU等待围栏值命中
+	void WaitForFence(uint64_t FenceValue);
+
 private:
 
 	ID3D12Device* m_Device;
 	// 图形，计算，复制，三队列
 	CommandQueue m_GraphicsQueue;
-	CommandQueue m_ComputeQueueu;
+	CommandQueue m_ComputeQueue;
 	CommandQueue m_CopyQueue;
 };
