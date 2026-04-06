@@ -75,6 +75,69 @@
     <ClInclude Include="Core\Graphics\GpuResource\LinearAllocator.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Graphics\GpuResource\PixelBuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\GpuResource\ReadbackBuffer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Utility\Color.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\PipelineState\samplerManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\PipelineState\GraphicsCommon.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\BoundingBox.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\BoundingPlane.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\BoundingSphere.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\Frustum.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\Matrix3.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\Matrix4.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\Quaternion.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\Random.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\Scalar.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\Transform.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\Vector.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Utility\Hash.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\Descriptor\DescriptorHeap.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Utility\FileUtility.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\GpuResource\TextureManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\VectorMath.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\Graphics\GpuResource\GpuResource.cpp">
@@ -125,8 +188,41 @@
     <ClCompile Include="Core\Graphics\GpuResource\LinearAllocator.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Core\Graphics\GpuResource\PixelBuffer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\GpuResource\ReadbackBuffer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\PipelineState\samplerManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\PipelineState\GraphicsCommon.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Math\BoundingSphere.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Math\Frustum.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Math\Random.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\Descriptor\DescriptorHeap.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Utility\FileUtility.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\GpuResource\TextureManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="Core\Math\Functions.inl">
+      <Filter>头文件</Filter>
+    </None>
   </ItemGroup>
 </Project>

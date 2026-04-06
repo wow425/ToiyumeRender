@@ -1,5 +1,14 @@
 #pragma once
 
+// 没啃
+
+
+
+
+
+
+#include "../Graphics/PipelineState/GraphicsCommon.h"
+#include "../Graphics/Descriptor/DescriptorHeap.h"
 
 class CommandListManager;
 class ContextManager;
@@ -26,11 +35,11 @@ namespace Graphics
 		extern bool g_bTypedUAVLoadSupport_R11G11B10_FLOAT;
 		extern bool g_bTypedUAVLoadSupport_R16G16B16A16_FLOAT;
 
-		 // extern DescriptorAllocator g_DescriptorAllocator[];
-		// inline D3D12_CPU_DESCRIPTOR_HANDLE AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE Type, UINT Count = 1)
-		//{
-		//	return g_DescriptorAllocator[Type].Allocate(Count);
-		//}
+		 extern DescriptorAllocator g_DescriptorAllocator[];
+		 inline D3D12_CPU_DESCRIPTOR_HANDLE AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE Type, UINT Count = 1)
+		{
+			return g_DescriptorAllocator[Type].Allocate(Count);
+		}
 }
 
 

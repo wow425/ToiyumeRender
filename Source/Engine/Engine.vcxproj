@@ -25,10 +25,23 @@
     <ClInclude Include="Core\Graphics\Command\CommandContext.h" />
     <ClInclude Include="Core\Graphics\Command\CommandListManager.h" />
     <ClInclude Include="Core\Graphics\GpuResource\GpuResource.h" />
+    <ClInclude Include="Core\Math\BoundingBox.h" />
+    <ClInclude Include="Core\Math\BoundingPlane.h" />
+    <ClInclude Include="Core\Math\BoundingSphere.h" />
     <ClInclude Include="Core\Math\Common.h" />
+    <ClInclude Include="Core\Math\Frustum.h" />
+    <ClInclude Include="Core\Math\Matrix3.h" />
+    <ClInclude Include="Core\Math\Matrix4.h" />
+    <ClInclude Include="Core\Math\Quaternion.h" />
+    <ClInclude Include="Core\Math\Random.h" />
+    <ClInclude Include="Core\Math\Scalar.h" />
+    <ClInclude Include="Core\Math\Transform.h" />
+    <ClInclude Include="Core\Math\Vector.h" />
     <ClInclude Include="Core\Utility\assert.h" />
+    <ClInclude Include="Core\Utility\Color.h" />
     <ClInclude Include="Core\Utility\d3dx12.h" />
     <ClInclude Include="Core\Utility\dds.h" />
+    <ClInclude Include="Core\Utility\Hash.h" />
     <ClInclude Include="Core\Utility\PCH.h" />
     <ClInclude Include="Core\Graphics\GpuResource\UploadBuffer.h" />
     <ClInclude Include="Core\Utility\Utility.h" />
@@ -39,6 +52,14 @@
     <ClInclude Include="Core\Graphics\GpuResource\Texture.h" />
     <ClInclude Include="Core\Utility\DDSTextureLoader.h" />
     <ClInclude Include="Core\Graphics\GpuResource\LinearAllocator.h" />
+    <ClInclude Include="Core\Graphics\GpuResource\PixelBuffer.h" />
+    <ClInclude Include="Core\Graphics\GpuResource\ReadbackBuffer.h" />
+    <ClInclude Include="Core\Graphics\PipelineState\samplerManager.h" />
+    <ClInclude Include="Core\Graphics\PipelineState\GraphicsCommon.h" />
+    <ClInclude Include="Core\Graphics\Descriptor\DescriptorHeap.h" />
+    <ClInclude Include="Core\Utility\FileUtility.h" />
+    <ClInclude Include="Core\Graphics\GpuResource\TextureManager.h" />
+    <ClInclude Include="Core\Math\VectorMath.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\Graphics\GpuResource\ColorBuffer.cpp" />
@@ -47,6 +68,9 @@
     <ClCompile Include="Core\Graphics\Command\CommandContext.cpp" />
     <ClCompile Include="Core\Graphics\Command\CommandListManager.cpp" />
     <ClCompile Include="Core\Graphics\GpuResource\GpuResource.cpp" />
+    <ClCompile Include="Core\Math\BoundingSphere.cpp" />
+    <ClCompile Include="Core\Math\Frustum.cpp" />
+    <ClCompile Include="Core\Math\Random.cpp" />
     <ClCompile Include="Core\Utility\PCH.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
@@ -60,8 +84,16 @@
     <ClCompile Include="Core\Graphics\GpuResource\Texture.cpp" />
     <ClCompile Include="Core\Utility\DDSTextureLoader.cpp" />
     <ClCompile Include="Core\Graphics\GpuResource\LinearAllocator.cpp" />
+    <ClCompile Include="Core\Graphics\GpuResource\PixelBuffer.cpp" />
+    <ClCompile Include="Core\Graphics\GpuResource\ReadbackBuffer.cpp" />
+    <ClCompile Include="Core\Graphics\PipelineState\samplerManager.cpp" />
+    <ClCompile Include="Core\Graphics\PipelineState\GraphicsCommon.cpp" />
+    <ClCompile Include="Core\Graphics\Descriptor\DescriptorHeap.cpp" />
+    <ClCompile Include="Core\Utility\FileUtility.cpp" />
+    <ClCompile Include="Core\Graphics\GpuResource\TextureManager.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Core\Math\Functions.inl" />
     <None Include="packages.config" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

@@ -99,15 +99,14 @@ class LinearAllocatorPageManager
 {
 public:
 	LinearAllocatorPageManager();
-	
-	LinearAllocationPage* RequestPage(void);
-	LinearAllocationPage* CreateNewPage(size_t PageSize = 0);
-	void DiscardPages(uint64_t FenceID, const std::vector<LinearAllocationPage*>& Pages);
+	LinearAllocationPage* RequestPage(void); // 申请页面
+	LinearAllocationPage* CreateNewPage(size_t PageSize = 0); // 创建页面
+	void DiscardPages(uint64_t FenceID, const std::vector<LinearAllocationPage*>& Pages); // 废弃页面
 
 	// 释放的内存页将在其对应的 Fence（栅栏）信号通过后被销毁。这适用于单次使用的“大”尺寸内存页。
 	// Freed pages will be destroyed once their fence has passed.  This is for single-use,
 	// "large" pages.
-	void FreeLargePages(uint64_t FenceID, const std::vector<LinearAllocationPage*>& Pages);
+	void FreeLargePages(uint64_t FenceID, const std::vector<LinearAllocationPage*>& Pages); // 释放页面
 
 	void Destroy(void) { m_PagePool.clear(); }
 

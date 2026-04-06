@@ -2,7 +2,12 @@
 
 #include "PCH.h"
 #include "CommandListManager.h"
+#include "Color.h"
 #include "../GpuResource/GpuBuffer.h"
+#include "../GpuResource/Texture.h"
+#include "../GpuResource/PixelBuffer.h"
+#include "../GpuResource/ReadbackBuffer.h"
+#include "../GpuResource/LinearAllocator.h"
 #include "../GraphicsCore.h"
 #include <vector>
 
@@ -56,8 +61,13 @@ public:
 
 	static void InitializeTexture(GpuResource& Dest, UINT NumSubresources, D3D12_SUBRESOURCE_DATA SubData[]);
 
+	uint32_t ReadbackTexture(ReadbackBuffer& DstBuffer, PixelBuffer& SrcBuffer);
+
+
 protected:
 
 	D3D12_COMMAND_LIST_TYPE m_Type;
+
+	ID3D12GraphicsCommandList* m_CommandList;
 };
 
