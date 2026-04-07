@@ -8,7 +8,7 @@
 
 
 #include "../Graphics/PipelineState/GraphicsCommon.h"
-#include "../Graphics/Descriptor/DescriptorHeap.h"
+#include "../Graphics/DescriptorAllocators/DescriptorHeap.h"
 
 class CommandListManager;
 class ContextManager;

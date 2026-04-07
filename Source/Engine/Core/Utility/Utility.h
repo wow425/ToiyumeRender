@@ -64,6 +64,7 @@ namespace Utility
 
     #define ASSERT_SUCCEEDED(hr,..) (void)(hr)
     #define ASSERT( isTrue, ...) (void)(isTrue)
+    #define WARN_ONCE_IF_NOT( isTrue, ...) (void)(isTrue)
 #else // 非开放版
 
     // 双重宏展开，先展开为数字，再转换为字符串
@@ -80,13 +81,27 @@ namespace Utility
     // __FILE__当前源代码文件的完整路径。__LINE__当前代码所在的行号。
     // 变长参数与错误消息 (__VA_ARGS__) 允许在检查 hr 的同时，传入一段自定义的文字描述。
     // __debugbreak()向CPU发送中断指令，停在报错的那行代码上
-#define ASSERT_SUCCEEDED(hr,...) \
-		if (FAILED(hr)) {\
-	            Utility::Print("\nHRESULT failed in " STRINGIFY_BUILTIN(__FILE__) " @ " STRINGIFY_BUILTIN(__LINE__) "\n"); \
-            Utility::PrintSubMessage("hr = 0x%08X", hr); \
-            Utility::PrintSubMessage(__VA_ARGS__); \
-            Utility::Print("\n"); \
-            __debugbreak(); \
-		}
+    #define ASSERT_SUCCEEDED(hr,...) \
+		    if (FAILED(hr)) {\
+	                Utility::Print("\nHRESULT failed in " STRINGIFY_BUILTIN(__FILE__) " @ " STRINGIFY_BUILTIN(__LINE__) "\n"); \
+                Utility::PrintSubMessage("hr = 0x%08X", hr); \
+                Utility::PrintSubMessage(__VA_ARGS__); \
+                Utility::Print("\n"); \
+                __debugbreak(); \
+		    }
+
+    #define WARN_ONCE_IF( isTrue, ... ) \
+        { \
+            static bool s_TriggeredWarning = false; \
+            if ((bool)(isTrue) && !s_TriggeredWarning) { \
+                s_TriggeredWarning = true; \
+                Utility::Print("\nWarning issued in " STRINGIFY_BUILTIN(__FILE__) " @ " STRINGIFY_BUILTIN(__LINE__) "\n"); \
+                Utility::PrintSubMessage("\'" #isTrue "\' is true"); \
+                Utility::PrintSubMessage(__VA_ARGS__); \
+                Utility::Print("\n"); \
+            } \
+        }
+
+    #define WARN_ONCE_IF_NOT( isTrue, ... ) WARN_ONCE_IF(!(isTrue), __VA_ARGS__)
 
 #endif

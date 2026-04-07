@@ -1,7 +1,7 @@
 #include "PCH.h"
 #include "DepthBuffer.h"
 #include "../GraphicsCore.h"
-#include "../Descriptor/DescriptorHeap.h"
+#include "../DescriptorAllocators/DescriptorHeap.h"
 
 using namespace Graphics;
 

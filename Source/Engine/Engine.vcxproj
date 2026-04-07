@@ -56,10 +56,12 @@
     <ClInclude Include="Core\Graphics\GpuResource\ReadbackBuffer.h" />
     <ClInclude Include="Core\Graphics\PipelineState\samplerManager.h" />
     <ClInclude Include="Core\Graphics\PipelineState\GraphicsCommon.h" />
-    <ClInclude Include="Core\Graphics\Descriptor\DescriptorHeap.h" />
+    <ClInclude Include="Core\Graphics\DescriptorAllocators\DescriptorHeap.h" />
     <ClInclude Include="Core\Utility\FileUtility.h" />
     <ClInclude Include="Core\Graphics\GpuResource\TextureManager.h" />
     <ClInclude Include="Core\Math\VectorMath.h" />
+    <ClInclude Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.h" />
+    <ClInclude Include="Core\Graphics\PipelineState\RootSignature.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\Graphics\GpuResource\ColorBuffer.cpp" />
@@ -88,9 +90,11 @@
     <ClCompile Include="Core\Graphics\GpuResource\ReadbackBuffer.cpp" />
     <ClCompile Include="Core\Graphics\PipelineState\samplerManager.cpp" />
     <ClCompile Include="Core\Graphics\PipelineState\GraphicsCommon.cpp" />
-    <ClCompile Include="Core\Graphics\Descriptor\DescriptorHeap.cpp" />
+    <ClCompile Include="Core\Graphics\DescriptorAllocators\DescriptorHeap.cpp" />
     <ClCompile Include="Core\Utility\FileUtility.cpp" />
     <ClCompile Include="Core\Graphics\GpuResource\TextureManager.cpp" />
+    <ClCompile Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.cpp" />
+    <ClCompile Include="Core\Graphics\PipelineState\RootSignature.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Core\Math\Functions.inl" />

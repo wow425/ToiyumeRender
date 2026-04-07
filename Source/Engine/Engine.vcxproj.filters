@@ -126,7 +126,7 @@
     <ClInclude Include="Core\Utility\Hash.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Graphics\Descriptor\DescriptorHeap.h">
+    <ClInclude Include="Core\Graphics\DescriptorAllocators\DescriptorHeap.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="Core\Utility\FileUtility.h">
@@ -136,6 +136,12 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="Core\Math\VectorMath.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\PipelineState\RootSignature.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
@@ -209,13 +215,19 @@
     <ClCompile Include="Core\Math\Random.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Core\Graphics\Descriptor\DescriptorHeap.cpp">
+    <ClCompile Include="Core\Graphics\DescriptorAllocators\DescriptorHeap.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="Core\Utility\FileUtility.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="Core\Graphics\GpuResource\TextureManager.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\PipelineState\RootSignature.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
