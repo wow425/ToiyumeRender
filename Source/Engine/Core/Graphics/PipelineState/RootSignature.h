@@ -152,16 +152,19 @@ public:
     ID3D12RootSignature* GetSignature() const { return m_Signature; }
 
 protected:
+    ID3D12RootSignature* m_Signature;
 
     BOOL m_Finalized; // 记录根签名是否被编译过
-    UINT m_NumParameters;
-    UINT m_NumSamplers;
-    UINT m_NumInitializedStaticSamplers;
-    uint32_t m_DescriptorTableBitMap;		// 
-    uint32_t m_SamplerTableBitMap;			// One bit is set for root parameters that are sampler descriptor tables
-    uint32_t m_DescriptorTableSize[16];		// Non-sampler descriptor tables need to know their descriptor count
+
+    UINT m_NumParameters; // 根参数数量
+    UINT m_NumSamplers;   // 采样器数量
+    UINT m_NumInitializedStaticSamplers; // 
+    // D3D12硬件底层设计中，采样器堆与资源视图堆(CBV/SRV/UAV)是完全独立的，故必须用两个独立的位图分开
+    // 位图：利用位来存储索引。 |=按位或 存储索引， &按位与查找
+    uint32_t m_DescriptorTableBitMap;		// 资源描述符表位图，记录哪些索引位置是资源描述符表。
+    uint32_t m_SamplerTableBitMap;			// 采样器表位图
+    uint32_t m_DescriptorTableSize[16];		// 记录非采样器描述符表包含多少个描述符，16为根参数上限
     std::unique_ptr<RootParameter[]> m_ParamArray;
     std::unique_ptr<D3D12_STATIC_SAMPLER_DESC[]> m_SamplerArray;
-    ID3D12RootSignature* m_Signature;
 };
 

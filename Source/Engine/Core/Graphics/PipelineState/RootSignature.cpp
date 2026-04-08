@@ -70,9 +70,16 @@ void RootSignature::InitStaticSampler(UINT Register, const D3D12_SAMPLER_DESC& N
     }
 }
 
-// 最终化
+// 最终化, 根签名类的难点
 void RootSignature::Finalize(const std::wstring& name, D3D12_ROOT_SIGNATURE_FLAGS Flags)
 {
+    // 1.检验是否被编译过，验证采样器数量一致与否
+    // 2. 双位图存储索引
+    // 3. 多线程并发控制模型编译根签名
+    
+    
+    
+    
     // 确保一个根签名对象只被编译一次
     if (m_Finalized)
         return;
@@ -89,50 +96,54 @@ void RootSignature::Finalize(const std::wstring& name, D3D12_ROOT_SIGNATURE_FLAG
 // 基于哈希表的全局缓存机制
 // =============================================================================================
 
-
+    // 双位图初始化
     m_DescriptorTableBitMap = 0;
     m_SamplerTableBitMap = 0;
-
+    // 为根签名配置+静态采样器生成哈希值
     size_t HashCode = Utility::HashState(&RootDesc.Flags);
     HashCode = Utility::HashState(RootDesc.pStaticSamplers, m_NumSamplers, HashCode);
 
     for (UINT Param = 0; Param < m_NumParameters; ++Param)
     {
-        const D3D12_ROOT_PARAMETER& RootParam = RootDesc.pParameters[Param];
+        
+        const D3D12_ROOT_PARAMETER& RootParam = RootDesc.pParameters[Param]; // 获取根签名指定索引的根参数
         m_DescriptorTableSize[Param] = 0;
-
-        if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE)
+        // 当前根参数为描述符表的话
+        if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE) 
         {
-            ASSERT(RootParam.DescriptorTable.pDescriptorRanges != nullptr);
-
-            HashCode = Utility::HashState(RootParam.DescriptorTable.pDescriptorRanges,
+            // 断言存在范围
+            ASSERT(RootParam.DescriptorTable.pDescriptorRanges != nullptr); 
+            // 累加该根参数的哈希值
+            HashCode = Utility::HashState(RootParam.DescriptorTable.pDescriptorRanges, 
                 RootParam.DescriptorTable.NumDescriptorRanges, HashCode);
 
-            // We keep track of sampler descriptor tables separately from CBV_SRV_UAV descriptor tables
-            if (RootParam.DescriptorTable.pDescriptorRanges->RangeType == D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER)
-                m_SamplerTableBitMap |= (1 << Param);
-            else
+            // 记录该根参数位于哪张位图。采样器描述符表跟资源描述符表分开管理
+            if (RootParam.DescriptorTable.pDescriptorRanges->RangeType == D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER) // 采样器描述符表
+                m_SamplerTableBitMap |= (1 << Param); // 左移1位进行按位或
+            else // 资源描述符表
                 m_DescriptorTableBitMap |= (1 << Param);
-
+            // 统计该根参数所包含的描述符数量
             for (UINT TableRange = 0; TableRange < RootParam.DescriptorTable.NumDescriptorRanges; ++TableRange)
                 m_DescriptorTableSize[Param] += RootParam.DescriptorTable.pDescriptorRanges[TableRange].NumDescriptors;
         }
         else
             HashCode = Utility::HashState(&RootParam, 1, HashCode);
     }
-
-    ID3D12RootSignature** RSRef = nullptr;
+    // 验证所有权移交是否成功
+    // 无指针是硬件地址，单指针是指向硬件，m_Signature是单指针，*RSRef是单指针,s_RootSignatureHashMap存储双指针
+    ID3D12RootSignature** RSRef = nullptr; 
     bool firstCompile = false;
+    // 局部作用域配合lock_guard锁
     {
         static mutex s_HashMapMutex;
         lock_guard<mutex> CS(s_HashMapMutex);
         auto iter = s_RootSignatureHashMap.find(HashCode);
 
         // Reserve space so the next inquiry will find that someone got here first.
-        if (iter == s_RootSignatureHashMap.end())
+        if (iter == s_RootSignatureHashMap.end()) // 该哈希值(对应的根签名）不存在时
         {
-            RSRef = s_RootSignatureHashMap[HashCode].GetAddressOf();
-            firstCompile = true;
+            RSRef = s_RootSignatureHashMap[HashCode].GetAddressOf(); // 访问不存在的键时，强行插入该键，并生成个初始值
+            firstCompile = true; // 首次编译
         }
         else
             RSRef = iter->second.GetAddressOf();
@@ -150,11 +161,12 @@ void RootSignature::Finalize(const std::wstring& name, D3D12_ROOT_SIGNATURE_FLAG
 
         m_Signature->SetName(name.c_str());
 
-        s_RootSignatureHashMap[HashCode].Attach(m_Signature);
+        s_RootSignatureHashMap[HashCode].Attach(m_Signature); // m_Signature所有权移交给s_RootSignatureHashMap，以进行管理
         ASSERT(*RSRef == m_Signature);
     }
     else
     {
+        // 没抢到锁的就让出时间片等待其他线程完成编译后，拿现成的即可
         while (*RSRef == nullptr)
             this_thread::yield();
         m_Signature = *RSRef;

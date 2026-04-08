@@ -1,9 +1,4 @@
 
-// 没啃
-
-
-
-
 
 
 #include "PCH.h"
@@ -15,6 +10,8 @@
 using namespace std;
 using namespace Graphics;
 
+// 匿名命名空间。内部链接，该变量仅在定义它的cpp文件内可见
+// 类似于全局作用域static效果，但现代cpp更推荐用匿名命名空间
 namespace
 {
     map< size_t, D3D12_CPU_DESCRIPTOR_HANDLE > s_SamplerCache;
