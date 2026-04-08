@@ -29,9 +29,9 @@
 <h3>🖼️ 渲染成果展示 (Gallery)</h3>
 
 <div align="center">
-<img src="[https://github.com/user-attachments/assets/e1615c8f-0794-4747-83cb-c486a59db285](https://github.com/user-attachments/assets/e1615c8f-0794-4747-83cb-c486a59db285)" width="100%" alt="TAA前"/>
+<img src="https://github.com/user-attachments/assets/e1615c8f-0794-4747-83cb-c486a59db285" width="100%" alt="TAA前"/>
 <br>
-<img src="[https://github.com/user-attachments/assets/e1b77377-6160-4819-b1d9-a07036f38526](https://github.com/user-attachments/assets/e1b77377-6160-4819-b1d9-a07036f38526)" width="100%" alt="TAA后"/>
+<img src="https://github.com/user-attachments/assets/e1b77377-6160-4819-b1d9-a07036f38526" width="100%" alt="TAA后"/>
 <br><br>
 <b>时间性抗锯齿</b><br>
 Temporal Anti-Aliasing (TAA)<br>
