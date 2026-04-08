@@ -1,11 +1,10 @@
 # ToiyumeRender
 
-A modern DirectX 12 rendering engine built from scratch.
-(ゼロから構築されたモダンな DirectX 12 レンダリングエンジン)
+从零开始DX12渲染器编写
 
 ---
 
-## 📅 学习日志 (Learning Log / 学習ログ)
+## 📅 学习日志
 
 > 记录每日的开发进度、踩坑点与图形学理论学习。
 
