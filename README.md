@@ -16,13 +16,11 @@
 
 
 <details>
-
-<details>
 <summary><b>2026-04-09: 初始化项目基建 (Project Initialization)</b></summary>
 
 
 
-</details>
+
 
 ## 🖼️ 渲染成果展示 (Rendering Gallery / レンダリングギャラリー)
 
