@@ -27,21 +27,63 @@ namespace Graphics
 class DynamicDescriptorHeap
 {
 public:
-	DynamicDescriptorHeap(CommandContext& OwingContext, D3D12_DESCRIPTOR_HEAP_TYPE HeapType);
+	DynamicDescriptorHeap(CommandContext& OwningContext, D3D12_DESCRIPTOR_HEAP_TYPE HeapType);
 	~DynamicDescriptorHeap();
 
 	static void DestroyAll(void)
 	{
 		sm_DescriptorHeapPool[0].clear();
-
+		sm_DescriptorHeapPool[1].clear();
 	}
+
+	void CleanupUsedHeaps(uint64_t fenceValue);
+
+	// Copy multiple handles into the cache area reserved for the specified root parameter.
+	void SetGraphicsDescriptorHandles(UINT RootIndex, UINT Offset, UINT NumHandles, const D3D12_CPU_DESCRIPTOR_HANDLE Handles[])
+	{
+		m_GraphicsHandleCache.StageDescriptorHandles(RootIndex, Offset, NumHandles, Handles);
+	}
+
+	void SetComputeDescriptorHandles(UINT RootIndex, UINT Offset, UINT NumHandles, const D3D12_CPU_DESCRIPTOR_HANDLE Handles[])
+	{
+		m_ComputeHandleCache.StageDescriptorHandles(RootIndex, Offset, NumHandles, Handles);
+	}
+
+	// Bypass the cache and upload directly to the shader-visible heap
+	D3D12_GPU_DESCRIPTOR_HANDLE UploadDirect(D3D12_CPU_DESCRIPTOR_HANDLE Handles);
+
+	// Deduce cache layout needed to support the descriptor tables needed by the root signature.
+	void ParseGraphicsRootSignature(const RootSignature& RootSig)
+	{
+		m_GraphicsHandleCache.ParseRootSignature(m_DescriptorType, RootSig);
+	}
+
+	void ParseComputeRootSignature(const RootSignature& RootSig)
+	{
+		m_ComputeHandleCache.ParseRootSignature(m_DescriptorType, RootSig);
+	}
+
+	// Upload any new descriptors in the cache to the shader-visible heap.
+	inline void CommitGraphicsRootDescriptorTables(ID3D12GraphicsCommandList* CmdList)
+	{
+		if (m_GraphicsHandleCache.m_StaleRootParamsBitMap != 0)
+			CopyAndBindStagedTables(m_GraphicsHandleCache, CmdList, &ID3D12GraphicsCommandList::SetGraphicsRootDescriptorTable);
+	}
+
+	inline void CommitComputeRootDescriptorTables(ID3D12GraphicsCommandList* CmdList)
+	{
+		if (m_ComputeHandleCache.m_StaleRootParamsBitMap != 0)
+			CopyAndBindStagedTables(m_ComputeHandleCache, CmdList, &ID3D12GraphicsCommandList::SetComputeRootDescriptorTable);
+	}
+
+
 private:
 
 	// 静态成员变量，全实例共享，实现对象池模式
 	// 描述符堆类型就两种：采样器，资源（CBV,UAV,SRV)
 	static std::vector<Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>> sm_DescriptorHeapPool[2];
 	static std::queue<std::pair<uint64_t, ID3D12DescriptorHeap*>> sm_RetiredDescriptorHeaps[2];
-	static std::queue<ID3D12DescriptorHeap*> sm_AvailableDscriptoHeaps[2];
+	static std::queue<ID3D12DescriptorHeap*> sm_AvailableDescriptorHeaps[2];
 	static const uint32_t kNumDescriptorSPerHeap = 1024;
 	static std::mutex sm_Mutex;
 
@@ -128,16 +170,15 @@ private:
 		m_CurrentOffset += Count;
 		return ret;
 	}
-
-	 /*此为CPP 98风格，过于古老且难看
-	 void (STDMETHODCALLTYPE ID3D12GraphicsCommandList::* SetFunc)(UINT, D3D12_GPU_DESCRIPTOR_HANDLE)
-	 声明了一个名叫 SetFunc 的C++ 成员函数指针，这个变量可以指向 ID3D12GraphicsCommandList 类中特定的某几个函数。
-	 void 目标函数返回值。    STDMETHODCALLTYPE由COM接口强制要求的调用约定，规定了参数如何压栈和谁清理堆栈
-	   ID3D12GraphicsCommandList::：限定作用域。告诉编译器，我要指向的函数不是普通的全局函数，而是这个命令列表类内部的成员函数。
-	 (UINT, D3D12_GPU_DESCRIPTOR_HANDLE)：目标函数必须严格接收这两个参数（一个是插槽索引，一个是 GPU 描述符句柄）。
-	 实现graphics跟Compute通用绑定函数
+	 //此为CPP 98风格，过于古老且难看
+	 //void (STDMETHODCALLTYPE ID3D12GraphicsCommandList::* SetFunc)(UINT, D3D12_GPU_DESCRIPTOR_HANDLE)
+	 //声明了一个名叫 SetFunc 的C++ 成员函数指针，这个变量可以指向 ID3D12GraphicsCommandList 类中特定的某几个函数。
+	 //void 目标函数返回值。    STDMETHODCALLTYPE由COM接口强制要求的调用约定，规定了参数如何压栈和谁清理堆栈
+	 //  ID3D12GraphicsCommandList::：限定作用域。告诉编译器，我要指向的函数不是普通的全局函数，而是这个命令列表类内部的成员函数。
+	 //(UINT, D3D12_GPU_DESCRIPTOR_HANDLE)：目标函数必须严格接收这两个参数（一个是插槽索引，一个是 GPU 描述符句柄）。
+	 //实现graphics跟Compute通用绑定函数
 	void CopyAndBindStagedTables(DescriptorHandleCache& HandleCache, ID3D12GraphicsCommandList* CmdList,
-		void (STDMETHODCALLTYPE ID3D12GraphicsCommandList::* SetFunc)(UINT, D3D12_GPU_DESCRIPTOR_HANDLE));*/
+		void (STDMETHODCALLTYPE ID3D12GraphicsCommandList::* SetFunc)(UINT, D3D12_GPU_DESCRIPTOR_HANDLE));
 
 	// 此为现代风格.使用 std::function (多态函数包装器)存在内存分配
 	void CopyAndBindStableTables

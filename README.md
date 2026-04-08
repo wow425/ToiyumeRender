@@ -12,8 +12,9 @@
 <blockquote>记录每日的开发进度、踩坑点与图形学理论学习。</blockquote>
 
 <details>
-<summary><b>2026-04-08: 封装DX12根签名绑定(Root Signature Binding)</b></summary>
+<summary><b>2026-04-08: </b></summary>
 <p>完成 RootSignature 类的编写，学习了利用位图存储索引，使用位运算查找索引的高效遍历方法。</p>
+<p>完成 DynamicDescriptorHeap 类的编写。</p>
 </details>
 
 <br>
