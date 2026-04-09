@@ -27,8 +27,14 @@ namespace Graphics
 class DynamicDescriptorHeap
 {
 public:
-	DynamicDescriptorHeap(CommandContext& OwningContext, D3D12_DESCRIPTOR_HEAP_TYPE HeapType);
-	~DynamicDescriptorHeap();
+	DynamicDescriptorHeap(CommandContext& OwningContext, D3D12_DESCRIPTOR_HEAP_TYPE HeapType)
+		:m_OwningContext(OwningContext), m_DescriptorType(HeapType)
+	{
+		m_CurrentHeapPtr = nullptr;
+		m_CurrentOffset = 0;
+		m_DescriptorSize = Graphics::g_Device->GetDescriptorHandleIncrementSize(HeapType);
+	}
+	~DynamicDescriptorHeap() {};
 
 	static void DestroyAll(void)
 	{
@@ -38,44 +44,40 @@ public:
 
 	void CleanupUsedHeaps(uint64_t fenceValue);
 
-	// Copy multiple handles into the cache area reserved for the specified root parameter.
-	void SetGraphicsDescriptorHandles(UINT RootIndex, UINT Offset, UINT NumHandles, const D3D12_CPU_DESCRIPTOR_HANDLE Handles[])
-	{
-		m_GraphicsHandleCache.StageDescriptorHandles(RootIndex, Offset, NumHandles, Handles);
-	}
-
-	void SetComputeDescriptorHandles(UINT RootIndex, UINT Offset, UINT NumHandles, const D3D12_CPU_DESCRIPTOR_HANDLE Handles[])
-	{
-		m_ComputeHandleCache.StageDescriptorHandles(RootIndex, Offset, NumHandles, Handles);
-	}
-
-	// Bypass the cache and upload directly to the shader-visible heap
+	// 绕过缓冲和提交，直接堆上分配位置上传，用于小资源分配
 	D3D12_GPU_DESCRIPTOR_HANDLE UploadDirect(D3D12_CPU_DESCRIPTOR_HANDLE Handles);
 
-	// Deduce cache layout needed to support the descriptor tables needed by the root signature.
+	// 解析根签名
 	void ParseGraphicsRootSignature(const RootSignature& RootSig)
 	{
 		m_GraphicsHandleCache.ParseRootSignature(m_DescriptorType, RootSig);
 	}
-
-	void ParseComputeRootSignature(const RootSignature& RootSig)
+	// 设置图形描述符句柄
+	void SetGraphicsDescriptorHandles(UINT RootIndex, UINT Offset, UINT NumHandles, const D3D12_CPU_DESCRIPTOR_HANDLE Handles[])
 	{
-		m_ComputeHandleCache.ParseRootSignature(m_DescriptorType, RootSig);
+		m_GraphicsHandleCache.StageDescriptorHandles(RootIndex, Offset, NumHandles, Handles);
 	}
-
-	// Upload any new descriptors in the cache to the shader-visible heap.
+	// 提交图形根描述符表
 	inline void CommitGraphicsRootDescriptorTables(ID3D12GraphicsCommandList* CmdList)
 	{
 		if (m_GraphicsHandleCache.m_StaleRootParamsBitMap != 0)
 			CopyAndBindStagedTables(m_GraphicsHandleCache, CmdList, &ID3D12GraphicsCommandList::SetGraphicsRootDescriptorTable);
 	}
 
+
+	void SetComputeDescriptorHandles(UINT RootIndex, UINT Offset, UINT NumHandles, const D3D12_CPU_DESCRIPTOR_HANDLE Handles[])
+	{
+		m_ComputeHandleCache.StageDescriptorHandles(RootIndex, Offset, NumHandles, Handles);
+	}
+	void ParseComputeRootSignature(const RootSignature& RootSig)
+	{
+		m_ComputeHandleCache.ParseRootSignature(m_DescriptorType, RootSig);
+	}
 	inline void CommitComputeRootDescriptorTables(ID3D12GraphicsCommandList* CmdList)
 	{
 		if (m_ComputeHandleCache.m_StaleRootParamsBitMap != 0)
 			CopyAndBindStagedTables(m_ComputeHandleCache, CmdList, &ID3D12GraphicsCommandList::SetComputeRootDescriptorTable);
 	}
-
 
 private:
 
@@ -84,7 +86,7 @@ private:
 	static std::vector<Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>> sm_DescriptorHeapPool[2];
 	static std::queue<std::pair<uint64_t, ID3D12DescriptorHeap*>> sm_RetiredDescriptorHeaps[2];
 	static std::queue<ID3D12DescriptorHeap*> sm_AvailableDescriptorHeaps[2];
-	static const uint32_t kNumDescriptorSPerHeap = 1024;
+	static const uint32_t kNumDescriptorsPerHeap = 1024;
 	static std::mutex sm_Mutex;
 
 	// 静态成员方法。Manager 类无实例化
@@ -96,13 +98,12 @@ private:
 	// 依赖注入的设计模式,消灭了多线程下跨上下文访问的竞合危险。
 	// 引用以绑定对应的commandcontext，可解决drawcall时更换堆需要重绑定堆和描述符，1个分配器只能服务于1个上下文。
 	CommandContext& m_OwningContext;
-
-	ID3D12DescriptorHeap* m_CurrentHeapPtr;
-	std::vector<ID3D12DescriptorHeap*> m_RetiredHeaps;
-	DescriptorHandle m_FirstDescriptor;
-	const D3D12_DESCRIPTOR_HEAP_TYPE m_DescriptorType;
-	uint32_t m_DescriptorSize;
-	uint32_t m_CurrentOffset;
+	ID3D12DescriptorHeap* m_CurrentHeapPtr; // 当前堆指针
+	std::vector<ID3D12DescriptorHeap*> m_RetiredHeaps; // 未提交的退休堆队列
+	DescriptorHandle m_FirstDescriptor;   // 当前堆的描述符封装类
+	const D3D12_DESCRIPTOR_HEAP_TYPE m_DescriptorType; // 描述符类型
+	uint32_t m_DescriptorSize; // 描述符大小
+	uint32_t m_CurrentOffset; // 描述符偏移
 	
 
 
@@ -113,12 +114,12 @@ private:
 	{
 		DescriptorTableCache() : AssignedHandlesBitMap(0) {}
 		// 64位cpu一次性读8字节
-		D3D12_CPU_DESCRIPTOR_HANDLE* TableStart;
-		uint32_t AssignedHandlesBitMap;
-		uint32_t TableSize;
+		D3D12_CPU_DESCRIPTOR_HANDLE* TableStart; // 起始位置
+		uint32_t AssignedHandlesBitMap; // 已分配句柄位图，标记哪些位置已分配
+		uint32_t TableSize; // 大小
 	};
 	//==============================================
-	// 描述符句柄缓冲
+	// CPU端描述符句柄缓冲
 	struct DescriptorHandleCache
 	{
 		DescriptorHandleCache() { ClearCache(); }
@@ -129,20 +130,18 @@ private:
 			m_MaxCachedDescriptors = 0;
 		}
 
-		uint32_t m_RootDescriptorTablesBitMap;
-		uint32_t m_StaleRootParamsBitMap;
+		uint32_t m_RootDescriptorTablesBitMap; // 根描述符表位图, 根签名上根描述符表的索引
+		uint32_t m_StaleRootParamsBitMap; // 脏根参数更新位图，根签名上发生变动的根参数的索引
 		uint32_t m_MaxCachedDescriptors;
 
 		// k：代表编译期确定的常量
 		static const uint32_t kMaaxNumDescriptors = 256;
 		static const uint32_t kMaxNumDescriptorTables = 16;
-		DescriptorTableCache m_RootDescriptorTable[kMaxNumDescriptorTables];
+		DescriptorTableCache m_RootDescriptorTable[kMaxNumDescriptorTables]; 
 		D3D12_CPU_DESCRIPTOR_HANDLE m_HandleCache[kMaaxNumDescriptors];
 
 		uint32_t ComputeStagedSize();
-
-		void CopyAndBindStableTables(D3D12_DESCRIPTOR_HEAP_TYPE Type, uint32_t DescriptorSize,
-			DescriptorHandle DestHandleStart, ID3D12GraphicsCommandList* CmdList,
+		void CopyAndBindStaleTables(D3D12_DESCRIPTOR_HEAP_TYPE Type, uint32_t DescriptorSize, DescriptorHandle DestHandleStart, ID3D12GraphicsCommandList* CmdList,
 			void (STDMETHODCALLTYPE ID3D12GraphicsCommandList::* SetFunc)(UINT, D3D12_GPU_DESCRIPTOR_HANDLE));
 
 		void UnbindAllValid();
@@ -157,10 +156,10 @@ private:
 
 	bool HasSpace(uint32_t Count)
 	{
-		return (m_CurrentHeapPtr != nullptr && m_CurrentOffset + Count <= kNumDescriptorSPerHeap);
+		return (m_CurrentHeapPtr != nullptr && m_CurrentOffset + Count <= kNumDescriptorsPerHeap);
 	}
 
-	void RetireCuurentHeap(void);
+	void RetireCurrentHeap(void);
 	void RetireUsedHeaps(uint64_t fenceValue);
 	ID3D12DescriptorHeap* GetHeapPointer();
 
@@ -170,16 +169,12 @@ private:
 		m_CurrentOffset += Count;
 		return ret;
 	}
+
+	void UnbindAllValid(void);
+
 	 //此为CPP 98风格，过于古老且难看
-	 //void (STDMETHODCALLTYPE ID3D12GraphicsCommandList::* SetFunc)(UINT, D3D12_GPU_DESCRIPTOR_HANDLE)
-	 //声明了一个名叫 SetFunc 的C++ 成员函数指针，这个变量可以指向 ID3D12GraphicsCommandList 类中特定的某几个函数。
-	 //void 目标函数返回值。    STDMETHODCALLTYPE由COM接口强制要求的调用约定，规定了参数如何压栈和谁清理堆栈
-	 //  ID3D12GraphicsCommandList::：限定作用域。告诉编译器，我要指向的函数不是普通的全局函数，而是这个命令列表类内部的成员函数。
-	 //(UINT, D3D12_GPU_DESCRIPTOR_HANDLE)：目标函数必须严格接收这两个参数（一个是插槽索引，一个是 GPU 描述符句柄）。
-	 //实现graphics跟Compute通用绑定函数
 	void CopyAndBindStagedTables(DescriptorHandleCache& HandleCache, ID3D12GraphicsCommandList* CmdList,
 		void (STDMETHODCALLTYPE ID3D12GraphicsCommandList::* SetFunc)(UINT, D3D12_GPU_DESCRIPTOR_HANDLE));
-
 	// 此为现代风格.使用 std::function (多态函数包装器)存在内存分配
 	void CopyAndBindStableTables
 	(
@@ -187,7 +182,6 @@ private:
 		ID3D12GraphicsCommandList* CmdList,
 		std::function<void(UINT, D3D12_GPU_DESCRIPTOR_HANDLE)> SetFunc
 	);
-
 	// 使用模板,零成本抽象 泛型编程 (Generic Programming / 汎用プログラミング)
 	template <typename Callable>
 	void CopyAndBindStableTables
@@ -196,41 +190,4 @@ private:
 		ID3D12GraphicsCommandList* CmdList,
 		Callable&& SetFunc // 接收任何“可调用对象”
 	);
-
-	/*现代 C++ 的调用方式：
-	CopyAndBindStableTables
-	(
-		HandleCache, 
-		pCmdList,
-		[pCmdList&](UINT RootIndex, D3D12_GPU_DESCRIPTOR_HANDLE GpuHandle)  传入一个 Lambda 表达式，捕获了 pCmdList 实例
-		{
-			pCmdList->SetGraphicsRootDescriptorTable(RootIndex, GpuHandle);
-		}
-	);
-	
-	[捕获列表] (参数列表) -> 返回值类型 { 函数体 }
-	[] (Capture Clause / キャプチャ句)： 这是 Lambda 的灵魂！它决定了 Lambda 内部可以使用外部的哪些变量。
-
-	() (Parameters)： 和普通函数一样，接收传入的参数。
-
-	-> Type (Return Type)： 返回值类型（大多数情况下编译器能自动推导，可以省略不写）。
-
-	{} (Body)： 函数真正的执行逻辑。
-
-	一个什么都不捕获、不需要参数、直接打印的 Lambda
-	auto sayHello = []() {
-		std::cout << "Hello DX12!" << std::endl;
-	};
-
-	sayHello(); // 调用它
-
-
-	“Lambda 表达式实际上是编译器的一颗语法糖（Syntactic Sugar / シンタックスシュガー）。
-	在编译时，编译器会自动为每一个 Lambda 生成一个独一无二的、隐藏的类（匿名类 / 匿名構造体），并重载了它的 operator()（函数调用运算符）。”
-	这种重载了 () 的对象，在 C++ 中被称为 仿函数（Functor / 関数オブジェクト）。
-
-
-	*/
-
-	void UnbindAllValid(void);
 };

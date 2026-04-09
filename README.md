@@ -20,8 +20,8 @@
 <br>
 
 <details>
-<summary><b>2026-04-09: 初始化项目基建 (Project Initialization)</b></summary>
-<p>（在此处填写你的内容...）</p>
+<summary><b>2026-04-09: </b></summary>
+<p>啃DynamicDescriptorHeap类，方法没啃完，逻辑关系有些复杂还没理清，明日继续</p>
 </details>
 
 </td>

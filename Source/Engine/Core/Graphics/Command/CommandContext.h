@@ -63,6 +63,7 @@ public:
 
 	uint32_t ReadbackTexture(ReadbackBuffer& DstBuffer, PixelBuffer& SrcBuffer);
 
+	void SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE Type, ID3D12DescriptorHeap* HeapPtr);
 
 protected:
 
@@ -71,3 +72,7 @@ protected:
 	ID3D12GraphicsCommandList* m_CommandList;
 };
 
+inline void CommandContext::SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE Type, ID3D12DescriptorHeap* HeapPtr)
+{
+
+}
