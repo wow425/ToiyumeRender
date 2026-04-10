@@ -1,5 +1,15 @@
 #pragma once
 
+/*
+* 负责把仓库里分散的 CPU 描述符缓存起来，在真正发起 Draw Call 前，将它们拷贝到一块连续的、着色器可见（Shader Visible / シェーダー可視） 的 GPU 显存堆中，并绑定到对应的根签名槽位上。
+
+
+
+*/
+
+
+
+
 #include "DescriptorHeap.h"
 #include "../Graphics/PipelineState/RootSignature.h"
 #include <vector>
@@ -109,7 +119,7 @@ private:
 
 	// 类中封装的结构体用于打包数据，实现高内聚
 	// 描述了一个“描述符表条目”：包含句柄缓存（Handle Cache）中的一段特定区域，以及（记录了）哪些句柄已经被设置。
-	// 描述符表缓冲
+	// 描述符表缓存
 	struct DescriptorTableCache
 	{
 		DescriptorTableCache() : AssignedHandlesBitMap(0) {}
@@ -119,7 +129,7 @@ private:
 		uint32_t TableSize; // 大小
 	};
 	//==============================================
-	// CPU端描述符句柄缓冲
+	// CPU端描述符句柄缓存
 	struct DescriptorHandleCache
 	{
 		DescriptorHandleCache() { ClearCache(); }
@@ -137,7 +147,7 @@ private:
 		// k：代表编译期确定的常量
 		static const uint32_t kMaaxNumDescriptors = 256;
 		static const uint32_t kMaxNumDescriptorTables = 16;
-		DescriptorTableCache m_RootDescriptorTable[kMaxNumDescriptorTables]; 
+		DescriptorTableCache m_RootDescriptorTable[kMaxNumDescriptorTables];  // 描述符表缓存
 		D3D12_CPU_DESCRIPTOR_HANDLE m_HandleCache[kMaaxNumDescriptors];
 
 		uint32_t ComputeStagedSize();

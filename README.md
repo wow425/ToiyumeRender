@@ -24,6 +24,18 @@
 <p>啃DynamicDescriptorHeap类，方法没啃完，逻辑关系有些复杂还没理清，明日继续</p>
 </details>
 
+<br>
+
+<details>
+<summary><b>2026-04-10: </b></summary>
+<p>啃完DynamicDescriptorHeap类，资源管理全流程大致梳理一遍。
+CPU端处创建存放碎片化的资源堆，也就是DescriptorAllocator 负责这一职能，
+GPU端处创建着色器可视堆，也就是DynamicDescriptorHeap类负责这一职能，
+而CPU端处创建的DescriptorHandleCache (属于 DynamicDescriptorHeap 的内部结构)的描述符句柄缓存，负责存储根签名所需要的资源句柄，将根签名所需要的资源从碎片化的资源堆运往着色器可视堆，起到中转站作用。
+<img src="https://github.com/user-attachments/assets/210a8faa-0e70-4f60-8a83-e9cf296c819a" width="100%" alt="流程图"/>
+</p>
+</details>
+
 </td>
 <td width="50%" valign="top">
 

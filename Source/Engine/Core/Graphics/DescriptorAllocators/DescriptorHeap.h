@@ -1,5 +1,13 @@
 #pragma once
 
+/*
+*
+*/
+
+
+
+
+
 #include <mutex>
 #include <vector>
 #include <queue>
@@ -86,7 +94,7 @@ private:
 
 };
 
-// 着色器可见描述符堆
+// Shader Visible Descriptor Heap
 // 固定容量（Bounded）的线性内存分配器，专门管理对 GPU 着色器可见的描述符资源。
 class DescriptorHeap
 {
