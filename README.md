@@ -28,11 +28,21 @@
 
 <details>
 <summary><b>2026-04-10: </b></summary>
-<p>啃完DynamicDescriptorHeap类，资源管理全流程大致梳理一遍。
-CPU端处创建存放碎片化的资源堆，也就是DescriptorAllocator 负责这一职能，
-GPU端处创建着色器可视堆，也就是DynamicDescriptorHeap类负责这一职能，
-而CPU端处创建的DescriptorHandleCache (属于 DynamicDescriptorHeap 的内部结构)的描述符句柄缓存，负责存储根签名所需要的资源句柄，将根签名所需要的资源从碎片化的资源堆运往着色器可视堆，起到中转站作用。
-<img src="https://github.com/user-attachments/assets/210a8faa-0e70-4f60-8a83-e9cf296c819a" width="100%" alt="流程图"/>
+<p>啃完DynamicDescriptorHeap类，资源管理全流程大致梳理一遍。<p>
+<p>CPU端处创建存放碎片化的资源堆，也就是DescriptorAllocator 负责这一职能，<p>
+<p>GPU端处创建着色器可视堆，也就是DynamicDescriptorHeap类负责这一职能，<p>
+<p>而CPU端处创建的DescriptorHandleCache (属于 DynamicDescriptorHeap 的内部结构)的描述符句柄缓存，负责存储根签名所需要的资源句柄，将根签名所需要的资源从碎片化的资源堆运往着色器可视堆，起到中转站作用。<p>
+</p>
+</details>
+
+<br>
+
+<details>
+<summary><b>2026-04-11: </b></summary>
+<p> 啃完CommandAllocatorPool类，CommandListManager类<p>
+<p> 命令分配器池的锁是成员锁，确保不同类型的命令队列独立且并行。而描述符分配器池的锁是类静态锁，实现全局不竞争。<p>
+<p> void CommandQueue::StallForFence(uint64_t FenceValue)方法学到了跨队列同步，生产者-消费者模型，自动化路由<p>
+<p>了解到帧图架构，以后实现<p>
 </p>
 </details>
 

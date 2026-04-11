@@ -1,15 +1,5 @@
 #pragma once
 
-/*
-* 负责把仓库里分散的 CPU 描述符缓存起来，在真正发起 Draw Call 前，将它们拷贝到一块连续的、着色器可见（Shader Visible / シェーダー可視） 的 GPU 显存堆中，并绑定到对应的根签名槽位上。
-
-
-
-*/
-
-
-
-
 #include "DescriptorHeap.h"
 #include "../Graphics/PipelineState/RootSignature.h"
 #include <vector>
@@ -25,6 +15,7 @@ namespace Graphics
 	// static内部链接，每个文件均可创建互不相干，彼此独立的变量，链接器会认为各自私有的。各自为政
 }
 
+class CommandContext;
 // 在类的声明内部（头文件中）编写实现的方法，会被编译器视为内联函数，因此消除函数调用方法
 // DynamicDescriptorHeap 的 public 方法在每一帧中可能会被调用成千上万次,每次调用都会产生函数调用开销.
 // 快路径与慢路径设计模式
