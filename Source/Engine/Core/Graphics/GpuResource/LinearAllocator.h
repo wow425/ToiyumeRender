@@ -6,7 +6,7 @@
 // 这些分配器通过预留上下文局部内存页（コンテキスト局所メモリページ / Context - local memory page），充当通往全局内存池（グローバルメモリプール / Global memory pool）的窗口。
 // 请求新内存页的操作是通过互斥锁（ミューテックスロック / Mutex lock）进行保护的，以确保线程安全。
 //当命令上下文执行完毕后，它会收到一个 フェンスID（Fence ID），用于指示何时可以安全地回收已使用的资源。
-// 此时必须调用 CleanupUsedPages() 方法，以便在 フェンス（Fence）清除（GPU处理完成）后，将这些已使用的内存页重新安排进入复用队列喵。
+// 此时必须调用 CleanupUsedPages() 方法，以便在 フェンス（Fence）清除（GPU处理完成）后，将这些已使用的内存页重新安排进入复用队列。
 // Description:  This is a dynamic graphics memory allocator for DX12.  It's designed to work in concert
 // with the CommandContext class and to do so in a thread-safe manner.  There may be many command contexts,
 // each with its own linear allocators.  They act as windows into a global memory pool by reserving a

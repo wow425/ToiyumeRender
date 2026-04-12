@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Core\Graphics\Command\CommandSignature.h" />
     <ClInclude Include="Core\Graphics\GpuResource\ColorBuffer.h" />
     <ClInclude Include="Core\Graphics\GpuResource\BufferManager.h" />
     <ClInclude Include="Core\Graphics\Command\CommandAllocatorPool.h" />
@@ -62,8 +63,10 @@
     <ClInclude Include="Core\Math\VectorMath.h" />
     <ClInclude Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.h" />
     <ClInclude Include="Core\Graphics\PipelineState\RootSignature.h" />
+    <ClInclude Include="Core\Graphics\PipelineState\PipelineState.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Core\Graphics\Command\CommandSignature.cpp" />
     <ClCompile Include="Core\Graphics\GpuResource\ColorBuffer.cpp" />
     <ClCompile Include="Core\Graphics\GpuResource\BufferManager.cpp" />
     <ClCompile Include="Core\Graphics\Command\CommandAllocatorPool.cpp" />
@@ -95,6 +98,7 @@
     <ClCompile Include="Core\Graphics\GpuResource\TextureManager.cpp" />
     <ClCompile Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.cpp" />
     <ClCompile Include="Core\Graphics\PipelineState\RootSignature.cpp" />
+    <ClCompile Include="Core\Graphics\PipelineState\PipelineState.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Core\Math\Functions.inl" />
