@@ -52,6 +52,13 @@ DX12 渲染器学习与改造
 </p>
 </details>
 
+<details>
+<summary><b>2026-04-13: </b></summary>
+<p> 在啃CommandContext类,编写完Pipelinestate类<p>
+<p> 今日课多，没投入多少时间<p>
+</p>
+</details>
+
 </td>
 <td width="50%" valign="top">
 
