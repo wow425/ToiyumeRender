@@ -59,6 +59,18 @@ DX12 渲染器学习与改造
 </p>
 </details>
 
+<details>
+<summary><b>2026-04-14: </b></summary>
+<p> 通过SIMDMemCopy方法了解到通过读写混合缓冲区WCB来单独开辟一条适合单方向海量对齐数据传递给GPU的道路，<p>
+<p> CPU对待内存写入有两套机制<p>
+<p>WB回写WriteBack<p>
+<p>数据先写到Cache中，再从Cache传输到主存中<p>
+<p>WC写入合并WriteCombined<p>
+<p>专为跨总线传输大量单项数据而设计的，上传堆默认是WC<p>
+<p>绕开Cache，数据直接写在CPU的写入合并缓冲区WCB中，然后打包传输给PCIe总线上<p>
+</p>
+</details>
+
 </td>
 <td width="50%" valign="top">
 

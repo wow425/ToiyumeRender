@@ -69,7 +69,7 @@ public:
 
 private:
 
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC m_PSODesc;
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC m_PSODesc;      
     std::shared_ptr<const D3D12_INPUT_ELEMENT_DESC> m_InputLayouts; // 布局应共享
 };
 

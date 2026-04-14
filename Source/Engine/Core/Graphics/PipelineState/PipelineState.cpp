@@ -103,20 +103,92 @@ void GraphicsPSO::SetInputLayout(UINT NumElements, const D3D12_INPUT_ELEMENT_DES
 
 void GraphicsPSO::Finalize()
 {
+   // 需先确保根签名finalize
+    m_PSODesc.pRootSignature = m_RootSignature->GetSignature();
+    ASSERT(m_PSODesc.pRootSignature != nullptr);
+    // 计算PSO哈希值，绑定输入布局
+    m_PSODesc.InputLayout.pInputElementDescs = nullptr;
+    size_t HashCode = Utility::HashState(&m_PSODesc);
+    HashCode = Utility::HashState(m_InputLayouts.get(), m_PSODesc.InputLayout.NumElements, HashCode);
+    m_PSODesc.InputLayout.pInputElementDescs = m_InputLayouts.get();
 
+
+// =============================================================================================
+// 基于哈希表的全局缓存机制
+// =============================================================================================
+    ID3D12PipelineState** PSORef = nullptr;
+    bool firstCompile = false;
+    {
+        static mutex s_HashMapMutex;
+        lock_guard<mutex> CS(s_HashMapMutex);
+        auto iter = s_GraphicsPSOHashMap.find(HashCode);
+
+        if (iter == s_GraphicsPSOHashMap.end())
+        {
+            firstCompile = true;
+            PSORef = s_GraphicsPSOHashMap[HashCode].GetAddressOf();
+        }
+        else
+            PSORef = iter->second.GetAddressOf();
+    }
+
+    if (firstCompile)
+    {
+        // 确保DSV规格已设置
+        ASSERT(m_PSODesc.DepthStencilState.DepthEnable != (m_PSODesc.DSVFormat == DXGI_FORMAT_UNKNOWN));
+        ASSERT_SUCCEEDED(g_Device->CreateGraphicsPipelineState(&m_PSODesc, TY_IID_PPV_ARGS(&m_PSO)));
+        s_GraphicsPSOHashMap[HashCode].Attach(m_PSO); // 转交指针由哈希表管理
+        m_PSO->SetName(m_Name);
+    }
+    else // 没抢到首次编译的线程就让步等着编译完成吃现的。
+    {
+        while (*PSORef == nullptr)
+            this_thread::yield();
+        m_PSO = *PSORef;
+    }
 }
 
 void ComputePSO::Finalize()
 {
+    // 需先确保根签名finalize
+    m_PSODesc.pRootSignature = m_RootSignature->GetSignature();
+    ASSERT(m_PSODesc.pRootSignature != nullptr);
+    // 计算PSO哈希值
+    size_t HashCode = Utility::HashState(&m_PSODesc);
 
+// =============================================================================================
+// 基于哈希表的全局缓存机制
+// =============================================================================================
+    ID3D12PipelineState** PSORef = nullptr;
+    bool firstCompile = false;
+    {
+        static mutex s_HashMapMutex;
+        lock_guard<mutex> CS(s_HashMapMutex);
+        auto iter = s_ComputePSOHashMap.find(HashCode);
+
+        if (iter == s_ComputePSOHashMap.end())
+        {
+            firstCompile = true;
+            PSORef = s_ComputePSOHashMap[HashCode].GetAddressOf();
+        }
+        else
+            PSORef = iter->second.GetAddressOf();
+    }
+
+    if (firstCompile)
+    {
+
+        ASSERT_SUCCEEDED(g_Device->CreateComputePipelineState(&m_PSODesc, TY_IID_PPV_ARGS(&m_PSO)));
+        s_ComputePSOHashMap[HashCode].Attach(m_PSO); // 转交指针由哈希表管理
+        m_PSO->SetName(m_Name);
+    }
+    else // 没抢到首次编译的线程就让步等着编译完成吃现的。
+    {
+        while (*PSORef == nullptr)
+            this_thread::yield();
+        m_PSO = *PSORef;
+    }
 }
-
-
-
-
-
-
-
 
 ComputePSO::ComputePSO(const wchar_t* Name) : PSO(Name)
 {

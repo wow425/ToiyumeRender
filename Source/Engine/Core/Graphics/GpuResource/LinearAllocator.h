@@ -45,7 +45,7 @@ enum
 };
 
 
-// 产出供给前端使用
+// 内存视图，描述内存池中的一块区域
 struct DynAlloc
 {
 	DynAlloc(GpuResource& BaseResource, size_t ThisOffset, size_t ThisSize)
