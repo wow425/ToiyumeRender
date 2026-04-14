@@ -102,6 +102,7 @@ void CommandListManager::CreateNewCommandList(D3D12_COMMAND_LIST_TYPE Type, ID3D
 
 // ==========================================
 
+//  执行命令列表，设置signal，返回m_NextFenceValue
 uint64_t CommandQueue::ExecuteCommandList(ID3D12CommandList* List)
 {
 	std::lock_guard<std::mutex> LockGuard(m_FenceMutex);

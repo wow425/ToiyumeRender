@@ -10,7 +10,7 @@
  而是完全绕开Cache，数据写入写入合并缓冲区(WCB,Write-Combining Buffer通常为64字节)，打包以突发传输的形式发送到PCIe总线。 另外开辟一条WCB通道传输数据给GPU
  缓解了memcpy导致PCIe总线阻塞问题
  针对海量动态数据（将顶点、索引、常量数据每一帧推送到 GPU）。 不适用于CPU端内部内存拷贝，非对齐数据结构，极小碎块数据传输。*/
-void SIMDMemCopy(void* __restrict _Dest, const void* __restrict _Source, size_t NumQuadwords)
+void SIMDMemCopy(void* __restrict _Dest, const void* __restrict _Source, size_t NumQuadwords) // size_t NumQuadwords：要拷贝的 数据块数量。
 {
     ASSERT(Math::IsAligned(_Dest, 16));
     ASSERT(Math::IsAligned(_Source, 16));

@@ -61,6 +61,7 @@ DX12 渲染器学习与改造
 
 <details>
 <summary><b>2026-04-14: </b></summary>
+<p> 命令模块啃完<p>
 <p> 通过SIMDMemCopy方法了解到通过读写混合缓冲区WCB来单独开辟一条适合单方向海量对齐数据传递给GPU的道路，<p>
 <p> CPU对待内存写入有两套机制<p>
 <p>WB回写WriteBack<p>

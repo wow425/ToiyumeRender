@@ -217,7 +217,7 @@ void DynamicDescriptorHeap::DescriptorHandleCache::ParseRootSignature(D3D12_DESC
 	ASSERT(m_MaxCachedDescriptors <= kMaxNumDescriptorTables, "Exceeded user-supplied maximum cache size");
 }
 
-// 把发生了变化的（Stale）描述符，从零散的 CPU 缓存中，紧凑地拷贝到 GPU 堆，并绑定到命令列表
+// 把发生了变化的（Stale）描述符，从零散的 CPU 缓存中，紧凑地拷贝到 GPU 堆
 void DynamicDescriptorHeap::DescriptorHandleCache::CopyAndBindStaleTables(
 	D3D12_DESCRIPTOR_HEAP_TYPE Type, uint32_t DescriptorSize,
 	DescriptorHandle DestHandleStart, ID3D12GraphicsCommandList* CmdList,
