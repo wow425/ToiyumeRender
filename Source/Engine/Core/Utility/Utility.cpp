@@ -1,4 +1,4 @@
-#include "PCH.h"
+﻿#include "PCH.h"
 #include "Utility.h"
 #include <string>
 #include <locale>
@@ -237,4 +237,4 @@ std::wstring Utility::RemoveExtension(const std::wstring& filePath)
 {
     return filePath.substr(0, filePath.rfind(L"."));
 }
-
+ 

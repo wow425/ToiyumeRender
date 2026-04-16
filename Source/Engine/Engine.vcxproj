@@ -64,6 +64,7 @@
     <ClInclude Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.h" />
     <ClInclude Include="Core\Graphics\PipelineState\RootSignature.h" />
     <ClInclude Include="Core\Graphics\PipelineState\PipelineState.h" />
+    <ClInclude Include="GameCore.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\Graphics\Command\CommandSignature.cpp" />
@@ -99,6 +100,7 @@
     <ClCompile Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.cpp" />
     <ClCompile Include="Core\Graphics\PipelineState\RootSignature.cpp" />
     <ClCompile Include="Core\Graphics\PipelineState\PipelineState.cpp" />
+    <ClCompile Include="GameCore.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Core\Math\Functions.inl" />

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "PCH.h"
 #include "CommandListManager.h"
@@ -51,12 +51,12 @@ struct DWParam
 	};
 };
 
+ 
  /*union现代方案variant
  get<T>(Data);会检查类型是否一致，不一致则抛出异常，确保了不会出现union的存A调B。且支持非平凡类型
  安全读取std::get/std::get_if。Data.index()可知当前存的类型。
  std::visit可实现多态效果且无虚函数表开销
  varinat大小：max（成员大小）+对齐后的索引空间，常量缓冲区禁用
- */
 struct TYDWParam
 {
 	std::variant<float, uint32_t, int32_t> Data;
@@ -72,7 +72,7 @@ struct TYDWParam
 	float AsFloat() const { return std::get<float>(Data); }
 	float AsUint32_t() const { return std::get<uint32_t>(Data); }
 	float AsInt32_t() const { return std::get<int32_t>(Data); }
-};
+};*/
 
 
 
@@ -124,11 +124,11 @@ public:
 	uint64_t Finish(bool WaitForCompletion = false);
 	// 准备渲染通过预留命令列表和命令分配器 ?
 	void Initialize(void);
-
+     
 // 获取
 	GraphicsContext& GetGraphicsContext()
 	{
-		ASSERT(m_Type != D3D12_COMMAND_LIST_TYPE_COMPUTE, "Cannont convert async compute context to graphics不能将计算上下文转为图形上下文");
+		ASSERT(m_Type != D3D12_COMMAND_LIST_TYPE_COMPUTE, "不能将计算上下文转为图形上下文");
 		return reinterpret_cast<GraphicsContext&>(*this);
 	}
 	ComputeContext& GetComputeContext() { return reinterpret_cast<ComputeContext&>(*this); } // 计算命令列表不用验证类别，因为计算是图形的子集，包含完整功能

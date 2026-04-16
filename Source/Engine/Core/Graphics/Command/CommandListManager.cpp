@@ -1,4 +1,4 @@
-#include "PCH.h"
+﻿#include "PCH.h"
 #include "CommandListManager.h"
 
 CommandQueue::CommandQueue(D3D12_COMMAND_LIST_TYPE Type) :
@@ -9,7 +9,8 @@ CommandQueue::CommandQueue(D3D12_COMMAND_LIST_TYPE Type) :
 	解决多队列调试与追踪问题。
 	全局唯一性：通过将类型放在高位，Graphics 队列的 Fence 值永远以 0x00...开头，Compute 队列以 0x02...开头，Copy 队列以 0x03...开头。
 	防止混淆：在调试工具（如 PIX 或 Visual Studio Graphics Analyzer）中，如果你看到一个 Fence 值为 0x0200000000000005，你一眼就能断定这是 Compute Queue 的第 5 个任务，而不会将其与 Graphics 队列混淆。
-	底层溯源(Rule 4)：在 GPU 硬件架构中，不同引擎（Engine）是独立执行的。这种赋值方式在软件层面模拟了硬件的“通道”概念，确保每个队列的计数器在 64 位地址空间内互不重叠。*/
+	底层溯源(Rule 4)：在 GPU 硬件架构中，不同引擎（Engine）是独立执行的。这种赋值方式在软件层面模拟了硬件的“通道”概念，确保每个队列的计数器在 64 位地址空间内互不重叠。
+    */
 	m_NextFenceValue((uint64_t)Type << 56 | 1),
 	m_LastCompletedFenceValue((uint64_t)Type << 56),
 	m_AllocatorPool(Type)

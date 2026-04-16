@@ -1,0 +1,16 @@
+# 表示这是根配置文件，不要再往上层查找
+root = true
+
+# 对所有文件生效
+[*]
+# 强制使用 UTF-8 带签名，彻底解决 C4819 警告
+charset = utf-8-bom
+# 统一换行符为 CRLF (Windows 习惯) 或 LF (Unix 习惯)，跨平台建议 LF
+end_of_line = crlf
+# 缩进风格：空格
+indent_style = space
+indent_size = 4
+# 移除行尾多余空格
+trim_trailing_whitespace = true
+# 文件末尾保留一个空行
+insert_final_newline = true

@@ -150,6 +150,9 @@
     <ClInclude Include="Core\Graphics\Command\CommandSignature.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="GameCore.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\Graphics\GpuResource\GpuResource.cpp">
@@ -242,11 +245,14 @@
     <ClCompile Include="Core\Graphics\Command\CommandSignature.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="GameCore.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
     <None Include="Core\Math\Functions.inl">
       <Filter>头文件</Filter>
     </None>
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>
