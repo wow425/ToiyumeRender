@@ -80,6 +80,12 @@ DX12 渲染器学习与改造
 <p>2. 单例模式与静态成员<p>
 <p>3. 常驻内存池与资源管理<p>
 
+
+<details>
+<summary><b>2026-04-17: </b></summary>
+<p>Graphics::Initialize();图形模块初始化及其内部一些代码搞完<p>
+
+
 </p>
 </details>
 

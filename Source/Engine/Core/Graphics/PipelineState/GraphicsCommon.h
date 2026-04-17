@@ -1,7 +1,7 @@
-#pragma once
+﻿#pragma once
 
 
-// 没啃
+// 全局渲染状态
 
 
 #include "SamplerManager.h"

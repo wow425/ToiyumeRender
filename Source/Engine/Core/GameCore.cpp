@@ -1,12 +1,12 @@
 ﻿#include "PCH.h"
 #include "GameCore.h"
 #include "../Graphics/GraphicsCore.h"
-// #include "SystemTime.h"
+#include "SystemTime.h"
 #include "GameInput.h"
 #include "../Graphics/GpuResource/BufferManager.h"
 #include "../Graphics/Command/CommandContext.h"
 // #include "PostEffects.h"
-// #include "Display.h"
+#include "Display.h"
 // #include "Util/CommandLineArg.h"
 #include <shellapi.h>
 
@@ -20,7 +20,8 @@ namespace GameCore
 
     void InitializeApplication(IGameApp& game)
     {
-
+        // 图形模块初始化
+        Graphics::Initialize();
 
 
     }
@@ -32,13 +33,13 @@ namespace GameCore
 
     bool UpdateApplication(IGameApp& game)
     {
-
+        return 1;
     }
 
     // Default implementation to be overridden by the application
     bool IGameApp::IsDone(void)
     {
-
+        return 1;
     }
 
     HWND g_hWnd = nullptr;

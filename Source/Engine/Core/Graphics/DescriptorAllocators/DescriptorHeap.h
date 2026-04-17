@@ -1,8 +1,6 @@
-#pragma once
+﻿#pragma once
 
-/*
-*
-*/
+
 
 
 
@@ -39,7 +37,7 @@ protected:
     static ID3D12DescriptorHeap* RequestNewHeap(D3D12_DESCRIPTOR_HEAP_TYPE Type);
 
     static const uint32_t sm_NumDescriptorsPerHeap = 256; // 每堆的描述符容量
-    static std::mutex sm_AllocationMutex;                 
+    static std::mutex sm_AllocationMutex;
     static std::vector<Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>> sm_DescriptorHeapPool; // 描述符堆池
 
 
@@ -62,7 +60,8 @@ public:
     }
 
     DescriptorHandle(D3D12_CPU_DESCRIPTOR_HANDLE CpuHandle, D3D12_GPU_DESCRIPTOR_HANDLE GpuHandle)
-        : m_CpuHandle(CpuHandle), m_GpuHandle(GpuHandle) {}
+        : m_CpuHandle(CpuHandle), m_GpuHandle(GpuHandle) {
+    }
 
     DescriptorHandle operator+ (INT offsetScaledByDesriptorSize) const
     {

@@ -39,7 +39,7 @@ private:
     D3D12_RECT m_MainScissor;
 };
 
-// 启动
+// 启动，跳转到RunApplication
 CREATE_APPLICATION(Tooiyume)
 
 

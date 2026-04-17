@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Core\Graphics\PipelineState\CommandSignature.h" />
     <ClInclude Include="Core\Graphics\Command\CommandSignature.h" />
     <ClInclude Include="Core\Graphics\GpuResource\ColorBuffer.h" />
     <ClInclude Include="Core\Graphics\GpuResource\BufferManager.h" />
@@ -64,9 +65,12 @@
     <ClInclude Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.h" />
     <ClInclude Include="Core\Graphics\PipelineState\RootSignature.h" />
     <ClInclude Include="Core\Graphics\PipelineState\PipelineState.h" />
-    <ClInclude Include="GameCore.h" />
+    <ClInclude Include="Core\Graphics\Display.h" />
+    <ClInclude Include="Core\GameCore.h" />
+    <ClInclude Include="Core\Utility\SystemTime.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Core\Graphics\PipelineState\CommandSignature.cpp" />
     <ClCompile Include="Core\Graphics\Command\CommandSignature.cpp" />
     <ClCompile Include="Core\Graphics\GpuResource\ColorBuffer.cpp" />
     <ClCompile Include="Core\Graphics\GpuResource\BufferManager.cpp" />
@@ -100,7 +104,9 @@
     <ClCompile Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.cpp" />
     <ClCompile Include="Core\Graphics\PipelineState\RootSignature.cpp" />
     <ClCompile Include="Core\Graphics\PipelineState\PipelineState.cpp" />
-    <ClCompile Include="GameCore.cpp" />
+    <ClCompile Include="Core\Graphics\Display.cpp" />
+    <ClCompile Include="Core\GameCore.cpp" />
+    <ClCompile Include="Core\Utility\SystemTime.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Core\Math\Functions.inl" />
@@ -158,6 +164,14 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)Build\$(Platform)\$(Configuration)\Output\</OutDir>
+    <IntDir>$(SolutionDir)Build\$(Platform)\$(Configuration)\Intermediate\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)Build\$(Platform)\$(Configuration)\Output\</OutDir>
+    <IntDir>$(SolutionDir)Build\$(Platform)\$(Configuration)\Intermediate\$(ProjectName)\</IntDir>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -194,7 +208,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>PCH.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Engine\Core\Utility;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Build;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Engine\Core\Utility;..\Engine\Core\Graphics\</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -212,7 +226,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>PCH.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Engine\Core\Utility;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Build;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Engine\Core\Utility;..\Engine\Core\Graphics\</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>

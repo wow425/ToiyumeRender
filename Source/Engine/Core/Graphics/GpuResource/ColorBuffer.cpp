@@ -1,10 +1,11 @@
-#include "PCH.h"
+﻿#include "PCH.h"
 #include "ColorBuffer.h"
 #include "../PipelineState/GraphicsCommon.h"
 #include "../Command/CommandContext.h"
 
 using namespace Graphics;
 
+// RTV,UAV,SRV
 void ColorBuffer::CreateDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format, uint32_t ArraySize, uint32_t NumMips)
 {
     ASSERT(ArraySize == 1 || NumMips == 1, "We don't support auto-mips on texture arrays");

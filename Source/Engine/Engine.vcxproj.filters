@@ -150,7 +150,16 @@
     <ClInclude Include="Core\Graphics\Command\CommandSignature.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="GameCore.h">
+    <ClInclude Include="Core\GameCore.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\Display.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Utility\SystemTime.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Graphics\PipelineState\CommandSignature.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
@@ -245,7 +254,16 @@
     <ClCompile Include="Core\Graphics\Command\CommandSignature.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="GameCore.cpp">
+    <ClCompile Include="Core\GameCore.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\Display.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Utility\SystemTime.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Graphics\PipelineState\CommandSignature.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
