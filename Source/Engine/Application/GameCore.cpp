@@ -39,7 +39,16 @@ namespace GameCore
 
     bool UpdateApplication(IGameApp& game)
     {
-        return 1;
+        // 获取每帧时间
+        float DelataTime = Graphics::GetFrameTime();
+
+        // GameInput::Update(DeltaTime); 输入模块必须没写，必须写，不然没法实现最小可运行渲染器
+        game.Update(DelataTime);
+        game.RenderScene(); // 没写
+
+        Display::Present(); // 没完成需看看
+
+        return !game.IsDone();
     }
 
     // Default implementation to be overridden by the application
@@ -108,7 +117,7 @@ namespace GameCore
         } while (UpdateApplication(app));	// 更新应用
 
         TerminateApplication(app); // 终止应用
-        Graphics::Shutdown();
+        Graphics::Shutdown(); // 没完成
         return 0;
     }
 

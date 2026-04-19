@@ -1,15 +1,14 @@
-﻿#include "../GameCore.h"
+﻿#include "Application/GameCore.h"
 //#include "CameraController.h"
-#include "BufferManager.h"
-#include "Camera.h"
-#include "CommandContext.h"
+#include "Resource/ResourceManager/BufferManager.h"
+#include "Camera/Camera.h"
+#include "RHI/Command/CommandContext.h"
 //#include "TemporalEffects.h"
-#include "SystemTime.h"
-#include "GameInput.h"
+#include "Application/SystemTime.h"
 #include "Renderer.h"
 #include "Model.h"
 #include "ModelLoader.h"
-#include "../Display.h"
+#include "Application/Display.h"
 
 
 using namespace GameCore;
@@ -49,11 +48,11 @@ CREATE_APPLICATION(Tooiyume)
 
 void Tooiyume::Startup(void)
 {
-    // 功能开关
+    // Renderer初始化。没写
+    Renderer::Initialize();
+    // 模型加载
 
-    // Renderer初始化
-
-    // 资源加载
+    // 镜头设置
 }
 
 

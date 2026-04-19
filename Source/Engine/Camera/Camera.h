@@ -2,8 +2,8 @@
 
 // 类放命名空间中实现模块化管理，解决符号冲突，
 
-#include "../Math/VectorMath.h"
-#include "../Math/Frustum.h"
+#include "Math/VectorMath.h"
+#include "Math/Frustum.h"
 
 namespace Math
 {

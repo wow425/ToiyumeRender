@@ -6,8 +6,6 @@
 #include "SystemTime.h"
 #include "../RHI/Command/CommandContext.h"
 #include "../RHI/PipelineState/RootSignature.h"
-//#include "ImageScaling.h"
-//#include "TemporalEffects.h"
 
 #pragma comment(lib, "dxgi.lib")
 
@@ -196,8 +194,7 @@ void Display::Initialize(void)
         g_DisplayPlane[i].CreateFromSwapChain(L"Primary SwapChain Buffer", DisplayPlane.Detach());
     }
 
-    // 配置根签名
-
+    // 配置封装根签名
     s_PresentRS.Reset(4, 2); // 根签名设置为4根参，2静态采样器
     s_PresentRS[0].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 2);
     s_PresentRS[1].InitAsConstants(0, 6, D3D12_SHADER_VISIBILITY_ALL);
@@ -207,6 +204,7 @@ void Display::Initialize(void)
     s_PresentRS.InitStaticSampler(1, SamplerPointClampDesc);
     s_PresentRS.Finalize(L"Present");
 
+    // 配置封装PSO
     PresentSDRPS.SetRootSignature(s_PresentRS);
     PresentSDRPS.SetRasterizerState(RasterizerTwoSided);
     PresentSDRPS.SetBlendState(BlendDisable);

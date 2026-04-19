@@ -7,37 +7,17 @@
 #include "RootSignature.h"
 #include "../Resource/ResourceManager/BufferManager.h"
 
-//#include "CompiledShaders/GenerateMipsLinearCS.h"
-//#include "CompiledShaders/GenerateMipsLinearOddCS.h"
-//#include "CompiledShaders/GenerateMipsLinearOddXCS.h"
-//#include "CompiledShaders/GenerateMipsLinearOddYCS.h"
-//#include "CompiledShaders/GenerateMipsGammaCS.h"
-//#include "CompiledShaders/GenerateMipsGammaOddCS.h"
-//#include "CompiledShaders/GenerateMipsGammaOddXCS.h"
-//#include "CompiledShaders/GenerateMipsGammaOddYCS.h"
-//
-//#include "CompiledShaders/ScreenQuadCommonVS.h"
-//#include "CompiledShaders/DownsampleDepthPS.h"
+
 
 namespace Graphics
 {
     SamplerDesc SamplerLinearWrapDesc;
-    // [非必要功能 - 高级过滤] SamplerDesc SamplerAnisoWrapDesc;
-    // [非必要功能 - 阴影计算] SamplerDesc SamplerShadowDesc;
     SamplerDesc SamplerLinearClampDesc;
-    // [非必要功能 - 体积云/雾] SamplerDesc SamplerVolumeWrapDesc;
     SamplerDesc SamplerPointClampDesc;
-    // [非必要功能 - 边界采样] SamplerDesc SamplerPointBorderDesc;
-    // [非必要功能 - 边界采样] SamplerDesc SamplerLinearBorderDesc;
 
     D3D12_CPU_DESCRIPTOR_HANDLE SamplerLinearWrap;
-    // D3D12_CPU_DESCRIPTOR_HANDLE SamplerAnisoWrap;
-    // D3D12_CPU_DESCRIPTOR_HANDLE SamplerShadow;
     D3D12_CPU_DESCRIPTOR_HANDLE SamplerLinearClamp;
-    // D3D12_CPU_DESCRIPTOR_HANDLE SamplerVolumeWrap;
     D3D12_CPU_DESCRIPTOR_HANDLE SamplerPointClamp;
-    // D3D12_CPU_DESCRIPTOR_HANDLE SamplerPointBorder;
-    // D3D12_CPU_DESCRIPTOR_HANDLE SamplerLinearBorder;
 
     Texture DefaultTextures[kNumDefaultTextures];
     D3D12_CPU_DESCRIPTOR_HANDLE GetDefaultTexture(eDefaultTexture texID)
@@ -47,31 +27,22 @@ namespace Graphics
     }
 
     D3D12_RASTERIZER_DESC RasterizerDefault;    // Counter-clockwise (基础实心光栅化)
-    // [非必要功能 - 抗锯齿] D3D12_RASTERIZER_DESC RasterizerDefaultMsaa;
-    // [非必要功能 - 顺时针剔除] D3D12_RASTERIZER_DESC RasterizerDefaultCw; 
-    // D3D12_RASTERIZER_DESC RasterizerDefaultCwMsaa;
-    // [非必要功能 - 双面渲染(如草地)] D3D12_RASTERIZER_DESC RasterizerTwoSided;
-    // D3D12_RASTERIZER_DESC RasterizerTwoSidedMsaa;
-    // [非必要功能 - 阴影深度偏移] D3D12_RASTERIZER_DESC RasterizerShadow;
-    // D3D12_RASTERIZER_DESC RasterizerShadowCW;
-    // D3D12_RASTERIZER_DESC RasterizerShadowTwoSided;
+    D3D12_RASTERIZER_DESC RasterizerTwoSided;
 
-    // [非必要功能 - 仅写入深度不写颜色] D3D12_BLEND_DESC BlendNoColorWrite;
-    D3D12_BLEND_DESC BlendDisable; // (基础不透明物体渲染)
-    // [非必要功能 - 半透明混合] D3D12_BLEND_DESC BlendPreMultiplied;
-    // D3D12_BLEND_DESC BlendTraditional;
-    // D3D12_BLEND_DESC BlendAdditive;
-    // D3D12_BLEND_DESC BlendTraditionalAdditive;
+    D3D12_BLEND_DESC BlendNoColorWrite;
+    D3D12_BLEND_DESC BlendDisable;
+    D3D12_BLEND_DESC BlendPreMultiplied;
+    D3D12_BLEND_DESC BlendTraditional;
+    D3D12_BLEND_DESC BlendAdditive;
+    D3D12_BLEND_DESC BlendTraditionalAdditive;
 
     D3D12_DEPTH_STENCIL_DESC DepthStateDisabled;
-    D3D12_DEPTH_STENCIL_DESC DepthStateReadWrite; // (基础深度测试与写入)
-    // [非必要功能 - 仅测试不写入(半透明)] D3D12_DEPTH_STENCIL_DESC DepthStateReadOnly;
-    // [非必要功能 - 反向Z] D3D12_DEPTH_STENCIL_DESC DepthStateReadOnlyReversed;
-    // [非必要功能 - 相等测试(如贴花)] D3D12_DEPTH_STENCIL_DESC DepthStateTestEqual;
+    D3D12_DEPTH_STENCIL_DESC DepthStateReadWrite;
+    D3D12_DEPTH_STENCIL_DESC DepthStateReadOnly;
+    D3D12_DEPTH_STENCIL_DESC DepthStateReadOnlyReversed;
+    D3D12_DEPTH_STENCIL_DESC DepthStateTestEqual;
 
-    // [非必要功能 - GPU驱动渲染(Compute Shader生成绘制参数)]
-    // CommandSignature DispatchIndirectCommandSignature(1);
-    // CommandSignature DrawIndirectCommandSignature(1);
+
 
     RootSignature g_CommonRS;
 }
@@ -79,7 +50,7 @@ namespace Graphics
 // 初始化全局渲染状态
 void Graphics::InitializeCommonState(void)
 {
-    // --- 1. 基础采样器 ---
+    // --- 1. 采样器 ---
     SamplerLinearWrapDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     SamplerLinearWrap = SamplerLinearWrapDesc.CreateDescriptor();
 
@@ -91,13 +62,17 @@ void Graphics::InitializeCommonState(void)
     SamplerPointClampDesc.SetTextureAddressMode(D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
     SamplerPointClamp = SamplerPointClampDesc.CreateDescriptor();
 
-    // --- 2. 基础占位纹理 ---
-    uint32_t MagentaPixel = 0xFFFF00FF;
-    DefaultTextures[kMagenta2D].Create2D(4, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, &MagentaPixel);
+    // --- 2.纹理 ---
+    // !!! 不做纹理数据转换，此处的纹理指针不管用，必须换
+    uint32_t BlackOpaqueTexel = 0xFF000000;
+    DefaultTextures[kBlackOpaque2D].Create2D(4, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, &BlackOpaqueTexel);
+
     uint32_t WhiteOpaqueTexel = 0xFFFFFFFF;
     DefaultTextures[kWhiteOpaque2D].Create2D(4, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, &WhiteOpaqueTexel);
 
-    // [非必要纹理注释] kBlackOpaque2D, kBlackTransparent2D, kDefaultNormalMap, kBlackCubeMap...
+    uint32_t FlatNormalTexel = 0x00FF8080;
+    DefaultTextures[kDefaultNormalMap].Create2D(4, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, &FlatNormalTexel);
+
 
     // --- 3. 基础光栅化状态 ---
     RasterizerDefault.FillMode = D3D12_FILL_MODE_SOLID;
@@ -111,6 +86,9 @@ void Graphics::InitializeCommonState(void)
     RasterizerDefault.AntialiasedLineEnable = FALSE;
     RasterizerDefault.ForcedSampleCount = 0;
     RasterizerDefault.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+
+    RasterizerTwoSided = RasterizerDefault;
+    RasterizerTwoSided.CullMode = D3D12_CULL_MODE_NONE;
 
     // --- 4. 基础深度状态 ---
     DepthStateDisabled.DepthEnable = FALSE;
@@ -144,8 +122,6 @@ void Graphics::InitializeCommonState(void)
     alphaBlend.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
     BlendDisable = alphaBlend; // 禁用混合，直接覆盖写入颜色
 
-    // [非必要功能 - 间接绘制参数初始化]
-    // DispatchIndirectCommandSignature[0].Dispatch(); ...
 
     // --- 6. 全局根签名 ---
     g_CommonRS.Reset(4, 2); // 删减了无用的边界采样器，改为2个静态采样器
@@ -160,8 +136,6 @@ void Graphics::InitializeCommonState(void)
 
 void Graphics::DestroyCommonState(void)
 {
-    DefaultTextures[kMagenta2D].Destroy();
-    DefaultTextures[kWhiteOpaque2D].Destroy();
-
-    // [非必要功能] DispatchIndirectCommandSignature.Destroy(); ...
+    for (uint32_t i = 0; i < kNumDefaultTextures; ++i)
+        DefaultTextures[i].Destroy();
 }

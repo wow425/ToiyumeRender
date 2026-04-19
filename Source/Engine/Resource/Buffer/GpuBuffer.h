@@ -113,7 +113,11 @@ public:
 class StructuredBuffer : public GpuBuffer
 {
 public:
-    virtual void Destroy(void) override;
+    virtual void Destroy(void) override
+    {
+        m_CounterBuffer.Destroy();
+        GpuBuffer::Destroy();
+    }
 
     virtual void CreateDerivedViews(void) override;
 

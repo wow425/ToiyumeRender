@@ -345,11 +345,6 @@ void PixelBuffer::CreateTextureResource(ID3D12Device* Device, const std::wstring
 {
     Destroy();
 
-    // 高级的 DX12 开发或主机（如 Xbox、PS5）开发中，为了极致压缩显存占用，开发者会先向系统申请一大块纯粹的堆 (Heap / ヒープ)，
-    // 然后使用 CreatePlacedResource（放置资源）接口。这个时候，就必须传入类似 VidMemPtr 的确切地址。
-    // 目前忽略
-    (void)VidMemPtr;
-
     {
         CD3DX12_HEAP_PROPERTIES HeapProps(D3D12_HEAP_TYPE_DEFAULT);
         ASSERT_SUCCEEDED(Device->CreateCommittedResource(&HeapProps, D3D12_HEAP_FLAG_NONE,

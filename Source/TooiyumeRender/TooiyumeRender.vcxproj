@@ -114,7 +114,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>D:\CS-Self-Study\Computer_Graphics\assimp\assimpBuid\include;D:\CS-Self-Study\Computer_Graphics\assimp\include;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Model;..\Engine</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Engine\Application;..\Engine;D:\CS-Self-Study\Computer_Graphics\assimp\assimpBuid\include;D:\CS-Self-Study\Computer_Graphics\assimp\include;..\Model</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -136,7 +136,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>D:\CS-Self-Study\Computer_Graphics\assimp\assimpBuid\include;D:\CS-Self-Study\Computer_Graphics\assimp\include;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Model;..\Engine</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Engine\Application;..\Engine;D:\CS-Self-Study\Computer_Graphics\assimp\assimpBuid\include;D:\CS-Self-Study\Computer_Graphics\assimp\include;..\Model</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -155,6 +155,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Engine\Engine.vcxproj">
       <Project>{b5747012-c989-43ee-8528-fe76c7b874c6}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Model\Model.vcxproj">
+      <Project>{3e2f08ac-0937-4435-99d2-53b5968e27f8}</Project>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

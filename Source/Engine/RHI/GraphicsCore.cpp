@@ -20,6 +20,8 @@
 #include "Display.h"
 
 #pragma comment(lib, "d3d12.lib") 
+#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "dxguid.lib") 
 
 using namespace Math;
 
@@ -30,9 +32,8 @@ namespace Graphics
     const GUID WKPDID_D3DDebugObjectName = { 0x429b8c22,0x9188,0x4b0c, { 0x87,0x42,0xac,0xb0,0xbf,0x85,0xc2,0x00 } };
 #endif
 
-    // [非核心渲染功能 - 仅用于复杂后处理(如泛光)的Typed UAV Load硬件支持检测]
-    // bool g_bTypedUAVLoadSupport_R11G11B10_FLOAT = false;
-    // bool g_bTypedUAVLoadSupport_R16G16B16A16_FLOAT = false;
+    bool g_bTypedUAVLoadSupport_R11G11B10_FLOAT = false;
+    bool g_bTypedUAVLoadSupport_R16G16B16A16_FLOAT = false;
 
     ID3D12Device* g_Device = nullptr;
     CommandListManager g_CommandManager;
@@ -300,7 +301,7 @@ void Graphics::Initialize(bool RequireDXRSupport)
 
 void Graphics::Shutdown(void)
 {
-    // CPU挂起，等GPU处理完命令
+    // CPU挂起，等GPU处理完命令(
     g_CommandManager.IdleGPU();
 
     CommandContext::DestroyAllContexts();
@@ -312,12 +313,6 @@ void Graphics::Shutdown(void)
 
     DestroyCommonState();
     DestroyRenderingBuffers();
-    //TemporalEffects::Shutdown();
-    //PostEffects::Shutdown();
-    //SSAO::Shutdown();
-    //TextRenderer::Shutdown();
-    //GraphRenderer::Shutdown();
-    //ParticleEffectManager::Shutdown();
     Display::Shutdown();
 
 

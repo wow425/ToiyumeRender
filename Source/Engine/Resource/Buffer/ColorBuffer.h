@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "PixelBuffer.h"
-#include "../Utility/Color.h"
+#include "Utility/Color.h"
 #include "GpuBuffer.h"
 
 
