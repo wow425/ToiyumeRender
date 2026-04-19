@@ -19,98 +19,99 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Core\Graphics\PipelineState\CommandSignature.h" />
-    <ClInclude Include="Core\Graphics\Command\CommandSignature.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\ColorBuffer.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\BufferManager.h" />
-    <ClInclude Include="Core\Graphics\Command\CommandAllocatorPool.h" />
-    <ClInclude Include="Core\Graphics\Command\CommandContext.h" />
-    <ClInclude Include="Core\Graphics\Command\CommandListManager.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\GpuResource.h" />
-    <ClInclude Include="Core\Math\BoundingBox.h" />
-    <ClInclude Include="Core\Math\BoundingPlane.h" />
-    <ClInclude Include="Core\Math\BoundingSphere.h" />
-    <ClInclude Include="Core\Math\Common.h" />
-    <ClInclude Include="Core\Math\Frustum.h" />
-    <ClInclude Include="Core\Math\Matrix3.h" />
-    <ClInclude Include="Core\Math\Matrix4.h" />
-    <ClInclude Include="Core\Math\Quaternion.h" />
-    <ClInclude Include="Core\Math\Random.h" />
-    <ClInclude Include="Core\Math\Scalar.h" />
-    <ClInclude Include="Core\Math\Transform.h" />
-    <ClInclude Include="Core\Math\Vector.h" />
-    <ClInclude Include="Core\Utility\assert.h" />
-    <ClInclude Include="Core\Utility\Color.h" />
-    <ClInclude Include="Core\Utility\d3dx12.h" />
-    <ClInclude Include="Core\Utility\dds.h" />
-    <ClInclude Include="Core\Utility\Hash.h" />
-    <ClInclude Include="Core\Utility\PCH.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\UploadBuffer.h" />
-    <ClInclude Include="Core\Utility\Utility.h" />
-    <ClInclude Include="Core\Graphics\GraphicsCore.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\GpuBuffer.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\DepthBuffer.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\ShadowBuffer.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\Texture.h" />
-    <ClInclude Include="Core\Utility\DDSTextureLoader.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\LinearAllocator.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\PixelBuffer.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\ReadbackBuffer.h" />
-    <ClInclude Include="Core\Graphics\PipelineState\samplerManager.h" />
-    <ClInclude Include="Core\Graphics\PipelineState\GraphicsCommon.h" />
-    <ClInclude Include="Core\Graphics\DescriptorAllocators\DescriptorHeap.h" />
-    <ClInclude Include="Core\Utility\FileUtility.h" />
-    <ClInclude Include="Core\Graphics\GpuResource\TextureManager.h" />
-    <ClInclude Include="Core\Math\VectorMath.h" />
-    <ClInclude Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.h" />
-    <ClInclude Include="Core\Graphics\PipelineState\RootSignature.h" />
-    <ClInclude Include="Core\Graphics\PipelineState\PipelineState.h" />
-    <ClInclude Include="Core\Graphics\Display.h" />
-    <ClInclude Include="Core\GameCore.h" />
-    <ClInclude Include="Core\Utility\SystemTime.h" />
+    <ClInclude Include="Camera\Camera.h" />
+    <ClInclude Include="RHI\Command\CommandSignature.h" />
+    <ClInclude Include="Resource\Buffer\ColorBuffer.h" />
+    <ClInclude Include="Resource\ResourceManager\BufferManager.h" />
+    <ClInclude Include="RHI\Command\CommandAllocatorPool.h" />
+    <ClInclude Include="RHI\Command\CommandContext.h" />
+    <ClInclude Include="RHI\Command\CommandListManager.h" />
+    <ClInclude Include="Resource\GpuResource.h" />
+    <ClInclude Include="Math\BoundingBox.h" />
+    <ClInclude Include="Math\BoundingPlane.h" />
+    <ClInclude Include="Math\BoundingSphere.h" />
+    <ClInclude Include="Math\Common.h" />
+    <ClInclude Include="Math\Frustum.h" />
+    <ClInclude Include="Math\Matrix3.h" />
+    <ClInclude Include="Math\Matrix4.h" />
+    <ClInclude Include="Math\Quaternion.h" />
+    <ClInclude Include="Math\Random.h" />
+    <ClInclude Include="Math\Scalar.h" />
+    <ClInclude Include="Math\Transform.h" />
+    <ClInclude Include="Math\Vector.h" />
+    <ClInclude Include="Utility\assert.h" />
+    <ClInclude Include="Utility\Color.h" />
+    <ClInclude Include="RHI\d3dx12.h" />
+    <ClInclude Include="Utility\dds.h" />
+    <ClInclude Include="Utility\Hash.h" />
+    <ClInclude Include="Application\PCH.h" />
+    <ClInclude Include="Resource\Buffer\UploadBuffer.h" />
+    <ClInclude Include="Utility\Utility.h" />
+    <ClInclude Include="RHI\GraphicsCore.h" />
+    <ClInclude Include="Resource\Buffer\GpuBuffer.h" />
+    <ClInclude Include="Resource\Buffer\DepthBuffer.h" />
+    <ClInclude Include="Resource\Buffer\ShadowBuffer.h" />
+    <ClInclude Include="Resource\Texture\Texture.h" />
+    <ClInclude Include="Utility\DDSTextureLoader.h" />
+    <ClInclude Include="Resource\MemoryAllocator\LinearAllocator.h" />
+    <ClInclude Include="Resource\Buffer\PixelBuffer.h" />
+    <ClInclude Include="Resource\Buffer\ReadbackBuffer.h" />
+    <ClInclude Include="RHI\PipelineState\samplerManager.h" />
+    <ClInclude Include="RHI\PipelineState\GraphicsCommon.h" />
+    <ClInclude Include="RHI\DescriptorHeap\DescriptorHeap.h" />
+    <ClInclude Include="Utility\FileUtility.h" />
+    <ClInclude Include="Resource\ResourceManager\TextureManager.h" />
+    <ClInclude Include="Math\VectorMath.h" />
+    <ClInclude Include="RHI\DescriptorHeap\DynamicDescriptorHeap.h" />
+    <ClInclude Include="RHI\PipelineState\RootSignature.h" />
+    <ClInclude Include="RHI\PipelineState\PipelineState.h" />
+    <ClInclude Include="Application\Display.h" />
+    <ClInclude Include="Application\GameCore.h" />
+    <ClInclude Include="Application\SystemTime.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Core\Graphics\PipelineState\CommandSignature.cpp" />
-    <ClCompile Include="Core\Graphics\Command\CommandSignature.cpp" />
-    <ClCompile Include="Core\Graphics\GpuResource\ColorBuffer.cpp" />
-    <ClCompile Include="Core\Graphics\GpuResource\BufferManager.cpp" />
-    <ClCompile Include="Core\Graphics\Command\CommandAllocatorPool.cpp" />
-    <ClCompile Include="Core\Graphics\Command\CommandContext.cpp" />
-    <ClCompile Include="Core\Graphics\Command\CommandListManager.cpp" />
-    <ClCompile Include="Core\Graphics\GpuResource\GpuResource.cpp" />
-    <ClCompile Include="Core\Math\BoundingSphere.cpp" />
-    <ClCompile Include="Core\Math\Frustum.cpp" />
-    <ClCompile Include="Core\Math\Random.cpp" />
-    <ClCompile Include="Core\Utility\PCH.cpp">
+    <ClCompile Include="Camera\Camera.cpp" />
+    <ClCompile Include="RHI\Command\CommandSignature.cpp" />
+    <ClCompile Include="Resource\Buffer\ColorBuffer.cpp" />
+    <ClCompile Include="Resource\ResourceManager\BufferManager.cpp" />
+    <ClCompile Include="RHI\Command\CommandAllocatorPool.cpp" />
+    <ClCompile Include="RHI\Command\CommandContext.cpp" />
+    <ClCompile Include="RHI\Command\CommandListManager.cpp" />
+    <ClCompile Include="Resource\GpuResource.cpp" />
+    <ClCompile Include="Math\BoundingSphere.cpp" />
+    <ClCompile Include="Math\Frustum.cpp" />
+    <ClCompile Include="Math\Random.cpp" />
+    <ClCompile Include="Application\PCH.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="Core\Graphics\GpuResource\UploadBuffer.cpp" />
-    <ClCompile Include="Core\Utility\Utility.cpp" />
-    <ClCompile Include="Core\Graphics\GraphicsCore.cpp" />
-    <ClCompile Include="Core\Graphics\GpuResource\GpuBuffer.cpp" />
-    <ClCompile Include="Core\Graphics\GpuResource\DepthBuffer.cpp" />
-    <ClCompile Include="Core\Graphics\GpuResource\ShadowBuffer.cpp" />
-    <ClCompile Include="Core\Graphics\GpuResource\Texture.cpp" />
-    <ClCompile Include="Core\Utility\DDSTextureLoader.cpp" />
-    <ClCompile Include="Core\Graphics\GpuResource\LinearAllocator.cpp" />
-    <ClCompile Include="Core\Graphics\GpuResource\PixelBuffer.cpp" />
-    <ClCompile Include="Core\Graphics\GpuResource\ReadbackBuffer.cpp" />
-    <ClCompile Include="Core\Graphics\PipelineState\samplerManager.cpp" />
-    <ClCompile Include="Core\Graphics\PipelineState\GraphicsCommon.cpp" />
-    <ClCompile Include="Core\Graphics\DescriptorAllocators\DescriptorHeap.cpp" />
-    <ClCompile Include="Core\Utility\FileUtility.cpp" />
-    <ClCompile Include="Core\Graphics\GpuResource\TextureManager.cpp" />
-    <ClCompile Include="Core\Graphics\DescriptorAllocators\DynamicDescriptorHeap.cpp" />
-    <ClCompile Include="Core\Graphics\PipelineState\RootSignature.cpp" />
-    <ClCompile Include="Core\Graphics\PipelineState\PipelineState.cpp" />
-    <ClCompile Include="Core\Graphics\Display.cpp" />
-    <ClCompile Include="Core\GameCore.cpp" />
-    <ClCompile Include="Core\Utility\SystemTime.cpp" />
+    <ClCompile Include="Resource\Buffer\UploadBuffer.cpp" />
+    <ClCompile Include="Utility\Utility.cpp" />
+    <ClCompile Include="RHI\GraphicsCore.cpp" />
+    <ClCompile Include="Resource\Buffer\GpuBuffer.cpp" />
+    <ClCompile Include="Resource\Buffer\DepthBuffer.cpp" />
+    <ClCompile Include="Resource\Buffer\ShadowBuffer.cpp" />
+    <ClCompile Include="Resource\Texture\Texture.cpp" />
+    <ClCompile Include="Utility\DDSTextureLoader.cpp" />
+    <ClCompile Include="Resource\MemoryAllocator\LinearAllocator.cpp" />
+    <ClCompile Include="Resource\Buffer\PixelBuffer.cpp" />
+    <ClCompile Include="Resource\Buffer\ReadbackBuffer.cpp" />
+    <ClCompile Include="RHI\PipelineState\samplerManager.cpp" />
+    <ClCompile Include="RHI\PipelineState\GraphicsCommon.cpp" />
+    <ClCompile Include="RHI\DescriptorHeap\DescriptorHeap.cpp" />
+    <ClCompile Include="Utility\FileUtility.cpp" />
+    <ClCompile Include="Resource\ResourceManager\TextureManager.cpp" />
+    <ClCompile Include="RHI\DescriptorHeap\DynamicDescriptorHeap.cpp" />
+    <ClCompile Include="RHI\PipelineState\RootSignature.cpp" />
+    <ClCompile Include="RHI\PipelineState\PipelineState.cpp" />
+    <ClCompile Include="Application\Display.cpp" />
+    <ClCompile Include="Application\GameCore.cpp" />
+    <ClCompile Include="Application\SystemTime.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Core\Math\Functions.inl" />
+    <None Include="Math\Functions.inl" />
     <None Include="packages.config" />
+    <None Include="Engine.md" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -208,7 +209,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>PCH.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Build;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Engine\Core\Utility;..\Engine\Core\Graphics\</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Engine\Application;..\Engine\;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Model;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Build</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
@@ -226,7 +227,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>PCH.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Build;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Engine\Core\Utility;..\Engine\Core\Graphics\</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Engine\Application;..\Engine\;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Model;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Build</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>

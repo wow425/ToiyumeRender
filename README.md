@@ -85,6 +85,11 @@ DX12 渲染器学习与改造
 <summary><b>2026-04-17: </b></summary>
 <p>Graphics::Initialize();图形模块初始化及其内部一些代码搞完<p>
 
+<details>
+<summary><b>2026-04-19: </b></summary>
+<p>重设代码存储层次<p>
+<p>增加Camera类，Model类，Renderer类，SystemTime类<p>
+
 
 </p>
 </details>

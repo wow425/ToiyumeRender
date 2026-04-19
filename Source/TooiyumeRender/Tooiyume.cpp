@@ -1,15 +1,15 @@
-﻿#include "GameCore.h"
+﻿#include "../GameCore.h"
 //#include "CameraController.h"
 #include "BufferManager.h"
-//#include "Camera.h"
+#include "Camera.h"
 #include "CommandContext.h"
 //#include "TemporalEffects.h"
-//#include "SystemTime.h"
+#include "SystemTime.h"
 #include "GameInput.h"
-//#include "Renderer.h"
-//#include "Model.h"
-//#include "ModelLoader.h"
-//#include "Display.h"
+#include "Renderer.h"
+#include "Model.h"
+#include "ModelLoader.h"
+#include "../Display.h"
 
 
 using namespace GameCore;
@@ -32,8 +32,8 @@ public:
 
 private:
 
-    // Camera m_Camera;
-     //unique_ptr<CameraController> m_CameraController;
+    Camera m_Camera;
+    //unique_ptr<CameraController> m_CameraController;
 
     D3D12_VIEWPORT m_MainViewport;
     D3D12_RECT m_MainScissor;
@@ -49,7 +49,11 @@ CREATE_APPLICATION(Tooiyume)
 
 void Tooiyume::Startup(void)
 {
+    // 功能开关
 
+    // Renderer初始化
+
+    // 资源加载
 }
 
 
