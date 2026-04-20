@@ -1,63 +1,111 @@
+﻿
+
 #pragma once
-#include <vector>
-#include <string>
-#include <DirectXMath.h>
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
 
-// 顶点结构体 (适配 DX12 Input Layout)
-struct ModelVertex
-{
-    DirectX::XMFLOAT3 Position;
-    DirectX::XMFLOAT3 Normal;
-    DirectX::XMFLOAT2 TexCoord;
-    DirectX::XMFLOAT3 TangentU;
-};
+#include "../RHI/Command/CommandContext.h"
+#include "../Resource/Buffer/GpuBuffer.h"
+#include "../Resource/Buffer/UploadBuffer.h"
+#include "../Resource/ResourceManager/TextureManager.h"
+#include "../Math/VectorMath.h"
+#include "../Camera/Camera.h"
 
-// 纹理数据结构体 (纯 CPU 数据，脱离 DirectX API)
-struct RawTextureData
-{
-    std::string Name;       // 纹理名称或相对路径（用于调试）
-    int Width = 0;
-    int Height = 0;
-    int Channels = 0;
-    unsigned char* Pixels = nullptr; // stb_image 解码后的 RGBA 像素
-};
+#include <cstdint>
 
-// 子网格体
-struct Submesh
+
+namespace Renderer
 {
-    std::vector<ModelVertex> Vertices;
-    std::vector<uint16_t> Indices;
-    unsigned int vbByteSize;
-    unsigned int ibByteSize;
-    int MaterialIndex = -1; // 指向 Model 内部维护的材质/纹理数组
+    class MeshSorter;
+}
+
+
+//
+// To request a PSO index, provide flags that describe the kind of PSO
+// you need.  If one has not yet been created, it will be created.
+// 为申请PSO索引，提供描述所需PSO种类的flags，若未被创建，将被创建
+namespace PSOFlags
+{
+    enum : uint16_t
+    {
+        kHasPosition = 0x001,  // Required
+        kHasNormal = 0x002,  // Required
+        kHasUV0 = 0x008,  // Required (for now)
+        kHasUV1 = 0x010,
+    };
+}
+
+// VB,IB,网格CB，材质CB,纹理堆，采样器堆，PSO，绘制信息。
+struct Mesh
+{
+    uint32_t vbOffset;      // BufferLocation - Buffer.GpuVirtualAddress        VB偏移
+    uint32_t vbSize;        // SizeInBytes。                                     VB字节大小
+
+    uint32_t ibOffset;      // BufferLocation - Buffer.GpuVirtualAddress        IB偏移
+    uint32_t ibSize;        // SizeInBytes。                                     IB字节大小
+
+    uint8_t  ibFormat;      // DXGI_FORMAT。                                     IB格式
+    uint8_t  vbStride;      // StrideInBytes。                                   VB字节步长
+
+    uint16_t meshCBV;       // Index of mesh constant buffer。                   网格CB索引
+    uint16_t materialCBV;   // Index of material constant buffer。               材质CB索引
+
+    uint16_t srvTable;      // Offset into SRV descriptor heap for textures。    纹理SRV堆上偏移
+    uint16_t samplerTable;  // Offset into sampler descriptor heap for samplers。采样器堆上偏移
+
+    uint16_t psoFlags;      // Flags needed to request a PSO。                   PSOFlags
+    uint16_t pso;           // Index of pipeline state object。                  PSO索引
+    uint16_t numDraws = 1;      // Number of draw groups。                           绘制组数量。TODO:目前不分组，未来再拓展                  
+
+    struct Draw
+    {
+        uint32_t primCount;   // Number of indices = 3 * number of triangles
+        uint32_t startIndex;  // Offset to first index in index buffer 
+        uint32_t baseVertex;  // Offset to first vertex in vertex buffer
+    };
+    Draw draw[1];           // Actually 1 or more draws
 };
 
 class Model
 {
 public:
-    Model() = default;
-    ~Model(); // 负责清理 stb_image 分配的内存
+    ~Model() { Destroy(); }
 
-    // 核心加载接口
-    bool LoadFromFile(const std::string& path);
+    void Render(Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const;
 
-    // 获取解析后的数据供 DX12 使用
-    const std::vector<Submesh>& GetMeshes() const { return Meshes; }
-    const std::vector<RawTextureData>& GetLoadedTextures() const { return LoadedTextures; }
 
-    // 新增：打印并检验纹理加载状态的方法
-    void PrintTextureInfo() const;
+    ByteAddressBuffer m_DataBuffer;         // 几何数据BUFFER
+    ByteAddressBuffer m_MaterialConstants;  // 材质CB
+    uint32_t m_NumNodes;                    // 节点总数，配合场景图
+    uint32_t m_NumMeshes;                   // 网格总数
+    std::unique_ptr<uint8_t[]> m_MeshData;  // 
+    std::vector<TextureRef> textures;       // 纹理索引
+
+protected:
+    void Destroy();
+};
+
+class ModelInstance
+{
+public:
+    ModelInstance() {}
+    ModelInstance(std::shared_ptr<const Model> sourceModel);
+    ModelInstance(const ModelInstance& modelInstance);
+
+    ~ModelInstance()
+    {
+        m_MeshConstantsCPU.Destroy();
+        m_MeshConstantsGPU.Destroy();
+    }
+
+    ModelInstance& operator=(std::shared_ptr<const Model> sourceModel);
+
+    bool IsNull(void) const { return m_Model == nullptr; }
+
+    void Update(GraphicsContext& gfxContext, float deltaTime);
+    void Render(Renderer::MeshSorter& sorter) const;
+
 
 private:
-    void ProcessNode(aiNode* node, const aiScene* scene);
-    Submesh ProcessMesh(aiMesh* mesh, const aiScene* scene);
-    int LoadMaterialTexture(aiMaterial* mat, aiTextureType type, const aiScene* scene);
-
-private:
-    std::vector<Submesh> Meshes;
-    std::vector<RawTextureData> LoadedTextures; // 统一存储解码后的贴图
-    std::string Directory;                      // 模型所在文件夹
+    std::shared_ptr<const Model> m_Model;
+    UploadBuffer m_MeshConstantsCPU;
+    ByteAddressBuffer m_MeshConstantsGPU;
 };

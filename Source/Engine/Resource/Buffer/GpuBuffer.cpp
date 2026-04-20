@@ -30,14 +30,14 @@ void GpuBuffer::Create(const std::wstring& name, uint32_t NumElements, uint32_t 
     HeapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
     HeapProps.CreationNodeMask = 1;
     HeapProps.VisibleNodeMask = 1;
-
+    // 创默认堆并上传资源
     ASSERT_SUCCEEDED(g_Device->CreateCommittedResource(&HeapProps, D3D12_HEAP_FLAG_NONE,
         &ResourceDesc, m_UsageState, nullptr, TY_IID_PPV_ARGS(&m_pResource)));
 
     m_GpuVirtualAddress = m_pResource->GetGPUVirtualAddress();
-    //// 数据上传
-    //if (initialData) 
-    //    CommandContext::InitializeBuffer(*this, initialData, m_BufferSize);
+    // 若资源存在则数据上传
+    if (initialData)
+        CommandContext::InitializeBuffer(*this, initialData, m_BufferSize);
 
     // debug时资源取名便于调试
 #ifdef RELEASE
@@ -167,8 +167,8 @@ void ByteAddressBuffer::CreateDerivedViews(void)
     SRVDesc.Buffer.NumElements = (UINT)m_BufferSize / 4;
     SRVDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
 
-    //if (m_SRV.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
-    //    m_SRV = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    if (m_SRV.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+        m_SRV = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     g_Device->CreateShaderResourceView(m_pResource.Get(), &SRVDesc, m_SRV);
 
     D3D12_UNORDERED_ACCESS_VIEW_DESC UAVDesc = {};
@@ -177,8 +177,8 @@ void ByteAddressBuffer::CreateDerivedViews(void)
     UAVDesc.Buffer.NumElements = (UINT)m_BufferSize / 4;
     UAVDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
 
-    //if (m_UAV.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
-    //    m_UAV = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    if (m_UAV.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+        m_UAV = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     g_Device->CreateUnorderedAccessView(m_pResource.Get(), nullptr, &UAVDesc, m_UAV);
 }
 

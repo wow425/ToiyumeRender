@@ -47,9 +47,7 @@ void BaseCamera::Update()
     // 用于将当前帧裁剪空间坐标变换回上一帧，是 TAA（时间抗锯齿）的核心
     m_ReprojectMatrix = m_PreviousViewProjMatrix * Invert(GetViewProjMatrix());
 
-    // 更新视锥体 (Frustum / 視錐台)
-    m_FrustumVS = Frustum(m_ProjMatrix);         // 观察空间视锥体
-    m_FrustumWS = m_CameraToWorld * m_FrustumVS;   // 变换到世界空间，用于物体剔除 (Culling)
+
 }
 
 // 更新投影矩阵

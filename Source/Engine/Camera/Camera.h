@@ -29,19 +29,17 @@ namespace Math
         const Vector3 GetForwardVec() const { return -m_Basis.GetZ(); }  // 获取相机本地坐标系的 -Z 轴（前，常用惯例）
         const Vector3 GetPosition() const { return m_CameraToWorld.GetTranslation(); } // 获取世界坐标
 
-        // 获取矩阵和视锥体
+        // 获取矩阵
         const Matrix4& GetViewMatrix() const { return m_ViewMatrix; }           // 获取视图矩阵 (World -> View)
         const Matrix4& GetProjMatrix() const { return m_ProjMatrix; }           // 获取投影矩阵 (View -> Clip)
-        const Matrix4& GetViewProjMatrix() const { return m_ViewProjMatrix; }   // 获取合体矩阵 (World -> Clip)
+        const Matrix4& GetViewProjMatrix() const { return m_ViewProjMatrix; }   // 获取视图投影矩阵 (World -> Clip)
         const Matrix4& GetReprojectionMatrix() const { return m_ReprojectMatrix; } // 获取重投影矩阵（用于 TAA 或 Motion Blur）
-        const Frustum& GetViewSpaceFrustum() const { return m_FrustumVS; }      // 获取观察空间的视锥体 (Frustum / 視錐台)
-        const Frustum& GetWorldSpaceFrustum() const { return m_FrustumWS; }     // 获取世界空间的视锥体（用于剔除）
+
 
     protected:
-        // 构造函数：初始化变换为单位矩阵 (Identity Matrix)
         BaseCamera() : m_CameraToWorld(kIdentity), m_Basis(kIdentity) {}
 
-        void SetProjMatrix(const Matrix4& ProjMat) { m_ProjMatrix = ProjMat; } // 内部设置投影矩阵
+        void SetProjMatrix(const Matrix4& ProjMat) { m_ProjMatrix = ProjMat; }
 
         OrthogonalTransform m_CameraToWorld; // 相机到世界的正交变换
 
@@ -63,8 +61,7 @@ namespace Math
         // 重投影矩阵：将当前帧的裁剪空间坐标映射回上一帧的裁剪空间。
         Matrix4 m_ReprojectMatrix;
 
-        Frustum m_FrustumVS; // 观察空间视锥体
-        Frustum m_FrustumWS; // 世界空间视锥体
+
     };
 
     class Camera : public BaseCamera
