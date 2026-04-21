@@ -44,7 +44,7 @@ protected:
     D3D12_DESCRIPTOR_HEAP_TYPE m_Type;
     ID3D12DescriptorHeap* m_CurrentHeap; // 当前指向的堆
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentHandle; // 当前指向的堆的游标
-    uint32_t m_DescriptorSize;
+    uint32_t m_DescriptorSize;       // 描述符大小
     uint32_t m_RemainingFreeHandles; // 可用容量
 };
 

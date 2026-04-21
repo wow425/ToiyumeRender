@@ -1,4 +1,4 @@
-#include "PCH.h"
+﻿#include "PCH.h"
 #include "DescriptorHeap.h"
 #include "../GraphicsCore.h"
 #include "../Command/CommandListManager.h"
@@ -39,12 +39,12 @@ D3D12_CPU_DESCRIPTOR_HANDLE DescriptorAllocator::Allocate(uint32_t Count)
     // 若无堆或可用容量<要求数量
     if (m_CurrentHeap == nullptr || m_RemainingFreeHandles < Count)
     {
-        m_CurrentHeap = RequestNewHeap(m_Type);
-        m_CurrentHandle = m_CurrentHeap->GetCPUDescriptorHandleForHeapStart();
-        m_RemainingFreeHandles = sm_NumDescriptorsPerHeap;
+        m_CurrentHeap = RequestNewHeap(m_Type); // 申请current堆
+        m_CurrentHandle = m_CurrentHeap->GetCPUDescriptorHandleForHeapStart(); // 获取current句柄
+        m_RemainingFreeHandles = sm_NumDescriptorsPerHeap; // 设置current堆剩余容量句柄
 
         if (m_DescriptorSize == 0)
-            m_DescriptorSize = Graphics::g_Device->GetDescriptorHandleIncrementSize(m_Type);
+            m_DescriptorSize = Graphics::g_Device->GetDescriptorHandleIncrementSize(m_Type); // 设置描述符大小
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE ret = m_CurrentHandle;

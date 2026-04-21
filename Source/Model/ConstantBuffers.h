@@ -1,5 +1,8 @@
 ﻿#pragma once
 
+// Model专用的cb
+
+
 #include "../Math/Matrix3.h"
 #include "../Math/Matrix4.h"
 #include <cstdint>
@@ -7,7 +10,8 @@
 // 网格world矩阵
 struct alignas(256) MeshConstants // alignas C11引入用于内存对齐
 {
-    Math::Matrix4 World;   // object to world
+    Math::Matrix4 World;          // object to world
+    Math::Matrix3 WorldIT;       // Object normal to world normal
 };
 
 // k表常量。PBR材质顺序 the order of textures for PBR materials

@@ -11,6 +11,8 @@ using namespace Graphics;
     // 1. 基础型：全自动创建 (Committed Resource)
 void GpuBuffer::Create(const std::wstring& name, uint32_t NumElements, uint32_t ElementSize, const void* initialData)
 {
+    // 创建堆并上传资源，再创建资源的SRV,UAV
+
     // 销毁旧资源
     Destroy();
 
@@ -45,7 +47,7 @@ void GpuBuffer::Create(const std::wstring& name, uint32_t NumElements, uint32_t 
 #else
     m_pResource->SetName(name.c_str());
 #endif
-
+    // 创建SRV,UAV
     CreateDerivedViews();
 }
 

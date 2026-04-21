@@ -20,7 +20,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Camera\Camera.h" />
-    <ClInclude Include="Resource\Buffer\ConstantBuffers.h" />
     <ClInclude Include="RHI\Command\CommandSignature.h" />
     <ClInclude Include="Resource\Buffer\ColorBuffer.h" />
     <ClInclude Include="Resource\ResourceManager\BufferManager.h" />

@@ -64,6 +64,20 @@ struct Mesh
     Draw draw[1];           // Actually 1 or more draws
 };
 
+// 优化手段：变换节点构建场景图。目前只是占位用
+struct GraphNode
+{
+    Math::Matrix4 transform; // 变换矩阵（translation X rotation X scale）
+    Math::Quaternion rotation;
+    Math::XMFLOAT3 scale;
+
+    uint32_t matrixIdx : 28; // ?
+    uint32_t hasSibling : 1;
+    uint32_t hasChildren : 1;
+    uint32_t staleMatrix : 1;
+    uint32_t skeletonRoot : 1;
+};
+
 class Model
 {
 public:
@@ -77,6 +91,7 @@ public:
     uint32_t m_NumNodes;                    // 节点总数，配合场景图
     uint32_t m_NumMeshes;                   // 网格总数
     std::unique_ptr<uint8_t[]> m_MeshData;  // 
+    std::unique_ptr<GraphNode[]> m_SceneGraph; // 场景图
     std::vector<TextureRef> textures;       // 纹理索引
 
 protected:
@@ -108,4 +123,6 @@ private:
     std::shared_ptr<const Model> m_Model;
     UploadBuffer m_MeshConstantsCPU;
     ByteAddressBuffer m_MeshConstantsGPU;
+
+    Math::UniformTransform m_Locator;
 };

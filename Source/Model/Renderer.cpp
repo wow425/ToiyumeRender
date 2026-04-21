@@ -3,7 +3,7 @@
 #include "Model.h"
 #include "../Resource/ResourceManager/TextureManager.h"
 #include "../Resource/ResourceManager/BufferManager.h"
-#include "../Resource/Buffer/ConstantBuffers.h"
+#include "ConstantBuffers.h"
 #include "../RHI/PipelineState/RootSignature.h"
 #include "../RHI/PipelineState/PipelineState.h"
 #include "../RHI/PipelineState/GraphicsCommon.h"
