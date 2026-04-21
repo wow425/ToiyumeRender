@@ -95,9 +95,14 @@ DX12 渲染器学习与改造
 </details>
 
 <details>
-<summary><b>2026-04-120: </b></summary>
+<summary><b>2026-04-20: </b></summary>
 <p>ConstantBuffers完成，编写Model类未完成<p>
 
+<details>
+<summary><b>2026-04-21: </b></summary>
+<p>model类完成，glTF类完成<p>
+<p>model模块中的优化手段基本阉割掉，以后再添加<p>
+<p>进一步熟悉模型的层次结构图和利用掩码图取代遍历查找<p>
 </p>
 </details>
 

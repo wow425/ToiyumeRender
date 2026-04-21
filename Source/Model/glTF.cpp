@@ -5,7 +5,7 @@
 #include "../Resource/Buffer/UploadBuffer.h"
 #include "../RHI/GraphicsCore.h"
 #include "../Utility/FileUtility.h"
-#include "../Math/Functions.inl"
+
 
 #include <fstream>
 #include <iostream>
@@ -169,7 +169,7 @@ void glTF::Asset::FindAttribute(Primitive& prim, json& attributes, Primitive::eA
         prim.attributes[type] = nullptr;
     }
 }
-
+// 啃到此处 ,明日继续 
 void glTF::Asset::ProcessMeshes(json& meshes, json& accessors)
 {
     m_meshes.resize(meshes.size());
