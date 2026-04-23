@@ -211,6 +211,7 @@
       <PrecompiledHeaderFile>PCH.h</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>..\Engine\Application;..\Engine\;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Model;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Build</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -229,6 +230,7 @@
       <PrecompiledHeaderFile>PCH.h</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>..\Engine\Application;..\Engine\;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Model;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Build</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

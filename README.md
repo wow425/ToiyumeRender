@@ -106,6 +106,13 @@ DX12 渲染器学习与改造
 </p>
 </details>
 
+<details>
+<summary><b>2026-04-23: </b></summary>
+<p>Model模块只差renderer方法编写就完成了，许多底层优化的都跳过了，未来再补<p>
+
+</p>
+</details>
+
 </td>
 <td width="50%" valign="top">
 

@@ -116,6 +116,7 @@
       <ConformanceMode>false</ConformanceMode>
       <AdditionalIncludeDirectories>D:\CS-Self-Study\Computer_Graphics\assimp\assimpBuid\include;D:\CS-Self-Study\Computer_Graphics\assimp\include;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Engine\Core;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Engine\Core\Precompiled Header;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -138,6 +139,7 @@
       <ConformanceMode>false</ConformanceMode>
       <AdditionalIncludeDirectories>D:\CS-Self-Study\Computer_Graphics\assimp\assimpBuid\include;D:\CS-Self-Study\Computer_Graphics\assimp\include;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Engine\Core;D:\CS-Self-Study\Computer_Graphics\DX12\ToiyumeRender\Source\Engine\Core\Precompiled Header;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

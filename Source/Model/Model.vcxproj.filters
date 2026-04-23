@@ -33,6 +33,15 @@
     <ClInclude Include="json.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="TextureConvert.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="MeshConvert.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="IndexOptimizePostTransform.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ModelLoader.cpp">
@@ -47,5 +56,20 @@
     <ClCompile Include="glTF.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="TextureConvert.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ModelConvert.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="MeshConvert.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="IndexOptimizePostTransform.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>

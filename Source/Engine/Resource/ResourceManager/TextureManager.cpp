@@ -178,6 +178,24 @@ TextureRef::~TextureRef()
         m_ref->Unload();
 }
 
+// 1. 支持常量左值引用
+void TextureRef::operator= (const TextureRef& rhs)
+{
+    // 检查自赋值：指向同一个资源则无需操作
+    if (m_ref == rhs.m_ref)
+        return;
+
+    // 先清理旧资源的计数
+    if (m_ref != nullptr)
+        --m_ref->m_ReferenceCount;
+
+    // 复制指针并增加新资源的计数
+    m_ref = rhs.m_ref;
+
+    if (m_ref != nullptr)
+        ++m_ref->m_ReferenceCount;
+}
+
 void TextureRef::operator= (std::nullptr_t)
 {
     if (m_ref != nullptr)

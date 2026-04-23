@@ -28,8 +28,11 @@ namespace PSOFlags
     {
         kHasPosition = 0x001,  // Required
         kHasNormal = 0x002,  // Required
+        kHasTangent = 0x004,
         kHasUV0 = 0x008,  // Required (for now)
         kHasUV1 = 0x010,
+        kAlphaBlend = 0x020,
+        kAlphaTest = 0x040,
     };
 }
 
@@ -38,6 +41,9 @@ struct Mesh
 {
     uint32_t vbOffset;      // BufferLocation - Buffer.GpuVirtualAddress        VB偏移
     uint32_t vbSize;        // SizeInBytes。                                     VB字节大小
+
+    uint32_t vbDepthOffset; // BufferLocation - Buffer.GpuVirtualAddress
+    uint32_t vbDepthSize;   // SizeInBytes
 
     uint32_t ibOffset;      // BufferLocation - Buffer.GpuVirtualAddress        IB偏移
     uint32_t ibSize;        // SizeInBytes。                                     IB字节大小
@@ -67,11 +73,11 @@ struct Mesh
 // 优化手段：变换节点构建场景图。目前只是占位用
 struct GraphNode
 {
-    Math::Matrix4 transform; // 变换矩阵（translation X rotation X scale）
+    Math::Matrix4 xform; // 变换矩阵（translation X rotation X scale）
     Math::Quaternion rotation;
     Math::XMFLOAT3 scale;
 
-    uint32_t matrixIdx : 28; // ?
+    uint32_t matrixIdx : 28;
     uint32_t hasSibling : 1;
     uint32_t hasChildren : 1;
     uint32_t staleMatrix : 1;

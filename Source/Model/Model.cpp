@@ -103,7 +103,7 @@ void ModelInstance::Update(GraphicsContext& gfxContext, float deltaTime)
     // 3. 层级遍历，目前不做优化。
     for (const GraphNode* Node = sceneGraph; ; ++Node) // for里不写终止条件，硬件预取友好，分支预测优化，未吃透逻辑
     {
-        Matrix4 transform = Node->transform;
+        Matrix4 transform = Node->xform;
 
         // 静态模型直接叠加父节点矩阵。局部坐标空间叠加，如右手腕跟右小臂变换继承关系
         transform = ParentMaterix * transform;

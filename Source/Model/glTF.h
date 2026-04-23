@@ -1,6 +1,8 @@
 ﻿#pragma once
 
 #include "../Utility//FileUtility.h"
+#include "../Math/VectorMath.h"
+
 
 #ifndef _WIN32
 #define _WIN32
@@ -143,18 +145,14 @@ namespace glTF
     {
 
         enum eAttribType { kPosition, kNormal, kTangent, kTexcoord0, kTexcoord1, kColor0, kNumAttribs };
-        Accessor* attributes[kNumAttribs]; // 顶点属性映射
-        Accessor* indices;
-        Material* material;
+        Accessor* attributes[kNumAttribs]; // 顶点属性
+        Accessor* indices;  // 索引
+        Material* material; // 材质
         uint16_t attribMask; // 顶点属性掩码图，用位运算便可O(1)内知晓包含哪些属性，不用for遍历
-        uint16_t mode;      // D3D_PRIMITIVE_TOPOLOGY
+        uint16_t mode;      // 绘制模式D3D_PRIMITIVE_TOPOLOGY
         // 索引范围边界
         uint32_t minIndex;
         uint32_t maxIndex;
-        // 包围盒用
-        //alignas(16) float minPos[3];
-        //alignas(16) float maxPos[3];
-        // std::vector<uint32_t> targets; 变形目标，用于表情动画
     };
 
     struct Mesh
@@ -226,7 +224,7 @@ namespace glTF
         // 6.m_accessors()
         std::vector<Accessor> m_accessors;
         std::vector<BufferView> m_bufferViews;
-        std::vector<ByteArray> m_buffers;
+        std::vector<ByteArray> m_buffers; // 模型数据
 
 
     private:

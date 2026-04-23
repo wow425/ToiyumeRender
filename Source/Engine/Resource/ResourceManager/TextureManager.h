@@ -54,7 +54,7 @@ public:
 
     void operator= (std::nullptr_t);
     void operator= (TextureRef& rhs);
-
+    void operator= (const TextureRef& rhs);
     // Check that this points to a valid texture (which loaded successfully)
     bool IsValid() const;
 
