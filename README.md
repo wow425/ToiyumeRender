@@ -110,6 +110,11 @@ DX12 渲染器学习与改造
 <summary><b>2026-04-23: </b></summary>
 <p>Model模块只差renderer方法编写就完成了，许多底层优化的都跳过了，未来再补<p>
 
+
+<details>
+<summary><b>2026-04-24: </b></summary>
+<p>今日摸鱼，配置了DXC<p>
+
 </p>
 </details>
 

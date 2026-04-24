@@ -1,5 +1,8 @@
 ﻿#pragma once
 
+// 可用于color，depth
+
+
 #include "Resource/GpuResource.h"
 
 

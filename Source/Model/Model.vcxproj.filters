@@ -72,4 +72,7 @@
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\DefaultVS.hlsl" />
+  </ItemGroup>
 </Project>

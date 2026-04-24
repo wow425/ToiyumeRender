@@ -1,5 +1,6 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\..\packages\Microsoft.Direct3D.DXC.1.9.2602.17\build\native\Microsoft.Direct3D.DXC.props" Condition="Exists('..\..\packages\Microsoft.Direct3D.DXC.1.9.2602.17\build\native\Microsoft.Direct3D.DXC.props')" />
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -19,11 +20,20 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
+    <HLSLCompilerUseDXC>true</HLSLCompilerUseDXC>
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{3e2f08ac-0937-4435-99d2-53b5968e27f8}</ProjectGuid>
     <RootNamespace>Model</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <PropertyGroup Label="Globals" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Microsoft_Direct3D_DXC_SkipLibraryCopy>false</Microsoft_Direct3D_DXC_SkipLibraryCopy>
+    <Microsoft_Direct3D_DXC_SkipIncludeDir>false</Microsoft_Direct3D_DXC_SkipIncludeDir>
+  </PropertyGroup>
+  <PropertyGroup Label="Globals" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Microsoft_Direct3D_DXC_SkipLibraryCopy>false</Microsoft_Direct3D_DXC_SkipLibraryCopy>
+    <Microsoft_Direct3D_DXC_SkipIncludeDir>false</Microsoft_Direct3D_DXC_SkipIncludeDir>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -70,6 +80,14 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)Build\$(Platform)\$(Configuration)\Output\</OutDir>
+    <IntDir>$(SolutionDir)Build\$(Platform)\$(Configuration)\Intermediate\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)Build\$(Platform)\$(Configuration)\Output\</OutDir>
+    <IntDir>$(SolutionDir)Build\$(Platform)\$(Configuration)\Intermediate\$(ProjectName)\</IntDir>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -110,6 +128,10 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <FxCompile>
+      <ShaderModel>6.6</ShaderModel>
+      <ObjectFileOutput>$(SolutionDir)Build\CompiledShaders\Model\%(Filename).h</ObjectFileOutput>
+    </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -127,6 +149,10 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <FxCompile>
+      <ShaderModel>6.6</ShaderModel>
+      <ObjectFileOutput>$(SolutionDir)Build\CompiledShaders\Model\%(Filename).h</ObjectFileOutput>
+    </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="ConstantBuffers.h" />
@@ -157,10 +183,23 @@
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\DefaultVS.hlsl">
+      <UseDXC>true</UseDXC>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.6</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.6</ShaderModel>
+      <FileType>Document</FileType>
+    </FxCompile>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\..\packages\directxtex_desktop_win10.2026.4.1.1\build\native\directxtex_desktop_win10.targets" Condition="Exists('..\..\packages\directxtex_desktop_win10.2026.4.1.1\build\native\directxtex_desktop_win10.targets')" />
     <Import Project="..\..\packages\directxmesh_desktop_win10.2026.4.1.1\build\native\directxmesh_desktop_win10.targets" Condition="Exists('..\..\packages\directxmesh_desktop_win10.2026.4.1.1\build\native\directxmesh_desktop_win10.targets')" />
+    <Import Project="..\..\packages\Microsoft.Direct3D.DXC.1.9.2602.17\build\native\Microsoft.Direct3D.DXC.targets" Condition="Exists('..\..\packages\Microsoft.Direct3D.DXC.1.9.2602.17\build\native\Microsoft.Direct3D.DXC.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
@@ -168,5 +207,7 @@
     </PropertyGroup>
     <Error Condition="!Exists('..\..\packages\directxtex_desktop_win10.2026.4.1.1\build\native\directxtex_desktop_win10.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\..\packages\directxtex_desktop_win10.2026.4.1.1\build\native\directxtex_desktop_win10.targets'))" />
     <Error Condition="!Exists('..\..\packages\directxmesh_desktop_win10.2026.4.1.1\build\native\directxmesh_desktop_win10.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\..\packages\directxmesh_desktop_win10.2026.4.1.1\build\native\directxmesh_desktop_win10.targets'))" />
+    <Error Condition="!Exists('..\..\packages\Microsoft.Direct3D.DXC.1.9.2602.17\build\native\Microsoft.Direct3D.DXC.props')" Text="$([System.String]::Format('$(ErrorText)', '..\..\packages\Microsoft.Direct3D.DXC.1.9.2602.17\build\native\Microsoft.Direct3D.DXC.props'))" />
+    <Error Condition="!Exists('..\..\packages\Microsoft.Direct3D.DXC.1.9.2602.17\build\native\Microsoft.Direct3D.DXC.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\..\packages\Microsoft.Direct3D.DXC.1.9.2602.17\build\native\Microsoft.Direct3D.DXC.targets'))" />
   </Target>
 </Project>
