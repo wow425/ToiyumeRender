@@ -79,11 +79,14 @@ DX12 渲染器学习与改造
 <p>1.命令空间内的变量（在命名空间中直接定义的变量（如果在 .cpp 中且不在任何函数内），默认具有静态存储期）<p>
 <p>2. 单例模式与静态成员<p>
 <p>3. 常驻内存池与资源管理<p>
-
+</p>
+</details>
 
 <details>
 <summary><b>2026-04-17: </b></summary>
 <p>Graphics::Initialize();图形模块初始化及其内部一些代码搞完<p>
+</p>
+</details>
 
 <details>
 <summary><b>2026-04-19: </b></summary>
@@ -97,6 +100,8 @@ DX12 渲染器学习与改造
 <details>
 <summary><b>2026-04-20: </b></summary>
 <p>ConstantBuffers完成，编写Model类未完成<p>
+</p>
+</details>
 
 <details>
 <summary><b>2026-04-21: </b></summary>
@@ -109,20 +114,22 @@ DX12 渲染器学习与改造
 <details>
 <summary><b>2026-04-23: </b></summary>
 <p>Model模块只差renderer方法编写就完成了，许多底层优化的都跳过了，未来再补<p>
-
+</p>
+</details>
 
 <details>
 <summary><b>2026-04-24: </b></summary>
 <p>今日摸鱼，配置了DXC<p>
-
-<details>
-<summary><b>2026-04-24: </b></summary>
-<p>今日娱乐，也就重新配置DXC以生成16进制的头文件格式，复刻miniengine的shader编译模式，并粗略编写了defaultVS，defaultPS<p>
-<p>
-
-
 </p>
 </details>
+
+<details>
+<summary><b>2026-04-25: </b></summary>
+<p>今日娱乐，也就重新配置DXC以生成16进制的头文件格式，复刻miniengine的shader编译模式，并粗略编写了defaultVS，defaultPS<p>
+</p>
+</details>
+
+
 
 </td>
 <td width="50%" valign="top">
