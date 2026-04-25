@@ -8,6 +8,9 @@
 #include "../RHI/PipelineState/PipelineState.h"
 #include "../RHI/PipelineState/GraphicsCommon.h"
 
+#include "CompiledShaders/Model/DefaultVS.h"
+#include "CompiledShaders/Model/DefaultPS.h"
+
 
 #pragma warnin(disable:4319) // 关闭警告：零扩展警告?
 

@@ -115,6 +115,12 @@ DX12 渲染器学习与改造
 <summary><b>2026-04-24: </b></summary>
 <p>今日摸鱼，配置了DXC<p>
 
+<details>
+<summary><b>2026-04-24: </b></summary>
+<p>今日娱乐，也就重新配置DXC以生成16进制的头文件格式，复刻miniengine的shader编译模式，并粗略编写了defaultVS，defaultPS<p>
+<p>
+
+
 </p>
 </details>
 

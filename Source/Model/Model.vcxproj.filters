@@ -74,5 +74,6 @@
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\DefaultVS.hlsl" />
+    <FxCompile Include="Shaders\DefaultPS.hlsl" />
   </ItemGroup>
 </Project>
