@@ -129,7 +129,13 @@ DX12 渲染器学习与改造
 </p>
 </details>
 
+<details>
+<summary><b>2026-04-26: </b></summary>
+<p> Renderer方法编写完毕，Model模块完成<p>  
+<p>    // TODO: 完成预编译shader带宏定义脚本<p>
 
+</p>
+</details>
 
 </td>
 <td width="50%" valign="top">

@@ -23,6 +23,7 @@ namespace Renderer
         float metallicFactor; // default=1
         float roughnessFactor; // default=1
         uint32_t flags;
+        float _pad;
     };
 
     // Used at load time to construct descriptor tables

@@ -89,6 +89,7 @@ void GraphicsPSO::SetRenderTargetFormats(UINT NumRTVs, const DXGI_FORMAT* RTVFor
 
 void GraphicsPSO::SetInputLayout(UINT NumElements, const D3D12_INPUT_ELEMENT_DESC* pInputElementDescs)
 {
+
     m_PSODesc.InputLayout.NumElements = NumElements;
 
     if (NumElements > 0)

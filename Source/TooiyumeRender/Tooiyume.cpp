@@ -38,7 +38,8 @@ private:
     D3D12_RECT m_MainScissor;
 };
 
-// 启动，跳转到RunApplication
+// 启动!
+// ->RunApplication()->InitializeApplication()->game.Startup()->UpdateApplication()->Tooiyume::Update()->TerminateApplication()
 CREATE_APPLICATION(Tooiyume)
 
 
@@ -51,8 +52,11 @@ void Tooiyume::Startup(void)
     // Renderer初始化。没写
     Renderer::Initialize();
     // 模型加载
+    std::wstring gltfFileName;
 
-    // 镜头设置
+    bool foreceRebuild = false; // ?
+    uint32_t
+        // 镜头设置
 }
 
 

@@ -29,16 +29,39 @@ enum {
 struct alignas(256) MaterialConstants
 {
     float baseColorFactor[4]; // default=[1,1,1,1]
-    float normalTextureScale; // default=1
     float emissiveFactor[3]; // default=[0,0,0]
+    float normalTextureScale; // default=1
     float metallicFactor; // default=1
     float roughnessFactor; // default=1
+    union
+    {
+        uint32_t flags;
+        struct
+        {
+            // UV0 or UV1 for each texture
+            uint32_t baseColorUV : 1;
+            uint32_t metallicRoughnessUV : 1;
+            uint32_t occlusionUV : 1;
+            uint32_t emissiveUV : 1;
+            uint32_t normalUV : 1;
 
-    // union结构体用于优化，暂不实现
+            // Three special modes
+            uint32_t twoSided : 1;
+            uint32_t alphaTest : 1;
+            uint32_t alphaBlend : 1;
+
+            uint32_t _pad : 8;
+
+            uint32_t alphaRef : 16; // half float
+        };
+    };
+    float _pad;
+
 };
 
 struct alignas(256) GlobalConstants
 {
     Math::Matrix4 ViewProjMatrix;
-    Math::Matrix4 CameraPos;
+    Math::Vector3 CameraPos;
+    float         _pad;
 };

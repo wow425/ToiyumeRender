@@ -84,7 +84,7 @@ namespace Renderer
 
         const Matrix4& GetViewMatrix() const { return m_Camera->GetViewMatrix(); }
 
-        void AddMesh(const Mesh& mesh,
+        void AddMesh(const Mesh& mesh, float distance,
             D3D12_GPU_VIRTUAL_ADDRESS meshCBV,
             D3D12_GPU_VIRTUAL_ADDRESS materialCBV,
             D3D12_GPU_VIRTUAL_ADDRESS bufferPtr);
@@ -92,6 +92,21 @@ namespace Renderer
         void RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalConstants& globals);
 
     private:
+
+        struct SortKey
+        {
+            union
+            {
+                uint64_t value;
+                struct
+                {
+                    uint64_t objectIdx : 16;
+                    uint64_t psoIdx : 12;
+                    uint64_t key : 32;
+                    uint64_t passID : 4;
+                };
+            };
+        };
 
         struct SortObject
         {
@@ -102,9 +117,11 @@ namespace Renderer
         };
 
         std::vector<SortObject> m_SortObjects;
-        uint32_t m_PassCounts[kNumPasses];
-        DrawPass m_CurrentPass;
-        uint32_t m_CurrentDraw;
+        std::vector<uint64_t> m_SortKeys;
+        BatchType m_BatchType; // 批次类型（Main pass， shadow pass
+        uint32_t m_PassCounts[kNumPasses]; // pass计数（render pass含多少个需要绘制的物体）
+        DrawPass m_CurrentPass;            // 当前pass
+        uint32_t m_CurrentDraw;            // 当前draw
 
         const BaseCamera* m_Camera;
         D3D12_VIEWPORT m_Viewport;

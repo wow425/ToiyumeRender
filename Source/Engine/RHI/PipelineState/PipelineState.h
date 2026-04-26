@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "PCH.h"
 
@@ -27,9 +27,9 @@ public:
     ID3D12PipelineState* GetPipelineStateObject(void) const { return m_PSO; }
 
 protected:
-	const wchar_t* m_Name;
-	const RootSignature* m_RootSignature;
-	ID3D12PipelineState* m_PSO;
+    const wchar_t* m_Name;
+    const RootSignature* m_RootSignature;
+    ID3D12PipelineState* m_PSO;
 };
 
 class GraphicsPSO : public PSO
@@ -39,7 +39,7 @@ class GraphicsPSO : public PSO
 public:
     GraphicsPSO(const wchar_t* Name = L"Unnamed Graphics PSO");
 
-// Set设置
+
     void SetBlendState(const D3D12_BLEND_DESC& BlendDesc);
     void SetRasterizerState(const D3D12_RASTERIZER_DESC& RasterizerDesc);
     void SetDepthStencilState(const D3D12_DEPTH_STENCIL_DESC& DepthStencilDesc);
@@ -51,7 +51,7 @@ public:
     void SetInputLayout(UINT NumElements, const D3D12_INPUT_ELEMENT_DESC* pInputElementDescs);
     void SetPrimitiveRestart(D3D12_INDEX_BUFFER_STRIP_CUT_VALUE IBProps);
 
-//
+
     void SetVertexShader(const void* Binary, size_t Size) { m_PSODesc.VS = CD3DX12_SHADER_BYTECODE(const_cast<void*>(Binary), Size); }
     void SetPixelShader(const void* Binary, size_t Size) { m_PSODesc.PS = CD3DX12_SHADER_BYTECODE(const_cast<void*>(Binary), Size); }
     void SetGeometryShader(const void* Binary, size_t Size) { m_PSODesc.GS = CD3DX12_SHADER_BYTECODE(const_cast<void*>(Binary), Size); }
@@ -69,11 +69,11 @@ public:
 
 private:
 
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC m_PSODesc;      
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC m_PSODesc;
     std::shared_ptr<const D3D12_INPUT_ELEMENT_DESC> m_InputLayouts; // 布局应共享
 };
 
-class ComputePSO :  public PSO
+class ComputePSO : public PSO
 {
     friend class CommandContext;
 
