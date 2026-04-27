@@ -12,7 +12,7 @@
 #include "CompiledShaders/Model/DefaultPS.h"
 
 
-#pragma warnin(disable:4319) // 关闭警告：零扩展警告?
+#pragma warning(disable:4319) // 关闭警告：零扩展警告?
 
 using namespace Math;
 using namespace Graphics;
@@ -43,7 +43,7 @@ void Renderer::Initialize(void)
     SamplerDesc onlySaberModelSamplerDesc = DefaultSamplerDesc; // 测试初始功能用Saber采样器
 
     // 根签名设置并finalize
-    m_RootSig.Reset(kNumRootBindings, 3); // 初始化分配根参数内存
+    m_RootSig.Reset(kNumRootBindings, 1); // 初始化分配根参数内存
     m_RootSig.InitStaticSampler(10, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[kMeshConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX); // 网格常量
     m_RootSig[kMaterialConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_PIXEL); // 材质常量
@@ -67,6 +67,16 @@ void Renderer::Initialize(void)
         { "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT,       0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
     };
 
+    D3D12_INPUT_ELEMENT_DESC layout[] =
+    {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 1, DXGI_FORMAT_R16G16_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    };
+
+
     ASSERT(sm_PSOs.size() == 0, "sm_PSOs初始化失败");
 
     // 构建PSO
@@ -75,7 +85,7 @@ void Renderer::Initialize(void)
     m_DefaultPSO.SetRasterizerState(RasterizerDefault);                                 // 光栅状态
     m_DefaultPSO.SetBlendState(BlendDisable);                                           // 混合模式
     m_DefaultPSO.SetDepthStencilState(DepthStateReadWrite);                             // 深度模板状态
-    m_DefaultPSO.SetInputLayout(0, nullptr);                                            // 输入布局
+    m_DefaultPSO.SetInputLayout(5, layout);                                            // 输入布局
     m_DefaultPSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);      // 图元拓扑
     m_DefaultPSO.SetRenderTargetFormats(1, &ColorFormat, DepthFormat);                  // RTV绑定
     m_DefaultPSO.SetVertexShader(g_pDefaultVS, sizeof(g_pDefaultVS));                   // VS绑定

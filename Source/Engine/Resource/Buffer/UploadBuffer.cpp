@@ -1,7 +1,9 @@
 ﻿#include "PCH.h"
 #include "UploadBuffer.h"
+#include "../RHI/GraphicsCore.h"
 
-ID3D12Device* g_Device = nullptr; // 后面转移
+using namespace Graphics;
+
 
 // 创建resource和upload heap，并把resource放入upload heap中
 void UploadBuffer::Create(const std::wstring& name, size_t BufferSize)

@@ -58,7 +58,7 @@ VSOutput main(VSInput vsInput)
     vsOutput.position = mul(ViewProjMatrix, float4(vsOutput.worldPos, 1.0));
     vsOutput.normal = mul(WorldIT, normal);
 #ifndef NO_TANGENT_FRAME
-    vsOutput.tangent = float4(mul(WorldIT, tangent.xyz), tagent.w);
+    vsOutput.tangent = float4(mul(WorldIT, tangent.xyz), tangent.w);
 #endif
     vsOutput.uv0 = vsInput.uv0;
 #ifndef NO_SECOND_UV

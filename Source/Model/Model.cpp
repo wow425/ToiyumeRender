@@ -25,8 +25,9 @@ void Model::Render(MeshSorter& sorter, const GpuBuffer& meshConstants) const
         // const Mesh& mesh = *(const Mesh*)pMesh; 现代化
         const Mesh& mesh = *reinterpret_cast<const Mesh*>(pMesh);
 
+        float distance = 0.0f; // 排列渲染先后顺序用，此处因阉割包围盒不起作用，后续加上
         // 提交到渲染队列，等待后续Drawcall录制。 目前阉割掉优化排序
-        sorter.AddMesh(mesh,
+        sorter.AddMesh(mesh, distance,
             meshConstants.GetGpuVirtualAddress() + sizeof(MeshConstants) * mesh.meshCBV,
             m_MaterialConstants.GetGpuVirtualAddress() + sizeof(MaterialConstants) * mesh.materialCBV,
             m_DataBuffer.GetGpuVirtualAddress());

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "PCH.h"
 
@@ -7,29 +7,30 @@ namespace Utility
 #ifdef _CONSOLE
     inline void Print(const char* msg) { printf("%s", msg); }
     inline void Print(const wchar_t* msg) { wprintf(L"%ws", msg); }
-#else
+#else 
     inline void Print(const char* msg) { OutputDebugStringA(msg); }
     inline void Print(const wchar_t* msg) { OutputDebugString(msg); }
 #endif
 
     inline void Printf(const char* format, ...)
     {
-        char buffer[256];
+        char buffer[512];
         va_list ap;
         va_start(ap, format);
-        vsprintf_s(buffer, 256, format, ap);
+        vsprintf_s(buffer, format, ap);
         va_end(ap);
-        Print(buffer);
+        OutputDebugStringA(buffer);
     }
 
     inline void Printf(const wchar_t* format, ...)
     {
-        wchar_t buffer[256];
+        wchar_t buffer[512];
         va_list ap;
         va_start(ap, format);
-        vswprintf(buffer, 256, format, ap);
+        // vswprintf_s 会根据 format 字符串的内容进行安全格式化
+        vswprintf_s(buffer, format, ap);
         va_end(ap);
-        Print(buffer);
+        OutputDebugStringW(buffer);
     }
 
 #ifndef RELEASE
@@ -76,7 +77,6 @@ namespace Utility
 
 } // namespace Utility
 
-// 夺取宏控制权，防御性编程
 #ifdef ERROR
 #undef ERROR
 #endif
@@ -149,4 +149,5 @@ namespace Utility
 
 void SIMDMemCopy(void* __restrict Dest, const void* __restrict Source, size_t NumQuadwords);
 void SIMDMemFill(void* __restrict Dest, __m128 FillVector, size_t NumQuadwords);
+
 

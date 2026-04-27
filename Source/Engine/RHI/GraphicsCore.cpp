@@ -98,9 +98,11 @@ namespace Graphics
 // 初始化DX运行所需的资源Initialize the DirectX resources required to run.
 void Graphics::Initialize(bool RequireDXRSupport)
 {
+    OutputDebugStringW(L"TEST\n");
     Microsoft::WRL::ComPtr<ID3D12Device> pDevice;
 
     uint32_t useDebugLayers = 0;
+    CommandLineArgs::GetInteger(L"debug", useDebugLayers);
 #if _DEBUG
     // Default to true for debug builds
     useDebugLayers = 1;
@@ -108,7 +110,6 @@ void Graphics::Initialize(bool RequireDXRSupport)
 
     DWORD dxgiFactoryFlags = 0;
 
-    // 开启Debug层
     if (useDebugLayers)
     {
         Microsoft::WRL::ComPtr<ID3D12Debug> debugInterface;
@@ -116,7 +117,8 @@ void Graphics::Initialize(bool RequireDXRSupport)
         {
             debugInterface->EnableDebugLayer();
 
-            uint32_t useGPUBasedValidation = 1;
+            uint32_t useGPUBasedValidation = 0;
+            CommandLineArgs::GetInteger(L"gpu_debug", useGPUBasedValidation);
             if (useGPUBasedValidation)
             {
                 Microsoft::WRL::ComPtr<ID3D12Debug1> debugInterface1;
@@ -159,62 +161,121 @@ void Graphics::Initialize(bool RequireDXRSupport)
     // Create the D3D graphics device
     Microsoft::WRL::ComPtr<IDXGIAdapter1> pAdapter;
 
-    SIZE_T MaxSize = 0;
-    // 遍历所有适配器
-    for (uint32_t Idx = 0; DXGI_ERROR_NOT_FOUND != dxgiFactory->EnumAdapters1(Idx, &pAdapter); ++Idx)
+    uint32_t bUseWarpDriver = false;
+    CommandLineArgs::GetInteger(L"warp", bUseWarpDriver);
+
+    uint32_t desiredVendor = GetDesiredGPUVendor();
+
+    if (desiredVendor)
     {
-        DXGI_ADAPTER_DESC1 desc;
-        pAdapter->GetDesc1(&desc);
+        Utility::Printf(L"Looking for a %s GPU\n", GPUVendorToString(desiredVendor));
+    }
 
-        // 排除掉微软基本的软件渲染适配器（Microsoft Basic Render Driver）
-        if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
-            continue;
 
-        // 尝试创建设备，确保该显卡支持 D3D12 (Feature Level 11.0)
-        if (FAILED(D3D12CreateDevice(pAdapter.Get(), D3D_FEATURE_LEVEL_11_0, TY_IID_PPV_ARGS(&pDevice))))
-            continue;
+    if (!bUseWarpDriver)
+    {
+        SIZE_T MaxSize = 0;
 
-        // 在多显卡系统（如笔记本）中，通常 DedicatedVideoMemory 最大的就是独显 (dGPU)
-        if (desc.DedicatedVideoMemory > MaxSize)
+        for (uint32_t Idx = 0; DXGI_ERROR_NOT_FOUND != dxgiFactory->EnumAdapters1(Idx, &pAdapter); ++Idx)
         {
+            DXGI_ADAPTER_DESC1 desc;
+            pAdapter->GetDesc1(&desc);
+
+            // Is a software adapter?
+            if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+                continue;
+
+            // Is this the desired vendor desired?
+            if (desiredVendor != 0 && desiredVendor != desc.VendorId)
+                continue;
+
+            // Can create a D3D12 device?
+            if (FAILED(D3D12CreateDevice(pAdapter.Get(), D3D_FEATURE_LEVEL_12_1, TY_IID_PPV_ARGS(&pDevice))))
+                continue;
+
+            // Does support DXR if required?
+            //if (RequireDXRSupport && !IsDirectXRaytracingSupported(pDevice.Get()))
+            //    continue;
+
+            // By default, search for the adapter with the most memory because that's usually the dGPU.
+            if (desc.DedicatedVideoMemory < MaxSize)
+                continue;
+
             MaxSize = desc.DedicatedVideoMemory;
 
             if (g_Device != nullptr)
                 g_Device->Release();
 
-            // 绑定最终选定的硬件设备
             g_Device = pDevice.Detach();
 
-            Utility::Printf(L"Selected GPU: %s (%u MB)\n", desc.Description, desc.DedicatedVideoMemory >> 20);
+            Utility::Printf(L"Selected GPU:  %s (%u MB)\n", desc.Description, desc.DedicatedVideoMemory >> 20);
         }
     }
-    // 如果循环结束 g_Device 仍为空，说明这台机器连一张支持 DX12 的物理显卡都没有
-    ASSERT(g_Device != nullptr, "No Hardware DX12 Adapter found!");
 
-    // 创建消息队列，屏蔽不重要警告,先搁置不学
+    if (RequireDXRSupport && !g_Device)
+    {
+        Utility::Printf("Unable to find a DXR-capable device. Halting.\n");
+        __debugbreak();
+    }
+
+    if (g_Device == nullptr)
+    {
+        if (bUseWarpDriver)
+            Utility::Print("WARP software adapter requested.  Initializing...\n");
+        else
+            Utility::Print("Failed to find a hardware adapter.  Falling back to WARP.\n");
+        ASSERT_SUCCEEDED(dxgiFactory->EnumWarpAdapter(TY_IID_PPV_ARGS(&pAdapter)));
+        ASSERT_SUCCEEDED(D3D12CreateDevice(pAdapter.Get(), D3D_FEATURE_LEVEL_11_0, TY_IID_PPV_ARGS(&pDevice)));
+        g_Device = pDevice.Detach();
+    }
+#ifndef RELEASE
+    else
+    {
+        bool DeveloperModeEnabled = false;
+
+        // Look in the Windows Registry to determine if Developer Mode is enabled
+        HKEY hKey;
+        LSTATUS result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModelUnlock", 0, KEY_READ, &hKey);
+        if (result == ERROR_SUCCESS)
+        {
+            DWORD keyValue, keySize = sizeof(DWORD);
+            result = RegQueryValueEx(hKey, L"AllowDevelopmentWithoutDevLicense", 0, NULL, (byte*)&keyValue, &keySize);
+            if (result == ERROR_SUCCESS && keyValue == 1)
+                DeveloperModeEnabled = true;
+            RegCloseKey(hKey);
+        }
+
+        WARN_ONCE_IF_NOT(DeveloperModeEnabled, "Enable Developer Mode on Windows 10 to get consistent profiling results");
+
+        // Prevent the GPU from overclocking or underclocking to get consistent timings
+        if (DeveloperModeEnabled)
+            g_Device->SetStablePowerState(TRUE);
+    }
+#endif	
+
 #if _DEBUG
-    // 获取消息队列接口
     ID3D12InfoQueue* pInfoQueue = nullptr;
     if (SUCCEEDED(g_Device->QueryInterface(TY_IID_PPV_ARGS(&pInfoQueue))))
     {
-        // 定义消息严重级别黑名单
+        // Suppress whole categories of messages
+        //D3D12_MESSAGE_CATEGORY Categories[] = {};
+
+        // Suppress messages based on their severity level
         D3D12_MESSAGE_SEVERITY Severities[] =
         {
             D3D12_MESSAGE_SEVERITY_INFO
         };
 
-        // 定义具体错误 ID 黑名单
+        // Suppress individual messages by their ID
         D3D12_MESSAGE_ID DenyIds[] =
         {
             // This occurs when there are uninitialized descriptors in a descriptor table, even when a
             // shader does not access the missing descriptors.  I find this is common when switching
             // shader permutations and not wanting to change much code to reorder resources.
-            // 当描述符表中有未初始化的槽位时触发
             D3D12_MESSAGE_ID_INVALID_DESCRIPTOR_HANDLE,
 
             // Triggered when a shader does not export all color components of a render target, such as
             // when only writing RGB to an R10G10B10A2 buffer, ignoring alpha.
-            // 像素着色器输出的颜色组件与渲染目标不完全匹配（如只写 RGB 而忽略了 Alpha）。
             D3D12_MESSAGE_ID_CREATEGRAPHICSPIPELINESTATE_PS_OUTPUT_RT_OUTPUT_MISMATCH,
 
             // This occurs when a descriptor table is unbound even when a shader does not access the missing
@@ -222,19 +283,16 @@ void Graphics::Initialize(bool RequireDXRSupport)
             // don't all need the same types of resources.
             D3D12_MESSAGE_ID_COMMAND_LIST_DESCRIPTOR_TABLE_NOT_SET,
 
-            // RESOURCE_BARRIER_DUPLICATE_SUBRESOURCE_TRANSITIONS资源屏障重复转换 (Duplicate Subresource Transitions)
+            // RESOURCE_BARRIER_DUPLICATE_SUBRESOURCE_TRANSITIONS
             D3D12_MESSAGE_ID_RESOURCE_BARRIER_DUPLICATE_SUBRESOURCE_TRANSITIONS,
 
             // Suppress errors from calling ResolveQueryData with timestamps that weren't requested on a given frame.
-            // 查询状态无效 (Invalid Query State)
             D3D12_MESSAGE_ID_RESOLVE_QUERY_INVALID_QUERY_STATE,
 
             // Ignoring InitialState D3D12_RESOURCE_STATE_COPY_DEST. Buffers are effectively created in state D3D12_RESOURCE_STATE_COMMON.
-            // 资源创建时的初始状态被忽略（DX12 经常强制将 Buffer 置为 COMMON 状态）。
             D3D12_MESSAGE_ID_CREATERESOURCE_STATE_IGNORED,
         };
 
-        // 组装过滤器 (Filter)
         D3D12_INFO_QUEUE_FILTER NewFilter = {};
         //NewFilter.DenyList.NumCategories = _countof(Categories);
         //NewFilter.DenyList.pCategoryList = Categories;
@@ -243,13 +301,15 @@ void Graphics::Initialize(bool RequireDXRSupport)
         NewFilter.DenyList.NumIDs = _countof(DenyIds);
         NewFilter.DenyList.pIDList = DenyIds;
 
-        // 应用与释放
         pInfoQueue->PushStorageFilter(&NewFilter);
         pInfoQueue->Release();
     }
 #endif
 
-    // 特征检查
+    // We like to do read-modify-write operations on UAVs during post processing.  To support that, we
+    // need to either have the hardware do typed UAV loads of R11G11B10_FLOAT or we need to manually
+    // decode an R32_UINT representation of the same buffer.  This code determines if we get the hardware
+    // load support.
     D3D12_FEATURE_DATA_D3D12_OPTIONS FeatureData = {};
     if (SUCCEEDED(g_Device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &FeatureData, sizeof(FeatureData))))
     {

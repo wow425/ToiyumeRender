@@ -55,7 +55,7 @@ struct alignas(256) MaterialConstants
             uint32_t alphaRef : 16; // half float
         };
     };
-    float _pad;
+    float _pad1;
 
 };
 

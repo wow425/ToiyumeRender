@@ -24,7 +24,8 @@ namespace GameCore
         Graphics::Initialize();
         // 计时器模块
         SystemTime::Initialize();
-        //GameInput::Initialize();
+        // IO输入还没啃
+        GameInput::Initialize();
         //EngineTuning::Initialize();
 
         game.Startup();
@@ -34,17 +35,21 @@ namespace GameCore
 
     void TerminateApplication(IGameApp& game)
     {
+        g_CommandManager.IdleGPU();
 
+        game.Cleanup();
+
+        GameInput::Shutdown();
     }
 
     bool UpdateApplication(IGameApp& game)
     {
         // 获取每帧时间
-        float DelataTime = Graphics::GetFrameTime();
+        float DeltaTime = Graphics::GetFrameTime();
 
-        // GameInput::Update(DeltaTime); 输入模块必须没写，必须写，不然没法实现最小可运行渲染器
-        game.Update(DelataTime);
-        game.RenderScene(); // 没写
+        GameInput::Update(DeltaTime);
+        game.Update(DeltaTime); // 每帧数据更新
+        game.RenderScene(); // 绘制
 
         Display::Present(); // 没完成需看看
 
@@ -54,7 +59,7 @@ namespace GameCore
     // Default implementation to be overridden by the application
     bool IGameApp::IsDone(void)
     {
-        return 1;
+        return GameInput::IsFirstPressed(GameInput::kKey_escape);
     }
 
     HWND g_hWnd = nullptr;

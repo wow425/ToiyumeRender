@@ -3,14 +3,15 @@
 #include <string>
 #include <locale>
 
- /*A faster version of memcopy that uses SSE instructions.使用SSE指令集的快速memcopy
- 利用cpu的SIMD指令，每次搬运16字节甚至更多数据块，底层调用了非临时存储指令
- 对于跨总线PCIe传输大量单向数据（写入合并Write-Combined）使用，如上传堆。
- 机制：绕过默认策略（回写WB，Write——Back）：数据先写入Cache中，再从Cache回写到主存中
- 而是完全绕开Cache，数据写入写入合并缓冲区(WCB,Write-Combining Buffer通常为64字节)，打包以突发传输的形式发送到PCIe总线。 另外开辟一条WCB通道传输数据给GPU
- 缓解了memcpy导致PCIe总线阻塞问题
- 针对海量动态数据（将顶点、索引、常量数据每一帧推送到 GPU）。 不适用于CPU端内部内存拷贝，非对齐数据结构，极小碎块数据传输。*/
-void SIMDMemCopy(void* __restrict _Dest, const void* __restrict _Source, size_t NumQuadwords) // size_t NumQuadwords：要拷贝的 数据块数量。
+/*A faster version of memcopy that uses SSE instructions.使用SSE指令集的快速memcopy
+利用cpu的SIMD指令，每次搬运16字节甚至更多数据块，底层调用了非临时存储指令
+对于跨总线PCIe传输大量单向数据（写入合并Write-Combined）使用，如上传堆。
+机制：绕过默认策略（回写WB，Write——Back）：数据先写入Cache中，再从Cache回写到主存中
+而是完全绕开Cache，数据写入写入合并缓冲区(WCB,Write-Combining Buffer通常为64字节)，打包以突发传输的形式发送到PCIe总线。 另外开辟一条WCB通道传输数据给GPU
+缓解了memcpy导致PCIe总线阻塞问题
+针对海量动态数据（将顶点、索引、常量数据每一帧推送到 GPU）。 不适用于CPU端内部内存拷贝，非对齐数据结构，极小碎块数据传输。*/
+// A faster version of memcopy that uses SSE instructions.  TODO:  Write an ARM variant if necessary.
+void SIMDMemCopy(void* __restrict _Dest, const void* __restrict _Source, size_t NumQuadwords)
 {
     ASSERT(Math::IsAligned(_Dest, 16));
     ASSERT(Math::IsAligned(_Source, 16));
@@ -20,7 +21,6 @@ void SIMDMemCopy(void* __restrict _Dest, const void* __restrict _Source, size_t 
 
     // Discover how many quadwords precede a cache line boundary.  Copy them separately.
     size_t InitialQuadwordCount = (4 - ((size_t)Source >> 4) & 3) & 3;
-
     if (InitialQuadwordCount > NumQuadwords)
         InitialQuadwordCount = NumQuadwords;
 
@@ -237,4 +237,3 @@ std::wstring Utility::RemoveExtension(const std::wstring& filePath)
 {
     return filePath.substr(0, filePath.rfind(L"."));
 }
- 

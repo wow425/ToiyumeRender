@@ -34,6 +34,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE GetSampler(uint32_t addressModes)
 }
 
 // 为模型加载材质并设置描述符表
+// TODO:加载非PBR规范模型纹理时失效，明日修逻辑
 void LoadMaterials(Model& model,
     const std::vector<MaterialTextureData>& materialTextures,
     const std::vector<std::wstring>& textureNames,
@@ -92,6 +93,7 @@ void LoadMaterials(Model& model,
             else
                 SourceTextures[j] = model.textures[srcMat.stringIdx[j]].GetSRV();
         }
+
 
         // 关键 API：将 CPU 端的描述符拷贝到 GPU 可见的描述符堆中
         // 理由：CPU 写入描述符堆是昂贵的，批量拷贝 (Batch Copy) 比逐个设置效率更高
@@ -241,7 +243,7 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
         return nullptr;
 
     // 再次断言，确保进入加载阶段的数据绝对合法。
-    ASSERT(strncmp(header.id, "TY", 4) == 0 && header.version == CURRENT_MINI_FILE_VERSION);
+    ASSERT(strncmp(header.id, "TY", 2) == 0 && header.version == CURRENT_MINI_FILE_VERSION);
 
     std::wstring basePath = Utility::GetBasePath(filePath);
 

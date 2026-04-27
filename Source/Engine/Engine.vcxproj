@@ -19,7 +19,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Camera\CameraController.h" />
     <ClInclude Include="Camera\Camera.h" />
+    <ClInclude Include="Application\GameInput.h" />
+    <ClInclude Include="Utility\CommandLineArg.h" />
     <ClInclude Include="RHI\Command\CommandSignature.h" />
     <ClInclude Include="Resource\Buffer\ColorBuffer.h" />
     <ClInclude Include="Resource\ResourceManager\BufferManager.h" />
@@ -70,7 +73,10 @@
     <ClInclude Include="Application\SystemTime.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Camera\CameraController.cpp" />
     <ClCompile Include="Camera\Camera.cpp" />
+    <ClCompile Include="Application\GameInput.cpp" />
+    <ClCompile Include="Utility\CommandLineArg.cpp" />
     <ClCompile Include="RHI\Command\CommandSignature.cpp" />
     <ClCompile Include="Resource\Buffer\ColorBuffer.cpp" />
     <ClCompile Include="Resource\ResourceManager\BufferManager.cpp" />

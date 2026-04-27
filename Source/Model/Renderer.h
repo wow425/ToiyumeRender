@@ -80,7 +80,7 @@ namespace Renderer
             ASSERT(m_NumRTVs < 8);
             m_RTV[m_NumRTVs++] = &RTV;
         }
-
+        void SetDepthStencilTarget(DepthBuffer& DSV) { m_DSV = &DSV; }
 
         const Matrix4& GetViewMatrix() const { return m_Camera->GetViewMatrix(); }
 

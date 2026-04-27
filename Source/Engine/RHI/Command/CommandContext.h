@@ -26,7 +26,6 @@
 class ColorBuffer;
 class DepthBuffer;
 class Texture;
-class CommandContext;
 class GraphicsContext;
 class ComputeContext;
 class UploadBuffer;
@@ -210,7 +209,7 @@ protected:
 class GraphicsContext : public CommandContext
 {
 public:
-
+    // 获取对应ID的上下文
     static GraphicsContext& Begin(const std::wstring& ID = L"") { return CommandContext::Begin(ID).GetGraphicsContext(); }
 
     // Clear清空

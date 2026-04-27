@@ -134,6 +134,10 @@ DX12 渲染器学习与改造
 <p> Renderer方法编写完毕，Model模块完成<p>  
 <p>    // TODO: 完成预编译shader带宏定义脚本<p>
 
+<details>
+<summary><b>2026-04-27: </b></summary>
+<p> 程序运行流程跑通，但LoadMaterials方法仅支持标准PBR规范每网格5纹理规格，明日修改逻辑以增加不规范非PBR模型<p>  
+
 </p>
 </details>
 

@@ -44,7 +44,6 @@ struct VSOutput
     float2 uv1 : TEXCOORD1;
 #endif
     float3 worldPos : TEXCOORD2;
-    float3 sunShadowCoord : TEXCOORD3;
 };
 
 

@@ -341,7 +341,7 @@ bool Renderer::SaveModel(const std::wstring& filePath, const ModelData& data)
         return false;
 
     FileHeader header;
-    std::memcpy(header.id, "MINI", 4);
+    std::memcpy(header.id, "TY", 2);
     header.version = CURRENT_MINI_FILE_VERSION;
     header.numNodes = (uint32_t)data.m_SceneGraph.size();
     header.numMeshes = (uint32_t)data.m_Meshes.size();

@@ -162,6 +162,15 @@
     <ClInclude Include="Camera\Camera.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Camera\CameraController.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Application\GameInput.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Utility\CommandLineArg.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Resource\GpuResource.cpp">
@@ -264,6 +273,15 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="Camera\Camera.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Camera\CameraController.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Application\GameInput.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Utility\CommandLineArg.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
