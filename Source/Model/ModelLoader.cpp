@@ -36,16 +36,14 @@ D3D12_CPU_DESCRIPTOR_HANDLE GetSampler(uint32_t addressModes)
 // 为模型加载材质并设置描述符表
 // TODO:加载非PBR规范模型纹理时失效，明日修逻辑
 void LoadMaterials(Model& model,
-    const std::vector<MaterialTextureData>& materialTextures,
-    const std::vector<std::wstring>& textureNames,
+    const std::vector<MaterialTextureData>& materialTextures,   // 材质纹理数据
+    const std::vector<std::wstring>& textureNames,              // 文件名
     const std::vector<uint8_t>& textureOptions,
-    const std::wstring& basePath)
+    const std::wstring& basePath)                               // 路径
 {
-    // 底层溯源：DX12 要求 CBV 的起始地址必须 256 字节对齐 (Alignment / アライメント)
-    // 这是为了简化硬件地址转换逻辑 (Address Translation Logic)
     static_assert((_alignof(MaterialConstants) & 255) == 0, "CBVs need 256 byte alignment");
 
-    // 第一步：处理纹理资源
+    // 1. Load textures
     const uint32_t numTextures = (uint32_t)textureNames.size();
     model.textures.resize(numTextures);
     for (size_t ti = 0; ti < numTextures; ++ti)
@@ -59,15 +57,16 @@ void LoadMaterials(Model& model,
         model.textures[ti] = TextureManager::LoadDDSFromFile(ddsFile);
     }
 
-    // 第二步：构建描述符表 (Descriptor Table)
-    const uint32_t numMaterials = (uint32_t)materialTextures.size();
-    std::vector<uint32_t> tableOffsets(numMaterials);
+    // Generate descriptor tables and record offsets for each material
+    // 生成描述符表和记录材质偏移量
+    const uint32_t numMaterials = (uint32_t)materialTextures.size(); // 每个网格1个材质
+    std::vector<uint32_t> tableOffsets(numMaterials); // 每个材质的offset
 
+    // 遍历为每个网格赋予纹理（目前即使1个网格只有1张材质，也按照PBR标准划分5个纹理槽位，使用default填充)
     for (uint32_t matIdx = 0; matIdx < numMaterials; ++matIdx)
     {
-        const MaterialTextureData& srcMat = materialTextures[matIdx];
+        const MaterialTextureData& srcMat = materialTextures[matIdx]; // 该网格材质
 
-        // 在 GPU 可见的全局着色器资源堆 (SRV Heap) 中申请连续空间
         // kNumTextures 通常为 5 (Diffuse, Normal, Specular 等)，此处省略了kBlackTransparent2D
         DescriptorHandle TextureHandles = Renderer::s_TextureHeap.Alloc(kNumTextures);
         uint32_t SRVDescriptorTable = Renderer::s_TextureHeap.GetOffsetOfHandle(TextureHandles);
@@ -78,27 +77,33 @@ void LoadMaterials(Model& model,
         // 默认备选纹理，防止材质缺失贴图导致采样非法地址导致 GPU 挂起 (TDR)
         D3D12_CPU_DESCRIPTOR_HANDLE DefaultTextures[kNumTextures] =
         {
-            GetDefaultTexture(kWhiteOpaque2D),
-            GetDefaultTexture(kWhiteOpaque2D),
-            GetDefaultTexture(kWhiteOpaque2D),
-            GetDefaultTexture(kDefaultNormalMap)
+            GetDefaultTexture(kWhiteOpaque2D), // Diffuse
+            GetDefaultTexture(kWhiteOpaque2D), // Specular
+            GetDefaultTexture(kWhiteOpaque2D), // Normal
+            GetDefaultTexture(kBlackTransparent2D), // Emissive
+            GetDefaultTexture(kDefaultNormalMap) // Reflection
         };
+        for (uint32_t i = 0; i < kNumTextures; ++i) // 验证所有默认纹理是否有效
+        {
+            if (DefaultTextures[i].ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+            {
+                Utility::Printf("Error: Default texture %d not initialized\n", i);
+                return;
+            }
+        }
 
         D3D12_CPU_DESCRIPTOR_HANDLE SourceTextures[kNumTextures];
         for (uint32_t j = 0; j < kNumTextures; ++j)
         {
-            // 0xffff 表示该槽位无贴图，使用引擎默认贴图
+            //// 0xffff 表示该槽位无贴图，使用引擎默认贴图
             if (srcMat.stringIdx[j] == 0xffff)
                 SourceTextures[j] = DefaultTextures[j];
             else
                 SourceTextures[j] = model.textures[srcMat.stringIdx[j]].GetSRV();
         }
 
-
-        // 关键 API：将 CPU 端的描述符拷贝到 GPU 可见的描述符堆中
-        // 理由：CPU 写入描述符堆是昂贵的，批量拷贝 (Batch Copy) 比逐个设置效率更高
-        g_Device->CopyDescriptors(1, &TextureHandles, &DestCount,
-            DestCount, SourceTextures, SourceCounts, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        g_Device->CopyDescriptors(1, &TextureHandles, &DestCount, DestCount,
+            SourceTextures, SourceCounts, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
         // 第三步：处理采样器描述符 (Sampler Descriptor)
         uint32_t addressModes = srcMat.addressModes;
@@ -144,6 +149,8 @@ void LoadMaterials(Model& model,
     }
 }
 
+
+
 // 外部调用接口：加载模型文件并处理缓存逻辑（没啃，暂留，后续啃）
 std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool forceRebuild)
 {
@@ -177,7 +184,6 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
 
     bool needBuild = forceRebuild;
 
-    // 【核心缓存逻辑】
     // 触发重建的条件：1. 缓存文件缺失。 2. 原始文件存在，且其最后修改时间 (st_mtime) 晚于缓存文件。
     // 这保证了美术人员在 DCC 软件 (如 Maya/Blender) 中修改并导出模型后，引擎能自动热重载 (Hot Reload / ホットリロード)。
     if (miniFileMissing || !sourceFileMissing && sourceFileStat.st_mtime > miniFileStat.st_mtime)
@@ -273,7 +279,7 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
         // 硬件级行为：m_DataBuffer.Create 底层会申请一块 Default Heap (纯 GPU VRAM) 内存，
         // 录制一条 CopyBufferRegion 的 Command，将数据从 Upload Heap 经 PCIe 总线搬运到 Default Heap。
         // 避坑：别忘了底层在此之后必须插入 Resource Barrier 转换为 VERTEX_AND_CONSTANT_BUFFER 状态。
-        model->m_DataBuffer.Create(L"Model Data", header.geometrySize, 1, modelData);
+        model->m_DataBuffer.Create(L"Model Data", header.geometrySize, 1, modelData); // !!!!!!!有问题
     }
 
     // 将刚才分配的 CPU 侧层级树和 Mesh 元数据填满。

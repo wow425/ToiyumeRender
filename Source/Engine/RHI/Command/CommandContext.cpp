@@ -587,12 +587,13 @@ uint32_t CommandContext::ReadbackTexture(ReadbackBuffer& DstBuffer, PixelBuffer&
     return PlacedFootprint.Footprint.RowPitch;
 }
 
+// 手动分配CPU端内存以存储并上传至GPU端
 void CommandContext::InitializeBuffer(GpuBuffer& Dest, const void* BufferData, size_t NumBytes, size_t DestOffset)
 {
     CommandContext& InitContext = CommandContext::Begin();
 
-    DynAlloc mem = InitContext.ReserveUploadMemory(NumBytes);
-    SIMDMemCopy(mem.DataPtr, BufferData, Math::DivideByMultiple(NumBytes, 16));
+    DynAlloc mem = InitContext.ReserveUploadMemory(NumBytes); // CPU端申请内存
+    SIMDMemCopy(mem.DataPtr, BufferData, Math::DivideByMultiple(NumBytes, 16)); // 数据复制至CPU端
 
     // copy data to the intermediate upload heap and then schedule a copy from the upload heap to the default texture
     InitContext.TransitionResource(Dest, D3D12_RESOURCE_STATE_COPY_DEST, true);
@@ -603,18 +604,16 @@ void CommandContext::InitializeBuffer(GpuBuffer& Dest, const void* BufferData, s
     InitContext.Finish(true);
 }
 
+// 有数据截断风险要修改，强制内存安全边界的暂存拷贝
 void CommandContext::InitializeBuffer(GpuBuffer& Dest, const UploadBuffer& Src, size_t SrcOffset, size_t NumBytes, size_t DestOffset)
 {
+
     CommandContext& InitContext = CommandContext::Begin();
 
-    // 1. 先计算理想情况下的边界
-    size_t RemainingDest = Dest.GetBufferSize() - DestOffset;
-    size_t RemainingSrc = Src.GetBufferSize() - SrcOffset;
 
-    // 2. 如果请求拷贝的长度超过了任何一端的剩余空间，直接让程序停在这里
-    // 拒绝不完全拷贝
-    ASSERT(NumBytes <= RemainingDest && "Dest buffer overflow!");
-    ASSERT(NumBytes <= RemainingSrc && "Src buffer underflow!");
+    size_t MaxBytes = std::min<size_t>(Dest.GetBufferSize() - DestOffset, Src.GetBufferSize() - SrcOffset);
+    // 此处有隐式拒绝超出上限数据功能，因为NumBytes未初始化，默认为极限
+    NumBytes = std::min<size_t>(MaxBytes, NumBytes);
 
     // copy data to the intermediate upload heap and then schedule a copy from the upload heap to the default texture
     InitContext.TransitionResource(Dest, D3D12_RESOURCE_STATE_COPY_DEST, true);

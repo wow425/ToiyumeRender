@@ -136,10 +136,10 @@ private:
         uint32_t m_MaxCachedDescriptors;
 
         // k：代表编译期确定的常量
-        static const uint32_t kMaaxNumDescriptors = 256;
+        static const uint32_t kMaxNumDescriptors = 256;
         static const uint32_t kMaxNumDescriptorTables = 16;
         DescriptorTableCache m_RootDescriptorTable[kMaxNumDescriptorTables];  // 描述符表缓存
-        D3D12_CPU_DESCRIPTOR_HANDLE m_HandleCache[kMaaxNumDescriptors];
+        D3D12_CPU_DESCRIPTOR_HANDLE m_HandleCache[kMaxNumDescriptors];
 
         uint32_t ComputeStagedSize();
         void CopyAndBindStaleTables(D3D12_DESCRIPTOR_HEAP_TYPE Type, uint32_t DescriptorSize, DescriptorHandle DestHandleStart, ID3D12GraphicsCommandList* CmdList,

@@ -1,4 +1,9 @@
-﻿#include "PCH.h"
+﻿
+// 屏幕空间后流程所用的！！！
+
+
+
+#include "PCH.h"
 #include "Display.h"
 #include "../RHI/GraphicsCore.h"
 #include "../Resource/ResourceManager/BufferManager.h"
@@ -11,9 +16,8 @@
 
 namespace GameCore { extern HWND g_hWnd; }
 
-#include "CompiledShaders/ScreenQuadPresentVS.h"
 #include "CompiledShaders/PresentSDRPS.h"
-
+#include "CompiledShaders/ScreenQuadPresentVS.h"
 
 
 #define SWAP_CHAIN_BUFFER_COUNT 3
@@ -204,9 +208,10 @@ void Display::Initialize(void)
     s_PresentRS.InitStaticSampler(1, SamplerPointClampDesc);
     s_PresentRS.Finalize(L"Present");
 
+    // TODO:这里本该是屏幕空间用的，但此处为跑通流程改成常规
     // 配置封装PSO
     PresentSDRPS.SetRootSignature(s_PresentRS);
-    PresentSDRPS.SetRasterizerState(RasterizerTwoSided);
+    PresentSDRPS.SetRasterizerState(RasterizerDefault);
     PresentSDRPS.SetBlendState(BlendDisable);
     PresentSDRPS.SetDepthStencilState(DepthStateDisabled);
     PresentSDRPS.SetSampleMask(0xFFFFFFFF);
@@ -231,6 +236,7 @@ void Display::Shutdown(void)
 
 void Display::Present(void)
 {
+    // 屏幕空间阶段用的，目前只用一个present功能，先禁用
     PreparePresentSDR();
 
     s_SwapChain1->Present(0, 0);
@@ -248,6 +254,7 @@ void Display::Present(void)
 }
 
 
+//屏幕空间阶段用的
 void Graphics::PreparePresentSDR(void)
 {
     GraphicsContext& Context = GraphicsContext::Begin(L"Present");
@@ -263,7 +270,7 @@ void Graphics::PreparePresentSDR(void)
     // 直接将目标指向交换链后台缓冲区
     ColorBuffer& Dest = g_DisplayPlane[g_CurrentBuffer];
 
-    // 使用最基础的 Present PSO 进行直画
+    // 此处使用的是屏幕空间算法
     Context.SetPipelineState(PresentSDRPS);
     Context.TransitionResource(Dest, D3D12_RESOURCE_STATE_RENDER_TARGET);
     Context.SetRenderTarget(Dest.GetRTV());

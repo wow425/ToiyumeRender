@@ -23,9 +23,7 @@ struct VSInput
     float4 tangent : TANGENT;
 #endif
     float2 uv0 : TEXCOORD; // 通常用于 反照率贴图 (Albedo/BaseColor)。它允许 重叠 (Overlap) 或 平铺 (Tiling)，以实现高精度纹理。
-#ifndef NO_SECOND_UV
-    float2 uv1 : TEXCOORD1; // 通常用于 光照贴图 (Lightmap / ライトマップ) 或 烘培遮蔽 (Baked AO)。它要求每个三角形在 UV 空间中必须是 唯一且不重叠的 (Unique & Non-overlapping)。
-#endif
+
 };
 
 struct VSOutput
@@ -36,9 +34,7 @@ struct VSOutput
     float4 tangent : TANGENT;
 #endif
     float2 uv0 : TEXCOORD0;
-#ifndef NO_SECOND_UV
-    float2 uv1 : TEXCOORD1;
-#endif
+
     float3 worldPos : TEXCOORD2;
 };
 
@@ -61,9 +57,7 @@ VSOutput main(VSInput vsInput)
     vsOutput.tangent = float4(mul(WorldIT, tangent.xyz), tangent.w);
 #endif
     vsOutput.uv0 = vsInput.uv0;
-#ifndef NO_SECOND_UV
-    vsOutput.uv1 = vsInput.uv1;
-#endif
+
 
     return vsOutput;
 }

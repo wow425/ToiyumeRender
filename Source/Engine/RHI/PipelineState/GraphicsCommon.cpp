@@ -16,8 +16,13 @@ namespace Graphics
     SamplerDesc SamplerPointClampDesc;
 
     D3D12_CPU_DESCRIPTOR_HANDLE SamplerLinearWrap;
+    D3D12_CPU_DESCRIPTOR_HANDLE SamplerAnisoWrap;
+    D3D12_CPU_DESCRIPTOR_HANDLE SamplerShadow;
     D3D12_CPU_DESCRIPTOR_HANDLE SamplerLinearClamp;
+    D3D12_CPU_DESCRIPTOR_HANDLE SamplerVolumeWrap;
     D3D12_CPU_DESCRIPTOR_HANDLE SamplerPointClamp;
+    D3D12_CPU_DESCRIPTOR_HANDLE SamplerPointBorder;
+    D3D12_CPU_DESCRIPTOR_HANDLE SamplerLinearBorder;
 
     Texture DefaultTextures[kNumDefaultTextures];
     D3D12_CPU_DESCRIPTOR_HANDLE GetDefaultTexture(eDefaultTexture texID)
@@ -27,7 +32,7 @@ namespace Graphics
     }
 
     D3D12_RASTERIZER_DESC RasterizerDefault;    // Counter-clockwise (基础实心光栅化)
-    D3D12_RASTERIZER_DESC RasterizerTwoSided;
+
 
     D3D12_BLEND_DESC BlendNoColorWrite;
     D3D12_BLEND_DESC BlendDisable;
@@ -54,24 +59,35 @@ void Graphics::InitializeCommonState(void)
     SamplerLinearWrapDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     SamplerLinearWrap = SamplerLinearWrapDesc.CreateDescriptor();
 
+
+
+
+
     SamplerLinearClampDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     SamplerLinearClampDesc.SetTextureAddressMode(D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
     SamplerLinearClamp = SamplerLinearClampDesc.CreateDescriptor();
+
 
     SamplerPointClampDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
     SamplerPointClampDesc.SetTextureAddressMode(D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
     SamplerPointClamp = SamplerPointClampDesc.CreateDescriptor();
 
+
     // --- 2.纹理 ---
-    // !!! 不做纹理数据转换，此处的纹理指针不管用，必须换
+    uint32_t MagentaPixel = 0xFFFF00FF;
+    DefaultTextures[kMagenta2D].Create2D(4, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, &MagentaPixel);
     uint32_t BlackOpaqueTexel = 0xFF000000;
     DefaultTextures[kBlackOpaque2D].Create2D(4, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, &BlackOpaqueTexel);
-
+    uint32_t BlackTransparentTexel = 0x00000000;
+    DefaultTextures[kBlackTransparent2D].Create2D(4, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, &BlackTransparentTexel);
     uint32_t WhiteOpaqueTexel = 0xFFFFFFFF;
     DefaultTextures[kWhiteOpaque2D].Create2D(4, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, &WhiteOpaqueTexel);
-
+    uint32_t WhiteTransparentTexel = 0x00FFFFFF;
+    DefaultTextures[kWhiteTransparent2D].Create2D(4, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, &WhiteTransparentTexel);
     uint32_t FlatNormalTexel = 0x00FF8080;
     DefaultTextures[kDefaultNormalMap].Create2D(4, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, &FlatNormalTexel);
+    uint32_t BlackCubeTexels[6] = {};
+    DefaultTextures[kBlackCubeMap].CreateCube(4, 1, 1, DXGI_FORMAT_R8G8B8A8_UNORM, BlackCubeTexels);
 
 
     // --- 3. 基础光栅化状态 ---
@@ -87,8 +103,6 @@ void Graphics::InitializeCommonState(void)
     RasterizerDefault.ForcedSampleCount = 0;
     RasterizerDefault.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
 
-    RasterizerTwoSided = RasterizerDefault;
-    RasterizerTwoSided.CullMode = D3D12_CULL_MODE_NONE;
 
     // --- 4. 基础深度状态 ---
     DepthStateDisabled.DepthEnable = FALSE;

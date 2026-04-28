@@ -40,9 +40,7 @@ struct VSOutput
     float4 tangent : TANGENT;
 #endif
     float2 uv0 : TEXCOORD0;
-#ifndef NO_SECOND_UV
-    float2 uv1 : TEXCOORD1;
-#endif
+
     float3 worldPos : TEXCOORD2;
 };
 
@@ -55,11 +53,9 @@ static const uint METALLICROUGHNESS = 1;
 static const uint OCCLUSION = 2;
 static const uint EMISSIVE = 3;
 static const uint NORMAL = 4;
-#ifdef NO_SECOND_UV
+
 #define UVSET( offset ) vsOutput.uv0
-#else
-#define UVSET( offset ) lerp(vsOutput.uv0, vsOutput.uv1, (flags >> offset) & 1)
-#endif
+
 
 
 

@@ -32,7 +32,7 @@ void GpuBuffer::Create(const std::wstring& name, uint32_t NumElements, uint32_t 
     HeapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
     HeapProps.CreationNodeMask = 1;
     HeapProps.VisibleNodeMask = 1;
-    // 创默认堆并上传资源
+    // 创默认堆并存放资源描述符
     ASSERT_SUCCEEDED(g_Device->CreateCommittedResource(&HeapProps, D3D12_HEAP_FLAG_NONE,
         &ResourceDesc, m_UsageState, nullptr, TY_IID_PPV_ARGS(&m_pResource)));
 
@@ -79,7 +79,8 @@ void GpuBuffer::Create(const std::wstring& name, uint32_t NumElements, uint32_t 
 
     m_GpuVirtualAddress = m_pResource->GetGPUVirtualAddress();
     // 数据上传
-    // CommandContext::InitializeBuffer(*this, srcData, srcOffset);
+    // Copy data from the provided upload buffer into the default heap resource
+    CommandContext::InitializeBuffer(*this, srcData, srcOffset);
 
     // debug时资源取名便于调试
 #ifdef RELEASE
@@ -108,8 +109,8 @@ void GpuBuffer::CreatePlaced(const std::wstring& name, ID3D12Heap* pBackingHeap,
 
     m_GpuVirtualAddress = m_pResource->GetGPUVirtualAddress();
     //// 数据上传
-    //if (initialData) 
-    //    CommandContext::InitializeBuffer(*this, initialData, m_BufferSize);
+    if (initialData)
+        CommandContext::InitializeBuffer(*this, initialData, m_BufferSize);
 
     // debug时资源取名便于调试
 #ifdef RELEASE

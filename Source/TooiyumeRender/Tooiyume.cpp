@@ -11,6 +11,15 @@
 #include "Application/Display.h"
 
 
+
+extern "C" {
+    // 这里的 611 (或你 SDK 实际的版本号) 决定了程序是否启动 Agility 重定向
+    __declspec(dllexport) extern const uint32_t D3D12SDKVersion = 619;
+    // 确保这个路径和你在 B 检查中确认的文件夹名称完全一致
+    __declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\";
+}
+
+
 using namespace GameCore;
 using namespace Math;
 using namespace Graphics;
@@ -85,6 +94,16 @@ void Tooiyume::Update(float deltaT)
     // 资源回收，标记为recycled
     gfxContext.Finish();
 
+    m_MainViewport.Width = (float)g_SceneColorBuffer.GetWidth();
+    m_MainViewport.Height = (float)g_SceneColorBuffer.GetHeight();
+    m_MainViewport.MinDepth = 0.0f;
+    m_MainViewport.MaxDepth = 1.0f;
+
+    m_MainScissor.left = 0;
+    m_MainScissor.top = 0;
+    m_MainScissor.right = (LONG)g_SceneColorBuffer.GetWidth();
+    m_MainScissor.bottom = (LONG)g_SceneColorBuffer.GetHeight();
+
 }
 
 
@@ -110,6 +129,12 @@ void Tooiyume::RenderScene(void)
     sorter.AddRenderTarget(g_SceneColorBuffer);
 
     m_ModelInst.Render(sorter);
+
+    gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ);
+    gfxContext.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV_DepthReadOnly());
+    gfxContext.SetViewportAndScissor(viewport, scissor);
+
+    sorter.RenderMeshes(MeshSorter::kOpaque, gfxContext, globals); // 还没完成全套不用MeshSorter::kNumPasses
 
     gfxContext.Finish();
 }

@@ -29,7 +29,7 @@ namespace Renderer
     // Used at load time to construct descriptor tables
     struct MaterialTextureData
     {
-        uint16_t stringIdx[kNumTextures]; // 后续改回kNumTextures
+        uint16_t stringIdx[kNumTextures];
         uint32_t addressModes;
     };
 

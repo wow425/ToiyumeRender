@@ -138,6 +138,12 @@ DX12 渲染器学习与改造
 <summary><b>2026-04-27: </b></summary>
 <p> 程序运行流程跑通，但LoadMaterials方法仅支持标准PBR规范每网格5纹理规格，明日修改逻辑以增加不规范非PBR模型<p>  
 
+<details>
+<summary><b>2026-04-28: </b></summary>
+<p> 排BUG<p>
+<p>1.模型纹理不合PBR规范，需用默认纹理填充空余材质纹理，修改默认纹理Create<p>
+<p>2. 模型顶点数据无法正常上传，命令模块的上传数据方法完善<p>
+<p>3. 纹理跟网格都能正常上传至shader处，但VS out输出的是个面片，顶点position都被压缩到四点了，明日排查根签名，PSO,shader三者<p>
 </p>
 </details>
 

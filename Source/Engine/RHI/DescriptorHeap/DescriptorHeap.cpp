@@ -86,9 +86,9 @@ DescriptorHandle DescriptorHeap::Alloc(uint32_t Count)
     // 检查容量
     ASSERT(HasAvailableSpace(Count), "Descriptor Heap out of space.Increase heap size.");
     // 返回当前游标句柄，并移动游标和可用容量减小
-    DescriptorHandle ret = m_NextFreeHandle;
-    m_NextFreeHandle += Count * m_DescriptorSize;
-    m_NumFreeDescriptors -= Count;
+    DescriptorHandle ret = m_NextFreeHandle;      // 获取当前游标
+    m_NextFreeHandle += Count * m_DescriptorSize; // 游标偏移
+    m_NumFreeDescriptors -= Count;                // 可用容量缩减
     return ret;
 }
 

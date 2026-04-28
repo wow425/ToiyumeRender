@@ -54,7 +54,7 @@ void Renderer::Initialize(void)
     m_RootSig.Finalize(L"RootSig", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
     DXGI_FORMAT ColorFormat = g_SceneColorBuffer.GetFormat();
-    DXGI_FORMAT DepthFormat = g_SceneColorBuffer.GetFormat();
+    DXGI_FORMAT DepthFormat = g_SceneDepthBuffer.GetFormat();
     // 构建输入布局
     D3D12_INPUT_ELEMENT_DESC posOnly[] =
     {
@@ -85,15 +85,12 @@ void Renderer::Initialize(void)
     m_DefaultPSO.SetRasterizerState(RasterizerDefault);                                 // 光栅状态
     m_DefaultPSO.SetBlendState(BlendDisable);                                           // 混合模式
     m_DefaultPSO.SetDepthStencilState(DepthStateReadWrite);                             // 深度模板状态
-    m_DefaultPSO.SetInputLayout(5, layout);                                            // 输入布局
+    m_DefaultPSO.SetInputLayout(0, nullptr);                                            // 输入布局
     m_DefaultPSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);      // 图元拓扑
     m_DefaultPSO.SetRenderTargetFormats(1, &ColorFormat, DepthFormat);                  // RTV绑定
     m_DefaultPSO.SetVertexShader(g_pDefaultVS, sizeof(g_pDefaultVS));                   // VS绑定
     m_DefaultPSO.SetPixelShader(g_pDefaultPS, sizeof(g_pDefaultPS));                    // PS绑定
 
-    // onlySaberModel PSO
-    m_onlySaberModelPSO = m_DefaultPSO;
-    m_onlySaberModelPSO.Finalize();
 
     TextureManager::Initialize(L"");
     // 创建纹理资源堆
@@ -150,7 +147,7 @@ uint8_t Renderer::GetPSO(uint16_t psoFlags)
     // TODO:阉割掉动态选择shader，以后添加功能时再加回来
     // TODO: 预编译shader带宏定义脚本
     ColorPSO.SetVertexShader(g_pDefaultVS, sizeof(g_pDefaultVS));
-    ColorPSO.SetPixelShader(g_pDefaultVS, sizeof(g_pDefaultVS));
+    ColorPSO.SetPixelShader(g_pDefaultPS, sizeof(g_pDefaultPS));
 
 
 
@@ -193,96 +190,64 @@ uint8_t Renderer::GetPSO(uint16_t psoFlags)
  * 此种利用 64-bit 整型位操作实现极速排序的架构，源自 Frostbite (寒霜引擎) 团队的经典分享
  * 《Destiny's Multithreaded Rendering Architecture》。
  */
-void MeshSorter::AddMesh(
-    const Mesh& mesh, float distance,           // distance: 通常是物体包围盒中心到相机的平方距离
+void MeshSorter::AddMesh(const Mesh& mesh, float distance,
     D3D12_GPU_VIRTUAL_ADDRESS meshCBV,
     D3D12_GPU_VIRTUAL_ADDRESS materialCBV,
     D3D12_GPU_VIRTUAL_ADDRESS bufferPtr)
 {
-    // 排序键 (Sort Key / ソートキー)。
-    // 【硬件溯源】：这是一个 64-bit 的结构体/联合体。在成百上千个物体排序时，
-    // 将排序用的 Key 与实际臃肿的 Mesh 数据分离，能极其有效地利用 CPU 的 L1/L2 缓存，避免 Cache Miss。
     SortKey key;
-
-    // 低 32 位存储物体在数组中的真实索引 (Index)。排序完成后，根据这个索引去取实际数据。
     key.value = m_SortObjects.size();
 
-    // 提取管线标志位。
-    // 术语：半透明混合 (Alpha Blending / アルファブレンド)
     bool alphaBlend = (mesh.psoFlags & PSOFlags::kAlphaBlend) == PSOFlags::kAlphaBlend;
-    // 术语：透明度测试 (Alpha Test / アルファテスト) - 常用于树叶、铁丝网。
     bool alphaTest = (mesh.psoFlags & PSOFlags::kAlphaTest) == PSOFlags::kAlphaTest;
 
-    // 【底层推导】：Alpha Test 会在片段着色器中执行 `discard` (HLSL) 或 `clip` 指令。
-    // 这会导致 GPU 无法在光栅化阶段提前判定深度（破坏 Early-Z），进而增加 寄存器压力 (Register Pressure)。
-    // 所以必须给 Alpha Test 的网格单独分配 depthPSO (值为 1)，在渲染队列中把它们和普通不透明物体隔离开来。
     uint64_t depthPSO = alphaTest ? 1 : 0;
 
-    // 【核心黑魔法】：浮点数位强转 (Float Bitcast / 浮動小数点ビットキャスト)
-    // 根据 IEEE 754 标准，正浮点数的内存二进制位（符号位 0，阶码，尾数），
-    // 如果被直接当作无符号整数 (uint32_t) 读取，其大小的单调递增性是绝对不变的！
-    // 为什么要这么做？因为 CPU 的 ALU 执行整数非比较排序（如 基数排序 Radix Sort）的速度，
-    // 远远碾压基于分支预测的浮点数快速排序。
     union float_or_int { float f; uint32_t u; } dist;
-    dist.f = Max(distance, 0.0f); // 钳制为 >= 0，保证最高符号位永远为 0。
+    dist.f = Max(distance, 0.0f);
 
-    // --- 路由分配：阴影通道 (Shadow Pass / シャドウパス) ---
     if (m_BatchType == kShadows)
     {
-        // 物理光学逻辑：纯半透明物体（如玻璃）透光率高，在简化的实时渲染中通常不投射深度阴影。
         if (alphaBlend)
             return;
 
         key.passID = kZPass;
-        // 巧妙的偏移：depthPSO(0或1) + 4，保证 Alpha Test 物体在纯不透明物体之后渲染。
         key.psoIdx = depthPSO + 4;
-
-        // 阴影贴图由近及远渲染，dist.u 越小（越近），Key 值越小，排在越前面。
         key.key = dist.u;
-
         m_SortKeys.push_back(key.value);
         m_PassCounts[kZPass]++;
     }
-    // --- 路由分配：透明通道 (Transparent Pass / トランスペアレントパス) ---
     else if (mesh.psoFlags & PSOFlags::kAlphaBlend)
     {
         key.passID = kTransparent;
         key.psoIdx = mesh.pso;
-
-        // 【数学推导】：半透明混合基于画家算法：C_out = C_src * Alpha + C_dst * (1 - Alpha)。
-        // 物理上必须严格 由远及近 (Back-to-Front) 绘制，否则颜色混合结果全错。
-        // `~dist.u` 是按位取反 (Bitwise NOT)。
-        // 距离 dist 越大 -> 原始比特位的值越大 -> 按位取反后的无符号整数值越 *小*。
-        // 这样在同一套升序排序算法下，远处的物体自然就排到了数组最前面，极度优雅且无分支。
         key.key = ~dist.u;
-
         m_SortKeys.push_back(key.value);
         m_PassCounts[kTransparent]++;
     }
-    // --- 路由分配：不透明通道 (Opaque Pass / オペークパス) ---
-    // 注释提到了“阉割 separatezpass”，意味着当前架构取消了 Pre-Z 预渲染阶段，直接走 Forward 或 Deferred。
+    else if (alphaTest)
+    {
+        key.passID = kZPass;
+        key.psoIdx = depthPSO;
+        key.key = dist.u;
+        m_SortKeys.push_back(key.value);
+        m_PassCounts[kZPass]++;
+
+        key.passID = kOpaque;
+        key.psoIdx = mesh.pso + 1;
+        key.key = dist.u;
+        m_SortKeys.push_back(key.value);
+        m_PassCounts[kOpaque]++;
+    }
     else
     {
         key.passID = kOpaque;
-        // 把具有相同 PSO 的物体紧凑排在一起。
-        // 这在 DX12 的 CommandList 录制中至关重要：减少 `SetPipelineState` 的调用频率，
-        // 避免 GPU 中的 Wavefront (AMD) / Warp (NVIDIA) 产生执行气泡 (Execution Bubbles)。
         key.psoIdx = mesh.pso;
-
-        // 不透明物体 由近及远 (Front-to-Back) 渲染。
-        // 先画近处的，远处的像素通不过 Z-Test，硬件层面直接丢弃 (Early-Z)，极大减少 Overdraw (过度绘制)。
         key.key = dist.u;
-
         m_SortKeys.push_back(key.value);
         m_PassCounts[kOpaque]++;
     }
 
-    // 将实际的网格数据和描述符地址打包并存入数组。
-    // 【避坑与优化 (DX12 Nightmare)】：
-    // 这里的 meshCBV 等地址是 GPU 显存虚拟地址 (GPU Virtual Address)。
-    // 在多帧并发 (Frame Buffering) 的 DX12 引擎中，极其容易出现 “常量缓冲区被覆盖” 的问题。
-    // 如果没有使用 Ring Buffer 机制或未能正确下达 资源屏障 (Resource Barrier / リソースバリア)，
-    // GPU 在读取此地址时，数据可能已被 CPU 写入了下一帧的值，导致画面剧烈闪烁甚至 Device Lost (TDR 崩溃)。
     SortObject object = { &mesh, meshCBV, materialCBV, bufferPtr };
     m_SortObjects.push_back(object);
 }
@@ -300,7 +265,7 @@ void MeshSorter::RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalCon
     context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, s_SamplerHeap.GetHeapPointer());
 
     // Set common textures
-    context.SetDescriptorTable(kCommonSRVs, m_CommonTextures);
+    // context.SetDescriptorTable(kCommonSRVs, m_CommonTextures);
 
     // Set common shader constants
     globals.ViewProjMatrix = m_Camera->GetViewProjMatrix();

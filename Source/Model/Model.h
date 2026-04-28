@@ -92,7 +92,7 @@ public:
     void Render(Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const;
 
 
-    ByteAddressBuffer m_DataBuffer;         // 几何数据BUFFER
+    ByteAddressBuffer m_DataBuffer;         // 网格数据
     ByteAddressBuffer m_MaterialConstants;  // 材质CB
     uint32_t m_NumNodes;                    // 节点总数，配合场景图
     uint32_t m_NumMeshes;                   // 网格总数
