@@ -132,13 +132,13 @@ void Renderer::CompileMesh(
         meshList.push_back(mesh);
     }
 
-    /*bufferMemory.insert(bufferMemory.end(), stagingBuffer->begin(), stagingBuffer->end());*/
+    //bufferMemory.insert(bufferMemory.end(), stagingBuffer->begin(), stagingBuffer->end());
 
-    // 1. 记录原大小，并强制容器扩容到合并后的大小
+    //// 1. 记录原大小，并强制容器扩容到合并后的大小
     size_t oldSize = bufferMemory.size();
     bufferMemory.resize(oldSize + stagingBuffer->size());
 
-    // 2. 直接在虚拟内存地址上进行批量字节拷贝
+    //// 2. 直接在虚拟内存地址上进行批量字节拷贝
     std::memcpy(
         bufferMemory.data() + oldSize,
         stagingBuffer->data(),

@@ -38,23 +38,26 @@ struct VSOutput
     float3 worldPos : TEXCOORD2;
 };
 
+// HLSL采用行向量，从左往右顺序，v * matrix
+
 // 属性语法。[Name(Argument)]。 提供关于xx的额外信息，此为根签名绑定该函数
 [RootSignature(Renderer_RootSig)]
 VSOutput main(VSInput vsInput)
 {
     VSOutput vsOutput;
 
-    float4 position = float4(vsInput.position, 1.0);
-    float3 normal = vsInput.normal * 2 - 1; // [0,1] -> [-1,1]
+    float3 normal = vsInput.normal; // [0,1] -> [-1,1]纹理采样的UV坐标通常在[0,1]范围内，而法线向量需要在[-1,1]范围内表示
 #ifndef NO_TANGENT_FRAME
     float4 tangent = vsInput.tangent * 2 - 1;
 #endif
-
-    vsOutput.worldPos = mul(WorldMatrix, position).xyz;
-    vsOutput.position = mul(ViewProjMatrix, float4(vsOutput.worldPos, 1.0));
-    vsOutput.normal = mul(WorldIT, normal);
+    // object space -> world space
+    vsOutput.worldPos = mul(float4(vsInput.position, 1.0), WorldMatrix).xyz;
+    // world space -> clip space
+    vsOutput.position = mul(float4(vsOutput.worldPos, 1.0), ViewProjMatrix);
+    
+    vsOutput.normal = mul(normal, WorldIT);
 #ifndef NO_TANGENT_FRAME
-    vsOutput.tangent = float4(mul(WorldIT, tangent.xyz), tangent.w);
+    vsOutput.tangent = float4(mul(vsInput.tangent.xyz, WorldIT), vsInput.tangent.w);
 #endif
     vsOutput.uv0 = vsInput.uv0;
 

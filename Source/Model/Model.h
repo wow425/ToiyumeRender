@@ -70,7 +70,7 @@ struct Mesh
     Draw draw[1];           // Actually 1 or more draws
 };
 
-// 优化手段：变换节点构建场景图。目前只是占位用
+// 优化手段：变换节点构建场景图。
 struct GraphNode
 {
     Math::Matrix4 xform; // 变换矩阵（translation X rotation X scale）

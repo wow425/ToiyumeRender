@@ -22,11 +22,12 @@ void Model::Render(MeshSorter& sorter, const GpuBuffer& meshConstants) const
 
     for (uint32_t i = 0; i < m_NumMeshes; ++i)
     {
-        // const Mesh& mesh = *(const Mesh*)pMesh; 现代化
-        const Mesh& mesh = *reinterpret_cast<const Mesh*>(pMesh);
+        const Mesh& mesh = *(const Mesh*)pMesh;
 
         float distance = 0.0f; // 排列渲染先后顺序用，此处因阉割包围盒不起作用，后续加上
         // 提交到渲染队列，等待后续Drawcall录制。 目前阉割掉优化排序
+        auto t1 = mesh.meshCBV;
+
         sorter.AddMesh(mesh, distance,
             meshConstants.GetGpuVirtualAddress() + sizeof(MeshConstants) * mesh.meshCBV,
             m_MaterialConstants.GetGpuVirtualAddress() + sizeof(MaterialConstants) * mesh.materialCBV,
@@ -58,7 +59,7 @@ ModelInstance::ModelInstance(std::shared_ptr<const Model> sourceModel)
         m_MeshConstantsCPU.Destroy();
         m_MeshConstantsGPU.Destroy();
     }
-    else // 为sourceModel分配网格材质(世界矩阵）的上传堆，默认堆，并资源上传
+    else // 创建Mesh CB
     {
         m_MeshConstantsCPU.Create(L"Mesh Constant Upload Buffer", sourceModel->m_NumNodes * sizeof(MeshConstants));
         m_MeshConstantsGPU.Create(L"Mesh Constant GPU Buffer", sourceModel->m_NumNodes, sizeof(MeshConstants));
@@ -109,12 +110,12 @@ void ModelInstance::Update(GraphicsContext& gfxContext, float deltaTime)
         // 静态模型直接叠加父节点矩阵。局部坐标空间叠加，如右手腕跟右小臂变换继承关系
         transform = ParentMaterix * transform;
 
-        // world跟worldIT写入CB
-        cb[Node->matrixIdx].World = transform;
-        cb[Node->matrixIdx].WorldIT = InverseTranspose(transform.Get3x3());
+        MeshConstants& cbv = cb[Node->matrixIdx];
+        cbv.World = transform;
+        cbv.WorldIT = InverseTranspose(transform.Get3x3());
 
         // 维护矩阵栈以正确处理树状层级
-        if (Node->hasChildren) // 有子（下一层）
+        if (Node->hasChildren) // 有子（下一层）0
         {
             if (Node->hasSibling) // 有兄弟姐妹（同层级）
             {
@@ -133,9 +134,8 @@ void ModelInstance::Update(GraphicsContext& gfxContext, float deltaTime)
     m_MeshConstantsCPU.Unmap();
 
     gfxContext.TransitionResource(m_MeshConstantsGPU, D3D12_RESOURCE_STATE_COPY_DEST, true); // 立即执行资源转换
-    gfxContext.GetCommandList()->CopyBufferRegion(m_MeshConstantsGPU.GetResource(), 0,      // CPU端CB上传堆资源写入到CB默认堆中
-        m_MeshConstantsCPU.GetResource(), 0,
-        m_MeshConstantsCPU.GetBufferSize());
+    // CPU端CB上传堆资源写入到CB默认堆中
+    gfxContext.GetCommandList()->CopyBufferRegion(m_MeshConstantsGPU.GetResource(), 0, m_MeshConstantsCPU.GetResource(), 0, m_MeshConstantsCPU.GetBufferSize());
     gfxContext.TransitionResource(m_MeshConstantsGPU, D3D12_RESOURCE_STATE_GENERIC_READ); // 延迟资源转换
 }
 

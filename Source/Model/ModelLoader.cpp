@@ -269,17 +269,10 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
     if (header.geometrySize > 0)
     {
         UploadBuffer modelData;
-        // 硬件级行为：在 Upload Heap (UMA 架构或 PCIe 可见的系统内存) 中分配空间。属性为 Write-Combine，CPU 写入极快，但读取极慢。
         modelData.Create(L"Model Data Upload", header.geometrySize);
-
-        // 直接将磁盘数据 Read 进这段映射好的物理内存中。
         inFile.read((char*)modelData.Map(), header.geometrySize);
         modelData.Unmap();
-
-        // 硬件级行为：m_DataBuffer.Create 底层会申请一块 Default Heap (纯 GPU VRAM) 内存，
-        // 录制一条 CopyBufferRegion 的 Command，将数据从 Upload Heap 经 PCIe 总线搬运到 Default Heap。
-        // 避坑：别忘了底层在此之后必须插入 Resource Barrier 转换为 VERTEX_AND_CONSTANT_BUFFER 状态。
-        model->m_DataBuffer.Create(L"Model Data", header.geometrySize, 1, modelData); // !!!!!!!有问题
+        model->m_DataBuffer.Create(L"Model Data", header.geometrySize, 1, modelData);
     }
 
     // 将刚才分配的 CPU 侧层级树和 Mesh 元数据填满。
@@ -326,12 +319,6 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
 
     // 调用内部函数，真正去触发或绑定这些纹理资源 (SRV 创建等)。
     LoadMaterials(*model, materialTextures, textureNames, textureOptions, basePath);
-
-    // 7. 包围体数据提取 (Bounding Volume Data)
-    // 用于视锥体剔除 (Frustum Culling / フラスタムカリング)。如果包围盒不在相机的投影矩阵范围内，整个模型将被剔除，直接省去 Draw Call 提交。
-
-
-    // 8. 动画与骨骼系统 (Animation & Skeleton System)
 
 
     // 顺利通关，返回模型指针。

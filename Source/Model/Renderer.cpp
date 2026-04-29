@@ -130,17 +130,17 @@ uint8_t Renderer::GetPSO(uint16_t psoFlags)
 
     std::vector<D3D12_INPUT_ELEMENT_DESC> vertexLayout;
     if (psoFlags & kHasPosition)
-        vertexLayout.push_back({ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT });
+        vertexLayout.push_back({ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
     if (psoFlags & kHasNormal)
-        vertexLayout.push_back({ "NORMAL",   0, DXGI_FORMAT_R10G10B10A2_UNORM,  0, D3D12_APPEND_ALIGNED_ELEMENT });
+        vertexLayout.push_back({ "NORMAL",   0, DXGI_FORMAT_R10G10B10A2_UNORM,  0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
     if (psoFlags & kHasTangent)
-        vertexLayout.push_back({ "TANGENT",  0, DXGI_FORMAT_R10G10B10A2_UNORM,  0, D3D12_APPEND_ALIGNED_ELEMENT });
+        vertexLayout.push_back({ "TANGENT",  0, DXGI_FORMAT_R10G10B10A2_UNORM,  0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
     if (psoFlags & kHasUV0)
-        vertexLayout.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT,       0, D3D12_APPEND_ALIGNED_ELEMENT });
+        vertexLayout.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT,       0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
     else
-        vertexLayout.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT,       1, D3D12_APPEND_ALIGNED_ELEMENT });
+        vertexLayout.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT,       0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
     if (psoFlags & kHasUV1)
-        vertexLayout.push_back({ "TEXCOORD", 1, DXGI_FORMAT_R16G16_FLOAT,       0, D3D12_APPEND_ALIGNED_ELEMENT });
+        vertexLayout.push_back({ "TEXCOORD", 1, DXGI_FORMAT_R16G16_FLOAT,       0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
 
     ColorPSO.SetInputLayout((uint32_t)vertexLayout.size(), vertexLayout.data());
 
@@ -259,7 +259,7 @@ void MeshSorter::RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalCon
 
     Renderer::UpdateGlobalDescriptors();
 
-    context.SetRootSignature(m_RootSig);
+    context.SetRootSignature(m_RootSig); // 绑根签名
     context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, s_TextureHeap.GetHeapPointer());
     context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, s_SamplerHeap.GetHeapPointer());
@@ -363,12 +363,12 @@ void MeshSorter::RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalCon
             const SortObject& object = m_SortObjects[key.objectIdx]; // 获取当前绘制物体
             const Mesh& mesh = *object.mesh;
 
-            context.SetConstantBuffer(kMeshConstants, object.meshCBV);
-            context.SetConstantBuffer(kMaterialConstants, object.materialCBV);
-            context.SetDescriptorTable(kMaterialSRVs, s_TextureHeap[mesh.srvTable]);
+            context.SetConstantBuffer(kMeshConstants, object.meshCBV); // B0 Mesh
+            context.SetConstantBuffer(kMaterialConstants, object.materialCBV); // B1 Material
+            context.SetDescriptorTable(kMaterialSRVs, s_TextureHeap[mesh.srvTable]); // 
             context.SetDescriptorTable(kMaterialSamplers, s_SamplerHeap[mesh.samplerTable]);
 
-            context.SetPipelineState(sm_PSOs[key.psoIdx]);
+            context.SetPipelineState(sm_PSOs[key.psoIdx]); // 绑定PSO
             // 设置VB
             if (m_CurrentPass == kZPass)
             {

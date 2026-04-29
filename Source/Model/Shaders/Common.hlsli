@@ -6,8 +6,7 @@
 // 1.shader编译时优化资源布局。2. 编译时验证
 #define Renderer_RootSig \
     "RootFlags(ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT), " \
-    "CBV(b0, visibility = SHADER_VISIBILITY_VERTEX), " \
-    "CBV(b0, visibility = SHADER_VISIBILITY_PIXEL), " \
+    "CBV(b0), " \
     "DescriptorTable(SRV(t0, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL)," \
     "DescriptorTable(Sampler(s0, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL)," \
     "DescriptorTable(SRV(t10, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL)," \

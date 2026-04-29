@@ -55,13 +55,10 @@ struct alignas(256) MaterialConstants
             uint32_t alphaRef : 16; // half float
         };
     };
-    float _pad1;
-
 };
 
 struct alignas(256) GlobalConstants
 {
     Math::Matrix4 ViewProjMatrix;
     Math::Vector3 CameraPos;
-    float         _pad;
 };

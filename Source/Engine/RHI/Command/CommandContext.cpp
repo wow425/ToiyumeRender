@@ -142,7 +142,7 @@ uint64_t CommandContext::Finish(bool WaitForCompletion)
 
     if (WaitForCompletion)
         g_CommandManager.WaitForFence(FenceValue);
-    // 上下文清空
+    // 上下文回收
     g_ContextManager.FreeContext(this);
 
     return FenceValue;

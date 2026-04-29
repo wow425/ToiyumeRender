@@ -147,6 +147,14 @@ DX12 渲染器学习与改造
 </p>
 </details>
 
+<details>
+<summary><b>2026-04-29: </b></summary>
+<p> 排BUG<p>
+<p>Shade端接收的Mesh CB数据为空的，CPU端的Mesh CB上传堆跟默认堆都有数据，疑似根签名处出了问题，尚未修好<p>
+
+</p>
+</details>
+
 </td>
 <td width="50%" valign="top">
 

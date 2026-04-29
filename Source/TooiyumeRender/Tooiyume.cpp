@@ -84,16 +84,18 @@ void Tooiyume::Update(float deltaT)
 {
     // 性能分析，输入，镜头，模型更新，资源回收
 
-    // 镜头更新
+    // 镜头常量数据更新
     m_CameraController->Update(deltaT);
 
     GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Update");
 
-    // 模型更新
+    // 模型常量数据更新
     m_ModelInst.Update(gfxContext, deltaT);
+
     // 资源回收，标记为recycled
     gfxContext.Finish();
 
+    // 视口，裁剪矩阵更新
     m_MainViewport.Width = (float)g_SceneColorBuffer.GetWidth();
     m_MainViewport.Height = (float)g_SceneColorBuffer.GetHeight();
     m_MainViewport.MinDepth = 0.0f;
@@ -129,10 +131,6 @@ void Tooiyume::RenderScene(void)
     sorter.AddRenderTarget(g_SceneColorBuffer);
 
     m_ModelInst.Render(sorter);
-
-    gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ);
-    gfxContext.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV_DepthReadOnly());
-    gfxContext.SetViewportAndScissor(viewport, scissor);
 
     sorter.RenderMeshes(MeshSorter::kOpaque, gfxContext, globals); // 还没完成全套不用MeshSorter::kNumPasses
 

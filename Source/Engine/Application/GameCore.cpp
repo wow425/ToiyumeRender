@@ -51,7 +51,7 @@ namespace GameCore
         game.Update(DeltaTime); // 每帧数据更新
         game.RenderScene(); // 绘制
 
-        Display::Present(); // 没完成需看看
+        Display::Present(); // 阉割未完成
 
         return !game.IsDone();
     }

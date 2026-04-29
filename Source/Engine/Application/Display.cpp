@@ -237,7 +237,7 @@ void Display::Shutdown(void)
 void Display::Present(void)
 {
     // 屏幕空间阶段用的，目前只用一个present功能，先禁用
-    PreparePresentSDR();
+    // PreparePresentSDR();
 
     s_SwapChain1->Present(0, 0);
 

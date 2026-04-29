@@ -22,14 +22,12 @@ cbuffer MaterialConstants : register(b0) // 已核对cpp端结构体定义顺序
     float metallicFactor; // default=1
     float roughnessFactor; // default=1
     uint flags;
-    float _pad;
 }
 
 cbuffer GlobalConstants : register(b1) // 已核对cpp端结构体定义顺序
 {
     float4x4 ViewProj;
     float3 ViewerPos;
-    float _Pad;
 }
 
 struct VSOutput
