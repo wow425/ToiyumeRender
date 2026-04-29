@@ -12,12 +12,12 @@
 
 
 
-extern "C" {
-    // 这里的 611 (或你 SDK 实际的版本号) 决定了程序是否启动 Agility 重定向
-    __declspec(dllexport) extern const uint32_t D3D12SDKVersion = 619;
-    // 确保这个路径和你在 B 检查中确认的文件夹名称完全一致
-    __declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\";
-}
+//extern "C" {
+//    // 启动 Agility 重定向
+//    __declspec(dllexport) extern const uint32_t D3D12SDKVersion = 619;
+//    // 确保这个路径和你在 B 检查中确认的文件夹名称完全一致
+//    __declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\";
+//}
 
 
 using namespace GameCore;
@@ -92,6 +92,8 @@ void Tooiyume::Update(float deltaT)
     // 模型常量数据更新
     m_ModelInst.Update(gfxContext, deltaT);
 
+
+
     // 资源回收，标记为recycled
     gfxContext.Finish();
 
@@ -144,7 +146,6 @@ void Tooiyume::Cleanup(void)
     m_ModelInst = nullptr;
 
     Renderer::Shutdown();
-
 
 }
 

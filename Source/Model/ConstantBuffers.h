@@ -7,7 +7,7 @@
 #include "../Math/Matrix4.h"
 #include <cstdint>
 
-// 网格world矩阵
+// Mesh CB
 struct alignas(256) MeshConstants // alignas C11引入用于内存对齐
 {
     Math::Matrix4 World;          // object to world

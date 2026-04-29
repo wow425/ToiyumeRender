@@ -6,7 +6,8 @@
 // 1.shader编译时优化资源布局。2. 编译时验证
 #define Renderer_RootSig \
     "RootFlags(ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT), " \
-    "CBV(b0), " \
+    "CBV(b0, visibility = SHADER_VISIBILITY_VERTEX), " \
+    "CBV(b0, visibility = SHADER_VISIBILITY_PIXEL), " \
     "DescriptorTable(SRV(t0, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL)," \
     "DescriptorTable(Sampler(s0, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL)," \
     "DescriptorTable(SRV(t10, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL)," \
@@ -20,6 +21,8 @@
         "comparisonFunc = COMPARISON_GREATER_EQUAL," \
         "filter = FILTER_MIN_MAG_LINEAR_MIP_POINT)," \
     "StaticSampler(s12, maxAnisotropy = 8, visibility = SHADER_VISIBILITY_PIXEL)"
+
+// CB 网格0，材质1，全局2
 
 // common static samplers
 SamplerState defaultSampler : register(s10);

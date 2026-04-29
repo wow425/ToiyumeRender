@@ -110,6 +110,8 @@ void Graphics::Initialize(bool RequireDXRSupport)
 
     DWORD dxgiFactoryFlags = 0;
 
+    // debug层没正常开启！！！！！！！！！！！
+
     if (useDebugLayers)
     {
         Microsoft::WRL::ComPtr<ID3D12Debug> debugInterface;
@@ -132,6 +134,7 @@ void Graphics::Initialize(bool RequireDXRSupport)
         {
             Utility::Print("WARNING:  Unable to enable D3D12 debug validation layer\n");
         }
+
 
 #if _DEBUG
         ComPtr<IDXGIInfoQueue> dxgiInfoQueue;

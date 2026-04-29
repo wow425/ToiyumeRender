@@ -150,7 +150,8 @@ DX12 渲染器学习与改造
 <details>
 <summary><b>2026-04-29: </b></summary>
 <p> 排BUG<p>
-<p>Shade端接收的Mesh CB数据为空的，CPU端的Mesh CB上传堆跟默认堆都有数据，疑似根签名处出了问题，尚未修好<p>
+<p>Shade端接收的Mesh CB数据为空的，CPU端的Mesh CB上传堆跟默认堆都有数据，根签名绑定Mesh CB无数据，根签名绑定Mesh CB地址出现问题<p>
+<p> 调试层没正常开启, 需要修改graphicsCore初始化逻辑<p>
 
 </p>
 </details>

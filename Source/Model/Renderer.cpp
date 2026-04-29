@@ -45,12 +45,15 @@ void Renderer::Initialize(void)
     // 根签名设置并finalize
     m_RootSig.Reset(kNumRootBindings, 1); // 初始化分配根参数内存
     m_RootSig.InitStaticSampler(10, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
-    m_RootSig[kMeshConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX); // 网格常量
-    m_RootSig[kMaterialConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_PIXEL); // 材质常量
+    //m_RootSig.InitStaticSampler(11, SamplerShadowDesc, D3D12_SHADER_VISIBILITY_PIXEL);
+    //m_RootSig.InitStaticSampler(12, CubeMapSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
+    m_RootSig[kMeshConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX); // 网格常量        根描述符绑定
+    m_RootSig[kMaterialConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_PIXEL); // 材质常量     根描述符绑定  
     m_RootSig[kMaterialSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 材质SRV
     m_RootSig[kMaterialSamplers].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 0, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 材质采样器
     m_RootSig[kCommonSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 10, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 全局通用SRV
     m_RootSig[kCommonCBV].InitAsConstantBuffer(1);                                                                        // 全局通用CBV
+    //m_RootSig[kSkinMatrices].InitAsBufferSRV(20, D3D12_SHADER_VISIBILITY_VERTEX);
     m_RootSig.Finalize(L"RootSig", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
     DXGI_FORMAT ColorFormat = g_SceneColorBuffer.GetFormat();
@@ -363,8 +366,10 @@ void MeshSorter::RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalCon
             const SortObject& object = m_SortObjects[key.objectIdx]; // 获取当前绘制物体
             const Mesh& mesh = *object.mesh;
 
-            context.SetConstantBuffer(kMeshConstants, object.meshCBV); // B0 Mesh
-            context.SetConstantBuffer(kMaterialConstants, object.materialCBV); // B1 Material
+
+            // 问题在这，handle有问题！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+            context.SetConstantBuffer(kMeshConstants, object.meshCBV); //  Mesh
+            context.SetConstantBuffer(kMaterialConstants, object.materialCBV); //  Material
             context.SetDescriptorTable(kMaterialSRVs, s_TextureHeap[mesh.srvTable]); // 
             context.SetDescriptorTable(kMaterialSamplers, s_SamplerHeap[mesh.samplerTable]);
 
