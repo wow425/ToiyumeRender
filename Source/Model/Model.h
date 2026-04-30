@@ -89,7 +89,7 @@ class Model
 public:
     ~Model() { Destroy(); }
 
-    void Render(Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const;
+    void GatherRenderables(Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const;
 
 
     ByteAddressBuffer m_DataBuffer;         // 网格数据
@@ -122,7 +122,7 @@ public:
     bool IsNull(void) const { return m_Model == nullptr; }
 
     void Update(GraphicsContext& gfxContext, float deltaTime);
-    void Render(Renderer::MeshSorter& sorter) const;
+    void GatherRenderables(Renderer::MeshSorter& sorter) const;
 
 
 private:

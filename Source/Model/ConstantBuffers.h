@@ -8,10 +8,10 @@
 #include <cstdint>
 
 // Mesh CB
-struct alignas(256) MeshConstants // alignas C11引入用于内存对齐
+struct alignas(256)MeshConstants // alignas C11引入用于内存对齐 alignas(256)
 {
     Math::Matrix4 World;          // object to world
-    Math::Matrix3 WorldIT;       // Object normal to world normal
+    Math::Matrix4 WorldIT;       // Object normal to world normal
 };
 
 // k表常量。PBR材质顺序 the order of textures for PBR materials

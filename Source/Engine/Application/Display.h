@@ -1,5 +1,14 @@
 ﻿#pragma once
 
+/*该类职责：“Present Queue + SwapChain 的抽象层”
+*      1.管理SwapChain
+*      2.管理BackBuffer资源封装
+*     3. 执行Present操作
+*
+*
+*/
+
+
 #include <cstdint>
 
 namespace Display
@@ -15,6 +24,7 @@ namespace Graphics
     extern uint32_t g_DisplayWidth;
     extern uint32_t g_DisplayHeight;
 
+    extern Microsoft::WRL::ComPtr<IDXGIFactory6> g_DXGIFactory; // 单例/全局共享，GraphicsCore创建，Display使用，用于交换链和窗口消息显示
 
     // 返回帧数
     uint64_t GetFrameCount(void);

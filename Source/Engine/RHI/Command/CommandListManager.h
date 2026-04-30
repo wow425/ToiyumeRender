@@ -94,7 +94,7 @@ public:
     // CPU等待围栏值命中
     void WaitForFence(uint64_t FenceValue);
 
-    // CPU挂起直至命令队列执行完毕，
+    // CPU挂起直至三大命令队列执行完毕，
     void IdleGPU(void)
     {
         m_GraphicsQueue.WaitForIdle();

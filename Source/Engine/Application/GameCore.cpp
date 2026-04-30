@@ -21,7 +21,7 @@ namespace GameCore
     void InitializeApplication(IGameApp& game)
     {
         // 图形模块初始化
-        Graphics::Initialize();
+        Graphics::Initialize(false);
         // 计时器模块
         SystemTime::Initialize();
         // IO输入还没啃

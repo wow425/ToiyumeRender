@@ -130,6 +130,7 @@ public:
         ASSERT(m_Type != D3D12_COMMAND_LIST_TYPE_COMPUTE, "不能将计算上下文转为图形上下文");
         return reinterpret_cast<GraphicsContext&>(*this);
     }
+
     ComputeContext& GetComputeContext() { return reinterpret_cast<ComputeContext&>(*this); } // 计算命令列表不用验证类别，因为计算是图形的子集，包含完整功能
     ID3D12GraphicsCommandList* GetCommandList() { return m_CommandList; }
 
@@ -481,10 +482,11 @@ inline void GraphicsContext::SetConstantBuffer(UINT RootIndex, D3D12_GPU_VIRTUAL
 inline void GraphicsContext::SetDynamicConstantBufferView(UINT RootIndex, size_t BufferSize, const void* BufferData)
 {
     ASSERT(BufferData != nullptr && Math::IsAligned(BufferData, 16)) // 16对齐
-        DynAlloc cb = m_CpuLinearAllocator.Allocate(BufferSize);
-    SIMDMemCopy(cb.DataPtr, BufferData, Math::AlignUp(BufferSize, 16) >> 4); // 针对WB往GPU端丢成批数据，64位用
+
+        DynAlloc cb = m_CpuLinearAllocator.Allocate(BufferSize); // 使用动态上传堆分配块内存
+    SIMDMemCopy(cb.DataPtr, BufferData, Math::AlignUp(BufferSize, 16) >> 4); // 写入globals数据 （针对WB往GPU端丢成批数据，64位用）
     // memcpy(cb.DataPtr, BufferData, BufferSize);
-    m_CommandList->SetGraphicsRootConstantBufferView(RootIndex, cb.GpuAddress);
+    m_CommandList->SetGraphicsRootConstantBufferView(RootIndex, cb.GpuAddress); // 绑定
 }
 
 inline void ComputeContext::SetDynamicConstantBufferView(UINT RootIndex, size_t BufferSize, const void* BufferData)

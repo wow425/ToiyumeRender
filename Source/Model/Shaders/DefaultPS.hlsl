@@ -63,5 +63,5 @@ float4 main(VSOutput vsOutput) : SV_Target0
     // Load and modulate textures
     float4 baseColor = baseColorFactor * baseColorTexture.Sample(baseColorSampler, UVSET(BASECOLOR));
 
-    return float4(baseColor.rgb, baseColor.a);
+    return float4(baseColor.rgb, 1.0);
 }

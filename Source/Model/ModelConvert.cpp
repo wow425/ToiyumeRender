@@ -225,86 +225,140 @@ inline void SetTextureOptions(std::map<std::string, uint8_t>& optionsMap, glTF::
 
 void BuildMaterials(ModelData& model, const glTF::Asset& asset)
 {
+    // 因为 D3D12 的 CBV（常量缓冲视图）要求 256 字节对齐
     static_assert((_alignof(MaterialConstants) & 255) == 0, "CBVs need 256 byte alignment");
 
-    // Replace texture filename extensions with "DDS" in the string table
+    // 将 glTF 里的所有图片路径复制到 model 的纹理字符串表中
+    // 后面保存模型时会把这些路径作为字符串表写入文件
+    // 注释里写“Replace texture filename extensions with DDS”，但这段代码本身只是拷贝路径
     model.m_TextureNames.resize(asset.m_images.size());
+
     for (size_t i = 0; i < asset.m_images.size(); ++i)
         model.m_TextureNames[i] = asset.m_images[i].path;
 
+    // 记录每张纹理应采用的编译/打包选项
+    // key: 纹理文件名
+    // value: 纹理选项标记
     std::map<std::string, uint8_t> textureOptions;
 
+    // 材质数量
     const uint32_t numMaterials = (uint32_t)asset.m_materials.size();
 
+    // 为所有材质分配常量数据与纹理描述数据
     model.m_MaterialConstants.resize(numMaterials);
     model.m_MaterialTextures.resize(numMaterials);
 
+    // 逐个处理 glTF 材质
     for (uint32_t i = 0; i < numMaterials; ++i)
     {
+        // 取出当前源材质
         const glTF::Material& srcMat = asset.m_materials[i];
 
+        // 获取引擎自己的材质常量结构的成员
         MaterialConstantData& material = model.m_MaterialConstants[i];
+
+        // BaseColorFactor：基础颜色因子
         material.baseColorFactor[0] = srcMat.baseColorFactor[0];
         material.baseColorFactor[1] = srcMat.baseColorFactor[1];
         material.baseColorFactor[2] = srcMat.baseColorFactor[2];
         material.baseColorFactor[3] = srcMat.baseColorFactor[3];
+        // EmissiveFactor：自发光颜色因子
         material.emissiveFactor[0] = srcMat.emissiveFactor[0];
         material.emissiveFactor[1] = srcMat.emissiveFactor[1];
         material.emissiveFactor[2] = srcMat.emissiveFactor[2];
+        // 法线贴图强度
         material.normalTextureScale = srcMat.normalTextureScale;
+        // 金属度
         material.metallicFactor = srcMat.metallicFactor;
+        // 粗糙度
         material.roughnessFactor = srcMat.roughnessFactor;
+
+        // 材质标志位，例如 alpha blend / alpha test 等
         material.flags = srcMat.flags;
 
+        // 获取引擎自己的材质纹理描述结构的成员
         MaterialTextureData& dstMat = model.m_MaterialTextures[i];
+
+        // 所有纹理的地址模式打包到一个字段里
+        // 每张纹理占 4 bit：S 方向 2 bit + T 方向 2 bit
         dstMat.addressModes = 0;
 
+        // 遍历材质使用的每一种纹理槽位
         for (uint32_t ti = 0; ti < kNumTextures; ++ti)
         {
+            // 默认设为无效索引 0xFFFF，表示该槽没有有效纹理
             dstMat.stringIdx[ti] = 0xFFFF;
 
             if (srcMat.textures[ti] != nullptr)
             {
+                // 如果这个纹理槽有贴图源，则记录它在 asset.m_images 里的下标
                 if (srcMat.textures[ti]->source != nullptr)
                 {
                     dstMat.stringIdx[ti] = uint16_t(srcMat.textures[ti]->source - asset.m_images.data());
                 }
 
+                // 如果这个纹理有 sampler，则使用 sampler 的 wrapS / wrapT
                 if (srcMat.textures[ti]->sampler != nullptr)
                 {
+                    // wrapS 写入 ti 对应的低 2 bit
                     dstMat.addressModes |= srcMat.textures[ti]->sampler->wrapS << (ti * 4);
+
+                    // wrapT 写入 ti 对应的高 2 bit
                     dstMat.addressModes |= srcMat.textures[ti]->sampler->wrapT << (ti * 4 + 2);
                 }
                 else
                 {
+                    // 没有 sampler 时，使用默认地址模式 0x5
+                    // 这里的 0x5 通常表示一种默认的 Repeat/Wrap 组合
                     dstMat.addressModes |= 0x5 << (ti * 4);
                 }
             }
             else
             {
+                // 没有纹理时，也填默认地址模式，避免后续读取未初始化值
                 dstMat.addressModes |= 0x5 << (ti * 4);
             }
         }
 
+        // 收集需要按需编译的纹理选项
+        // BaseColor 贴图：如果存在，且材质启用了 alpha blend / alpha test，则标记相应选项
         SetTextureOptions(textureOptions, srcMat.textures[kBaseColor], TextureOptions(true, srcMat.alphaBlend | srcMat.alphaTest));
+        // 金属度/粗糙度贴图：false 表示通常不需要特殊 alpha 处理
         SetTextureOptions(textureOptions, srcMat.textures[kMetallicRoughness], TextureOptions(false));
+        // 遮蔽贴图：false
         SetTextureOptions(textureOptions, srcMat.textures[kOcclusion], TextureOptions(false));
+        // 自发光贴图：true，通常需要保留颜色/格式上的特殊处理
         SetTextureOptions(textureOptions, srcMat.textures[kEmissive], TextureOptions(true));
+        // 法线贴图：false
         SetTextureOptions(textureOptions, srcMat.textures[kNormal], TextureOptions(false));
     }
 
+    // 清空模型原有的纹理选项表
     model.m_TextureOptions.clear();
+
+    // 按纹理名称表逐一填充纹理选项
     for (auto name : model.m_TextureNames)
     {
+        // 在纹理选项表中查找该纹理名是否有特殊配置
         auto iter = textureOptions.find(name);
+
         if (iter != textureOptions.end())
         {
+            // 找到了就把对应选项写入模型
             model.m_TextureOptions.push_back(iter->second);
+
+            // 这里会立刻触发该纹理的按需编译
+            // 路径 = 基础路径 + 纹理文件名
             CompileTextureOnDemand(asset.m_basePath + Utility::UTF8ToWideString(iter->first), iter->second);
         }
         else
+        {
+            // 没找到则写默认值 0xFF，表示没有特殊选项
             model.m_TextureOptions.push_back(0xFF);
+        }
     }
+
+    // 最终断言：纹理选项表数量必须和纹理字符串表数量一致
     ASSERT(model.m_TextureOptions.size() == model.m_TextureNames.size());
 }
 

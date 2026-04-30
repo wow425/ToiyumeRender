@@ -155,11 +155,9 @@ void LoadMaterials(Model& model,
 std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool forceRebuild)
 {
     // 1. 路径处理阶段
-    // 推导引擎专用的二进制缓存文件后缀。通常这种文件不参与版本控制，由引擎的 DDC (Derived Data Cache) 局部生成。
     const std::wstring miniFileName = Utility::RemoveExtension(filePath) + L".ty";
     const std::wstring fileName = Utility::RemoveBasePath(filePath);
 
-    // 声明文件状态结构体，用于获取文件的时间戳和大小。
     struct _stat64 sourceFileStat;
     struct _stat64 miniFileStat;
     std::ifstream inFile;

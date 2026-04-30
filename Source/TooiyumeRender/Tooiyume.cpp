@@ -69,10 +69,12 @@ void Tooiyume::Startup(void)
 
     m_ModelInst = Renderer::LoadModel(L"D:/CS-Self-Study/Computer_Graphics/DX12/ToiyumeRender/Source/TooiyumeRender/Model/Saber/saber_emiya.gltf", forceRebuild);
     // 暂时不用包围盒定位camera
-
-    const Vector3 eye{ 0.0f, 0.0f, 1.0f };
+    // 采用基于 FOV 的简单距离估计
+    float radius = 1.0f;
+    float fov = m_Camera.GetFOV();
+    float dist = radius / tanf(fov * 0.5f);
+    Vector3 eye = Vector3(0, 0, dist);
     m_Camera.SetEyeAtUp(eye, Vector3(kZero), Vector3(kYUnitVector)); // 可能有问题
-
 
     // 镜头设置
     m_Camera.SetZRange(1.0f, 10000.0f);
@@ -132,7 +134,7 @@ void Tooiyume::RenderScene(void)
     sorter.SetDepthStencilTarget(g_SceneDepthBuffer);
     sorter.AddRenderTarget(g_SceneColorBuffer);
 
-    m_ModelInst.Render(sorter);
+    m_ModelInst.GatherRenderables(sorter); // 剔除，排序，打包添加到MeshSorter中
 
     sorter.RenderMeshes(MeshSorter::kOpaque, gfxContext, globals); // 还没完成全套不用MeshSorter::kNumPasses
 

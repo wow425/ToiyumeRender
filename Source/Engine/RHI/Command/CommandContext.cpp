@@ -116,7 +116,7 @@ uint64_t CommandContext::Flush(bool WaitForCompletion)
     return FenceValue;
 }
 
-// 执行命令列表，“清空”资源
+// 执行命令列表，回收资源
 uint64_t CommandContext::Finish(bool WaitForCompletion)
 {
     ASSERT(m_Type == D3D12_COMMAND_LIST_TYPE_DIRECT || m_Type == D3D12_COMMAND_LIST_TYPE_COMPUTE);
@@ -133,13 +133,13 @@ uint64_t CommandContext::Finish(bool WaitForCompletion)
     uint64_t FenceValue = Queue.ExecuteCommandList(m_CommandList);
     Queue.DiscardAllocator(FenceValue, m_CurrentAllocator);
     m_CurrentAllocator = nullptr;
-    // CPU端堆资源清空
+    // CPU端堆资源回收
     m_CpuLinearAllocator.CleanupUsedPages(FenceValue);
     m_GpuLinearAllocator.CleanupUsedPages(FenceValue);
-    // GPU端shader-visible堆资源清空
+    // GPU端shader-visible堆资源回收
     m_DynamicViewDescriptorHeap.CleanupUsedHeaps(FenceValue);
     m_DynamicSamplerDescriptorHeap.CleanupUsedHeaps(FenceValue);
-
+    // 是否需要围栏以强制等待
     if (WaitForCompletion)
         g_CommandManager.WaitForFence(FenceValue);
     // 上下文回收

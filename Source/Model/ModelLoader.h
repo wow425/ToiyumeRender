@@ -38,8 +38,8 @@ namespace Renderer
     struct ModelData
     {
         std::vector<::byte> m_GeometryData; // 几何数据
-        std::vector<MaterialTextureData> m_MaterialTextures; // 材质索引
-        std::vector<MaterialConstantData> m_MaterialConstants; // 材质常量
+        std::vector<MaterialTextureData> m_MaterialTextures; // 材质纹理描述
+        std::vector<MaterialConstantData> m_MaterialConstants; // 材质常量数据
         std::vector<Mesh*> m_Meshes;
         std::vector<GraphNode> m_SceneGraph;
         std::vector<std::string> m_TextureNames;

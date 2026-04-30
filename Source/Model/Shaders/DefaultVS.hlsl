@@ -1,10 +1,9 @@
 ﻿#include "Common.hlsli"
 
-// 已校对cpp端结构体定义顺序
 cbuffer MeshConstants : register(b0)
 {
     float4x4 WorldMatrix; // Object to world
-    float3x3 WorldIT; // Object normal to world normal
+    float4x4 WorldIT; // Object normal to world normal
 };
 
 cbuffer GlobalConstants : register(b1)
@@ -55,9 +54,9 @@ VSOutput main(VSInput vsInput)
     // world space -> clip space
     vsOutput.position = mul(float4(vsOutput.worldPos, 1.0), ViewProjMatrix);
     
-    vsOutput.normal = mul(normal, WorldIT);
+    vsOutput.normal = mul(normal, (float3x3) WorldIT);
 #ifndef NO_TANGENT_FRAME
-    vsOutput.tangent = float4(mul(vsInput.tangent.xyz, WorldIT), vsInput.tangent.w);
+    vsOutput.tangent = float4(mul(vsInput.tangent.xyz, (float3x3) WorldIT), vsInput.tangent.w);
 #endif
     vsOutput.uv0 = vsInput.uv0;
 

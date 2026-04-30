@@ -16,13 +16,11 @@
 
 namespace GameCore { extern HWND g_hWnd; }
 
-#include "CompiledShaders/PresentSDRPS.h"
-#include "CompiledShaders/ScreenQuadPresentVS.h"
 
 
 #define SWAP_CHAIN_BUFFER_COUNT 3
 
-DXGI_FORMAT SwapChainFormat = DXGI_FORMAT_R10G10B10A2_UNORM;
+DXGI_FORMAT SwapChainFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 
 using namespace Math;
 using namespace Graphics;
@@ -82,6 +80,7 @@ namespace Graphics
         }
     }
 
+    // 动态分辨率调整
     void SetNativeResolution(void)
     {
         uint32_t NativeWidth, NativeHeight;
@@ -158,14 +157,12 @@ void Display::Resize(uint32_t width, uint32_t height)
     ResizeDisplayDependentBuffers(g_NativeWidth, g_NativeHeight);
 }
 
-// 初始化DX运行所需的资源
+// 
 void Display::Initialize(void)
 {
     // 创交换链
     ASSERT(s_SwapChain1 == nullptr, "Graphics has already been initialized");
-
-    Microsoft::WRL::ComPtr<IDXGIFactory4> dxgiFactory;
-    ASSERT_SUCCEEDED(CreateDXGIFactory2(0, TY_IID_PPV_ARGS(&dxgiFactory)));
+    ASSERT_SUCCEEDED(CreateDXGIFactory2(0, TY_IID_PPV_ARGS(&g_DXGIFactory)));
 
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
     swapChainDesc.Width = g_DisplayWidth;
@@ -183,7 +180,7 @@ void Display::Initialize(void)
     DXGI_SWAP_CHAIN_FULLSCREEN_DESC fsSwapChainDesc = {};
     fsSwapChainDesc.Windowed = TRUE;
 
-    ASSERT_SUCCEEDED(dxgiFactory->CreateSwapChainForHwnd(
+    ASSERT_SUCCEEDED(g_DXGIFactory->CreateSwapChainForHwnd(
         g_CommandManager.GetCommandQueue(),
         GameCore::g_hWnd,
         &swapChainDesc,
@@ -199,29 +196,10 @@ void Display::Initialize(void)
     }
 
     // 配置封装根签名
-    s_PresentRS.Reset(4, 2); // 根签名设置为4根参，2静态采样器
-    s_PresentRS[0].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 2);
-    s_PresentRS[1].InitAsConstants(0, 6, D3D12_SHADER_VISIBILITY_ALL);
-    s_PresentRS[2].InitAsBufferSRV(2, D3D12_SHADER_VISIBILITY_PIXEL);
-    s_PresentRS[3].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 2);
-    s_PresentRS.InitStaticSampler(0, SamplerLinearClampDesc);
-    s_PresentRS.InitStaticSampler(1, SamplerPointClampDesc);
-    s_PresentRS.Finalize(L"Present");
+    // 最终 Present Pass用根签名（后处理→屏幕）
+    //s_PresentRS.Reset(4, 2); // 根签名设置为4根参，2静态采样器
 
-    // TODO:这里本该是屏幕空间用的，但此处为跑通流程改成常规
-    // 配置封装PSO
-    PresentSDRPS.SetRootSignature(s_PresentRS);
-    PresentSDRPS.SetRasterizerState(RasterizerDefault);
-    PresentSDRPS.SetBlendState(BlendDisable);
-    PresentSDRPS.SetDepthStencilState(DepthStateDisabled);
-    PresentSDRPS.SetSampleMask(0xFFFFFFFF);
-    PresentSDRPS.SetInputLayout(0, nullptr);
-    PresentSDRPS.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
-    PresentSDRPS.SetVertexShader(g_pScreenQuadPresentVS, sizeof(g_pScreenQuadPresentVS));
-    PresentSDRPS.SetPixelShader(g_pPresentSDRPS, sizeof(g_pPresentSDRPS));
-    PresentSDRPS.SetRenderTargetFormat(SwapChainFormat, DXGI_FORMAT_UNKNOWN);
-    PresentSDRPS.Finalize();
-
+    //PresentSDRPS.SetRootSignature(s_PresentRS);
     SetNativeResolution();
 }
 
@@ -234,11 +212,14 @@ void Display::Shutdown(void)
         g_DisplayPlane[i].Destroy();
 }
 
+// 原本是最终 Present Pass（后处理→屏幕）
+// 目前不需要，直接 Present 后交换链后台缓冲区到屏幕
 void Display::Present(void)
 {
-    // 屏幕空间阶段用的，目前只用一个present功能，先禁用
+    // 最终 Present Pass（后处理→屏幕）。目前不需要
     // PreparePresentSDR();
-
+    GraphicsContext& Context = GraphicsContext::Begin(L"Present");
+    Context.Finish();
     s_SwapChain1->Present(0, 0);
 
     g_CurrentBuffer = (g_CurrentBuffer + 1) % SWAP_CHAIN_BUFFER_COUNT;
@@ -249,38 +230,16 @@ void Display::Present(void)
 
     ++s_FrameIndex;
 
+    // 动态分辨率模型（Runtime Resolution System）
     SetNativeResolution();
     SetDisplayResolution();
 }
 
 
-//屏幕空间阶段用的
+// 最终 Present Pass（后处理→屏幕）
 void Graphics::PreparePresentSDR(void)
 {
-    GraphicsContext& Context = GraphicsContext::Begin(L"Present");
 
-    Context.SetRootSignature(s_PresentRS);
-    Context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-    // 屏障转换：准备读取 3D 场景缓冲区
-    Context.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE |
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    Context.SetDynamicDescriptor(0, 0, g_SceneColorBuffer.GetSRV());
-
-    // 直接将目标指向交换链后台缓冲区
-    ColorBuffer& Dest = g_DisplayPlane[g_CurrentBuffer];
-
-    // 此处使用的是屏幕空间算法
-    Context.SetPipelineState(PresentSDRPS);
-    Context.TransitionResource(Dest, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    Context.SetRenderTarget(Dest.GetRTV());
-    Context.SetViewportAndScissor(0, 0, g_NativeWidth, g_NativeHeight);
-    Context.Draw(3);
-
-    // 屏障转换：将交换链资源转换为呈递状态
-    Context.TransitionResource(g_DisplayPlane[g_CurrentBuffer], D3D12_RESOURCE_STATE_PRESENT);
-
-    Context.Finish();
 }
 
 uint64_t Graphics::GetFrameCount(void) { return s_FrameIndex; }

@@ -152,9 +152,18 @@ DX12 渲染器学习与改造
 <p> 排BUG<p>
 <p>Shade端接收的Mesh CB数据为空的，CPU端的Mesh CB上传堆跟默认堆都有数据，根签名绑定Mesh CB无数据，根签名绑定Mesh CB地址出现问题<p>
 <p> 调试层没正常开启, 需要修改graphicsCore初始化逻辑<p>
-
 </p>
 </details>
+
+
+<details>
+<summary><b>2026-04-30: </b></summary>
+<p> 修BUG<p>
+<p> 1. GraphicsCore跟Display各自持有Factory，导致Debug时难以排查交换链问题，故改成全局唯一持有，Display调用即可<p>
+<p> 2. 简化GraphicsCore初始化逻辑，以确保Debug Layer能正常启动<p>
+<p> 3. VS接收到的Mesh CB数据异常已修复，原因是DFS读取Mesh数据写入上传堆环节，DFS没写对<p>
+</p>
+</details>6
 
 </td>
 <td width="50%" valign="top">

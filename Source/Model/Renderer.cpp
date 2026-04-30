@@ -27,7 +27,7 @@ namespace Renderer
     std::vector<GraphicsPSO> sm_PSOs; // 全局PSO池
 
     RootSignature m_RootSig;
-    GraphicsPSO m_onlySaberModelPSO(L"Renderer: onlySaberModelPSO"); // 测试初始功能用SaberPSO
+
     GraphicsPSO m_DefaultPSO(L"Renderer: Default PSO"); //  Not finalized.  Used as a template.
 
     DescriptorHandle m_CommonTextures; // 通用纹理描述符句柄
@@ -39,8 +39,6 @@ void Renderer::Initialize(void)
 
     SamplerDesc DefaultSamplerDesc;
     DefaultSamplerDesc.MaxAnisotropy = 8;
-
-    SamplerDesc onlySaberModelSamplerDesc = DefaultSamplerDesc; // 测试初始功能用Saber采样器
 
     // 根签名设置并finalize
     m_RootSig.Reset(kNumRootBindings, 1); // 初始化分配根参数内存
@@ -79,8 +77,6 @@ void Renderer::Initialize(void)
         { "TEXCOORD", 1, DXGI_FORMAT_R16G16_FLOAT,    0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
     };
 
-
-    ASSERT(sm_PSOs.size() == 0, "sm_PSOs初始化失败");
 
     // 构建PSO
          // default PSO
@@ -183,15 +179,7 @@ uint8_t Renderer::GetPSO(uint16_t psoFlags)
 
 
 /**
-*  该方法暂时搁置没啃，未来啃
- * @brief 什么是 MeshSorter::AddMesh：
- * 将当前帧场景中的网格实体压入一个待排序队列的核心方法。
- * @why 为什么需要它：
- * 在提交给 GPU 之前按特定规则排序，能最小化 管线状态对象 (Pipeline State Object / パイプラインステートオブジェクト, PSO)
- * 切换导致的流水线停顿 (Pipeline Flush)，并最大化硬件的 提前深度测试 (Early-Z / アーリZ) 效率。
- * @paper 进阶连结：
- * 此种利用 64-bit 整型位操作实现极速排序的架构，源自 Frostbite (寒霜引擎) 团队的经典分享
- * 《Destiny's Multithreaded Rendering Architecture》。
+
  */
 void MeshSorter::AddMesh(const Mesh& mesh, float distance,
     D3D12_GPU_VIRTUAL_ADDRESS meshCBV,
@@ -200,10 +188,9 @@ void MeshSorter::AddMesh(const Mesh& mesh, float distance,
 {
     SortKey key;
     key.value = m_SortObjects.size();
-
+    // 位掩码提取材质属性
     bool alphaBlend = (mesh.psoFlags & PSOFlags::kAlphaBlend) == PSOFlags::kAlphaBlend;
     bool alphaTest = (mesh.psoFlags & PSOFlags::kAlphaTest) == PSOFlags::kAlphaTest;
-
     uint64_t depthPSO = alphaTest ? 1 : 0;
 
     union float_or_int { float f; uint32_t u; } dist;
@@ -255,15 +242,17 @@ void MeshSorter::AddMesh(const Mesh& mesh, float distance,
     m_SortObjects.push_back(object);
 }
 
-// RenderScene
+// 基于Pass遍历的批处理渲染循环（Batch Render Loop）
 void MeshSorter::RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalConstants& globals)
 {
     ASSERT(m_DSV != nullptr);
 
-    Renderer::UpdateGlobalDescriptors();
+    Renderer::UpdateGlobalDescriptors(); // 更新全局动态描述符（如动态分配的常量/矩阵）
 
     context.SetRootSignature(m_RootSig); // 绑根签名
     context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    // 【关键规范】绑定描述符堆：在 DX12 中，调用任何 SetDescriptorTable 之前，必须先将堆绑定到命令列表。
+    // 整个渲染管线同时最多只能绑定一个 CBV_SRV_UAV 堆和一个 Sampler 堆。
     context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, s_TextureHeap.GetHeapPointer());
     context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, s_SamplerHeap.GetHeapPointer());
 
@@ -340,35 +329,40 @@ void MeshSorter::RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalCon
             case kZPass:
                 context.TransitionResource(*m_DSV, D3D12_RESOURCE_STATE_DEPTH_WRITE);
                 context.SetDepthStencilTarget(m_DSV->GetDSV());
+                break;
             case kOpaque:
                 context.TransitionResource(*m_DSV, D3D12_RESOURCE_STATE_DEPTH_WRITE);
                 context.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
                 context.SetRenderTarget(g_SceneColorBuffer.GetRTV(), m_DSV->GetDSV());
                 break;
             case kTransparent:
+                // 半透明 Pass：深度必须为只读 (DEPTH_READ)，否则前面的 Opaque 物体会因为 Z-fighting 或乱序产生破面
                 context.TransitionResource(*m_DSV, D3D12_RESOURCE_STATE_DEPTH_READ);
                 context.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
                 context.SetRenderTarget(g_SceneColorBuffer.GetRTV(), m_DSV->GetDSV_DepthReadOnly());
                 break;
             }
         }
-
         context.SetViewportAndScissor(m_Viewport, m_Scissor);
         context.FlushResourceBarriers(); // 提交屏障数组
 
-        const uint32_t lastDraw = m_CurrentDraw + passCount; // 该pass需绘制物体的最大数量
 
+        const uint32_t lastDraw = m_CurrentDraw + passCount; // 该pass需绘制物体的最大数量
+        std::vector<D3D12_GPU_VIRTUAL_ADDRESS> t(lastDraw); // 测试用
         // 本Pass 
         while (m_CurrentDraw < lastDraw)
         {
             SortKey key;
-            key.value = m_SortKeys[m_CurrentDraw]; // union用法巧妙
+            key.value = m_SortKeys[m_CurrentDraw]; // union用法巧妙 将 64-bit 排序键解码
             const SortObject& object = m_SortObjects[key.objectIdx]; // 获取当前绘制物体
             const Mesh& mesh = *object.mesh;
 
 
-            // 问题在这，handle有问题！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
-            context.SetConstantBuffer(kMeshConstants, object.meshCBV); //  Mesh
+
+            context.SetConstantBuffer(kMeshConstants, object.meshCBV); //  Mesh CB
+
+            t.push_back(object.meshCBV);
+
             context.SetConstantBuffer(kMaterialConstants, object.materialCBV); //  Material
             context.SetDescriptorTable(kMaterialSRVs, s_TextureHeap[mesh.srvTable]); // 
             context.SetDescriptorTable(kMaterialSamplers, s_SamplerHeap[mesh.samplerTable]);

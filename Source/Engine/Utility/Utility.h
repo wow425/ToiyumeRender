@@ -4,13 +4,10 @@
 
 namespace Utility
 {
-#ifdef _CONSOLE
-    inline void Print(const char* msg) { printf("%s", msg); }
-    inline void Print(const wchar_t* msg) { wprintf(L"%ws", msg); }
-#else 
+
     inline void Print(const char* msg) { OutputDebugStringA(msg); }
     inline void Print(const wchar_t* msg) { OutputDebugString(msg); }
-#endif
+
 
     inline void Printf(const char* format, ...)
     {
