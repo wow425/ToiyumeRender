@@ -1,6 +1,7 @@
 ﻿#pragma once
 
-// 类放命名空间中实现模块化管理，解决符号冲突，
+// 规定强制使用左手系
+
 
 #include "Math/VectorMath.h"
 #include "Math/Frustum.h"
@@ -26,7 +27,7 @@ namespace Math
         const Quaternion GetRotation() const { return m_CameraToWorld.GetRotation(); } // 获取相机旋转
         const Vector3 GetRightVec() const { return m_Basis.GetX(); }     // 获取相机本地坐标系的 X 轴（右）
         const Vector3 GetUpVec() const { return m_Basis.GetY(); }        // 获取相机本地坐标系的 Y 轴（上）
-        const Vector3 GetForwardVec() const { return -m_Basis.GetZ(); }  // 获取相机本地坐标系的 -Z 轴（前，常用惯例）
+        const Vector3 GetForwardVec() const { return m_Basis.GetZ(); }   // 获取相机本地坐标系的 Z 轴   强制左手系！！
         const Vector3 GetPosition() const { return m_CameraToWorld.GetTranslation(); } // 获取世界坐标
 
         // 获取矩阵
@@ -144,10 +145,10 @@ namespace Math
         m_Basis = Matrix3(m_CameraToWorld.GetRotation());
     }
 
-    // Camera 类的构造函数
-    inline Camera::Camera() : m_ReverseZ(true), m_InfiniteZ(false)
+    // Camera 类的构造函数 使用左手系
+    inline Camera::Camera() : m_ReverseZ(false), m_InfiniteZ(false)
     {
-        // 默认开启反转 Z (Reverse-Z)，默认视野 45 度 (PI/4)，长宽比 16:9，近平面 1.0，远平面 1000.0
+        // 默认关闭反转 Z (Reverse-Z)，默认视野 45 度 (PI/4)，长宽比 16:9，近平面 1.0，远平面 1000.0
         SetPerspectiveMatrix(XM_PIDIV4, 9.0f / 16.0f, 1.0f, 1000.0f);
     }
 

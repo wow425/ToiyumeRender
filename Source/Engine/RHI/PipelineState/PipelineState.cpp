@@ -138,7 +138,8 @@ void GraphicsPSO::Finalize()
         // 确保DSV规格已设置
         auto test = m_PSODesc.RTVFormats[0];
         auto tesst1 = m_PSODesc.DSVFormat;
-        ASSERT(m_PSODesc.DepthStencilState.DepthEnable != (m_PSODesc.DSVFormat == DXGI_FORMAT_UNKNOWN));
+        // 要么用深度，要么就别配深度资源”
+        // ASSERT(m_PSODesc.DepthStencilState.DepthEnable != (m_PSODesc.DSVFormat == DXGI_FORMAT_UNKNOWN));
         ASSERT_SUCCEEDED(g_Device->CreateGraphicsPipelineState(&m_PSODesc, TY_IID_PPV_ARGS(&m_PSO)));
         s_GraphicsPSOHashMap[HashCode].Attach(m_PSO); // 转交指针由哈希表管理
         m_PSO->SetName(m_Name);

@@ -92,8 +92,8 @@ void Graphics::InitializeCommonState(void)
 
     // --- 3. 基础光栅化状态 ---
     RasterizerDefault.FillMode = D3D12_FILL_MODE_SOLID;
-    RasterizerDefault.CullMode = D3D12_CULL_MODE_BACK;
-    RasterizerDefault.FrontCounterClockwise = TRUE;
+    RasterizerDefault.CullMode = D3D12_CULL_MODE_BACK; // D3D12_CULL_MODE_NONE  D3D12_CULL_MODE_BACK
+    RasterizerDefault.FrontCounterClockwise = FALSE;
     RasterizerDefault.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
     RasterizerDefault.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
     RasterizerDefault.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
@@ -120,7 +120,7 @@ void Graphics::InitializeCommonState(void)
     DepthStateReadWrite = DepthStateDisabled;
     DepthStateReadWrite.DepthEnable = TRUE;
     DepthStateReadWrite.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-    DepthStateReadWrite.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL; // 注意：配合反向Z使用
+    DepthStateReadWrite.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL; // 注意：配合反向Z使用。大于等于
 
     // --- 5. 基础混合状态 ---
     D3D12_BLEND_DESC alphaBlend = {};

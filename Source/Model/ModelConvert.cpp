@@ -263,7 +263,8 @@ void BuildMaterials(ModelData& model, const glTF::Asset& asset)
         material.baseColorFactor[2] = srcMat.baseColorFactor[2];
         material.baseColorFactor[3] = srcMat.baseColorFactor[3];
         // EmissiveFactor：自发光颜色因子
-        material.emissiveFactor[0] = srcMat.emissiveFactor[0];
+        if (srcMat.emissiveFactor)
+            material.emissiveFactor[0] = srcMat.emissiveFactor[0];
         material.emissiveFactor[1] = srcMat.emissiveFactor[1];
         material.emissiveFactor[2] = srcMat.emissiveFactor[2];
         // 法线贴图强度
@@ -321,13 +322,14 @@ void BuildMaterials(ModelData& model, const glTF::Asset& asset)
         }
 
         // 收集需要按需编译的纹理选项
-        // BaseColor 贴图：如果存在，且材质启用了 alpha blend / alpha test，则标记相应选项
-        SetTextureOptions(textureOptions, srcMat.textures[kBaseColor], TextureOptions(true, srcMat.alphaBlend | srcMat.alphaTest));
+        // BaseColor 贴图：false（不使用SRGB），PBR工作流在线性空间进行计算，只有最后输出才进行SRGB转换
+        // 如果启用了 alpha blend / alpha test，则保留alpha通道
+        SetTextureOptions(textureOptions, srcMat.textures[kBaseColor], TextureOptions(false, srcMat.alphaBlend | srcMat.alphaTest));  // false = Linear
         // 金属度/粗糙度贴图：false 表示通常不需要特殊 alpha 处理
         SetTextureOptions(textureOptions, srcMat.textures[kMetallicRoughness], TextureOptions(false));
         // 遮蔽贴图：false
         SetTextureOptions(textureOptions, srcMat.textures[kOcclusion], TextureOptions(false));
-        // 自发光贴图：true，通常需要保留颜色/格式上的特殊处理
+        // 自发光贴图：true（使用SRGB），在线性空间处理
         SetTextureOptions(textureOptions, srcMat.textures[kEmissive], TextureOptions(true));
         // 法线贴图：false
         SetTextureOptions(textureOptions, srcMat.textures[kNormal], TextureOptions(false));

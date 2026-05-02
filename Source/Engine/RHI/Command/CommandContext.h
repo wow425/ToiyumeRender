@@ -479,6 +479,7 @@ inline void GraphicsContext::SetConstantBuffer(UINT RootIndex, D3D12_GPU_VIRTUAL
     m_CommandList->SetGraphicsRootConstantBufferView(RootIndex, CBV);
 }
 
+// 分配堆，写入，绑定
 inline void GraphicsContext::SetDynamicConstantBufferView(UINT RootIndex, size_t BufferSize, const void* BufferData)
 {
     ASSERT(BufferData != nullptr && Math::IsAligned(BufferData, 16)) // 16对齐

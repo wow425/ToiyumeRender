@@ -22,12 +22,12 @@ namespace Renderer
 {
     using namespace Math;
 
-    // PSO全局缓存池。
-    extern std::vector<GraphicsPSO> sm_PSOs;
-    extern RootSignature m_RootSig;
-    // 存放CBV/SRV/UAV描述符堆
-    extern DescriptorHeap s_TextureHeap;
-    extern DescriptorHeap s_SamplerHeap;
+
+    extern std::vector<GraphicsPSO> sm_PSOs; // PSO全局缓存池。
+    extern RootSignature m_RootSig;          // 绘制所用rootsignature
+
+    extern DescriptorHeap s_TextureHeap;     // texture堆。存放CBV/SRV/UAV描述符堆
+    extern DescriptorHeap s_SamplerHeap;     // sampler堆
     // 通用纹理的描述符句柄 (如阴影贴图、SSAO 结果等全局共享的贴图)。
     extern DescriptorHandle m_CommonTextures;
 
@@ -60,17 +60,20 @@ namespace Renderer
 
         MeshSorter(BatchType type)
         {
-
+            m_BatchType = type;
             m_Camera = nullptr;
             m_Viewport = {};
             m_Scissor = {};
             m_NumRTVs = 0;
             m_DSV = nullptr;
             m_SortObjects.clear();
+            m_SortKeys.clear();
             std::memset(m_PassCounts, 0, sizeof(m_PassCounts));
             m_CurrentPass = kZPass;
             m_CurrentDraw = 0;
         }
+
+        void Sort();
 
         void SetCamera(const BaseCamera& camera) { m_Camera = &camera; }
         void SetViewport(const D3D12_VIEWPORT& viewport) { m_Viewport = viewport; }

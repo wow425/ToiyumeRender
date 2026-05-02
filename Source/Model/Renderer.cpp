@@ -33,6 +33,7 @@ namespace Renderer
     DescriptorHandle m_CommonTextures; // 通用纹理描述符句柄
 }
 
+// 初始化根签名，PSO和创建纹理堆，采样器堆
 void Renderer::Initialize(void)
 {
     if (s_Initialized) return;
@@ -42,7 +43,7 @@ void Renderer::Initialize(void)
 
     // 根签名设置并finalize
     m_RootSig.Reset(kNumRootBindings, 1); // 初始化分配根参数内存
-    m_RootSig.InitStaticSampler(10, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
+    m_RootSig.InitStaticSampler(10, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL); // 静态采样器
     //m_RootSig.InitStaticSampler(11, SamplerShadowDesc, D3D12_SHADER_VISIBILITY_PIXEL);
     //m_RootSig.InitStaticSampler(12, CubeMapSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[kMeshConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX); // 网格常量        根描述符绑定
@@ -82,8 +83,8 @@ void Renderer::Initialize(void)
          // default PSO
     m_DefaultPSO.SetRootSignature(m_RootSig);                                           // 根签名
     m_DefaultPSO.SetRasterizerState(RasterizerDefault);                                 // 光栅状态
-    m_DefaultPSO.SetBlendState(BlendDisable);                                           // 混合模式
-    m_DefaultPSO.SetDepthStencilState(DepthStateReadWrite);                             // 深度模板状态
+    m_DefaultPSO.SetBlendState(BlendDisable);                                           // 混合模式     默认关闭
+    m_DefaultPSO.SetDepthStencilState(DepthStateReadWrite);                              // 深度模板状态 
     m_DefaultPSO.SetInputLayout(0, nullptr);                                            // 输入布局
     m_DefaultPSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);      // 图元拓扑
     m_DefaultPSO.SetRenderTargetFormats(1, &ColorFormat, DepthFormat);                  // RTV绑定
@@ -156,7 +157,7 @@ uint8_t Renderer::GetPSO(uint16_t psoFlags)
         ColorPSO.SetBlendState(BlendPreMultiplied);
         ColorPSO.SetDepthStencilState(DepthStateReadOnly);
     }
-    ColorPSO.Finalize();
+    ColorPSO.Finalize(); // Mesh PSO绑定处
 
     // Look for an existing PSO
     for (uint32_t i = 0; i < sm_PSOs.size(); ++i)
@@ -348,7 +349,6 @@ void MeshSorter::RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalCon
 
 
         const uint32_t lastDraw = m_CurrentDraw + passCount; // 该pass需绘制物体的最大数量
-        std::vector<D3D12_GPU_VIRTUAL_ADDRESS> t(lastDraw); // 测试用
         // 本Pass 
         while (m_CurrentDraw < lastDraw)
         {
@@ -358,14 +358,10 @@ void MeshSorter::RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalCon
             const Mesh& mesh = *object.mesh;
 
 
-
-            context.SetConstantBuffer(kMeshConstants, object.meshCBV); //  Mesh CB
-
-            t.push_back(object.meshCBV);
-
-            context.SetConstantBuffer(kMaterialConstants, object.materialCBV); //  Material
-            context.SetDescriptorTable(kMaterialSRVs, s_TextureHeap[mesh.srvTable]); // 
-            context.SetDescriptorTable(kMaterialSamplers, s_SamplerHeap[mesh.samplerTable]);
+            context.SetConstantBuffer(kMeshConstants, object.meshCBV);                      //  Mesh CB
+            context.SetConstantBuffer(kMaterialConstants, object.materialCBV);              //  材质常量
+            context.SetDescriptorTable(kMaterialSRVs, s_TextureHeap[mesh.srvTable]);        // 材质SRV
+            context.SetDescriptorTable(kMaterialSamplers, s_SamplerHeap[mesh.samplerTable]); // 材质采样器
 
             context.SetPipelineState(sm_PSOs[key.psoIdx]); // 绑定PSO
             // 设置VB
@@ -397,3 +393,9 @@ void MeshSorter::RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalCon
     }
 }
 
+// ?
+void MeshSorter::Sort()
+{
+    struct { bool operator()(uint64_t a, uint64_t b) const { return a < b; } } Cmp;
+    std::sort(m_SortKeys.begin(), m_SortKeys.end(), Cmp);
+}

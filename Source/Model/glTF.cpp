@@ -314,6 +314,9 @@ void glTF::Asset::ProcessMaterials(json& materials)
             material.baseColorFactor[3] = 1.0f; // A
             material.metallicFactor = 1.0f;     // 默认全金属
             material.roughnessFactor = 1.0f;    // 默认最粗糙
+            material.emissiveFactor[0] = 0.0f;  // 默认不自发光
+            material.emissiveFactor[1] = 0.0f;
+            material.emissiveFactor[2] = 0.0f;
             for (uint32_t i = 0; i < Material::kNumTextures; ++i) // 清空本地纹理指针数组
                 material.textures[i] = nullptr;
 

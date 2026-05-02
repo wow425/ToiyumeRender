@@ -216,11 +216,11 @@ void Display::Shutdown(void)
 // 目前不需要，直接 Present 后交换链后台缓冲区到屏幕
 void Display::Present(void)
 {
-    // 最终 Present Pass（后处理→屏幕）。目前不需要
-    // PreparePresentSDR();
-    GraphicsContext& Context = GraphicsContext::Begin(L"Present");
-    Context.Finish();
-    s_SwapChain1->Present(0, 0);
+    // 最终 Present Pass（后处理→屏幕）。将先前绘制的scenecolorbuffer复制给最后呈现用的back buffer并present。目前阉割
+    PreparePresentSDR();
+
+
+    s_SwapChain1->Present(0, 0); // s_SwapChain1绑定的是DisplayPlane
 
     g_CurrentBuffer = (g_CurrentBuffer + 1) % SWAP_CHAIN_BUFFER_COUNT;
 
@@ -239,7 +239,13 @@ void Display::Present(void)
 // 最终 Present Pass（后处理→屏幕）
 void Graphics::PreparePresentSDR(void)
 {
+    GraphicsContext& Context = GraphicsContext::Begin(L"Present");
 
+    Context.CopyBuffer(g_DisplayPlane[g_CurrentBuffer], g_SceneColorBuffer);
+
+    Context.TransitionResource(g_DisplayPlane[g_CurrentBuffer], D3D12_RESOURCE_STATE_PRESENT);
+
+    Context.Finish();
 }
 
 uint64_t Graphics::GetFrameCount(void) { return s_FrameIndex; }

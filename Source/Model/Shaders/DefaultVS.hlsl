@@ -38,6 +38,10 @@ struct VSOutput
 };
 
 // HLSL采用行向量，从左往右顺序，v * matrix
+// DX 左手系规定：
+// - 世界空间：+X右，+Y上，+Z前
+// - 观察空间：+X右，+Y上，+Z后（指向相机后方）
+// - 裁剪空间：NDC范围 [-1,1]（X,Y），[0,1]（Z在DX中）
 
 // 属性语法。[Name(Argument)]。 提供关于xx的额外信息，此为根签名绑定该函数
 [RootSignature(Renderer_RootSig)]
@@ -45,15 +49,17 @@ VSOutput main(VSInput vsInput)
 {
     VSOutput vsOutput;
 
-    float3 normal = vsInput.normal; // [0,1] -> [-1,1]纹理采样的UV坐标通常在[0,1]范围内，而法线向量需要在[-1,1]范围内表示
+    float3 normal = vsInput.normal; // 法线向量处理
 #ifndef NO_TANGENT_FRAME
     float4 tangent = vsInput.tangent * 2 - 1;
 #endif
     // object space -> world space
     vsOutput.worldPos = mul(float4(vsInput.position, 1.0), WorldMatrix).xyz;
     // world space -> clip space
+    // 注意：HLSL中mul(vec, matrix)是行向量乘法
+    // ViewProjMatrix = ProjMatrix * ViewMatrix
     vsOutput.position = mul(float4(vsOutput.worldPos, 1.0), ViewProjMatrix);
-    
+
     vsOutput.normal = mul(normal, (float3x3) WorldIT);
 #ifndef NO_TANGENT_FRAME
     vsOutput.tangent = float4(mul(vsInput.tangent.xyz, (float3x3) WorldIT), vsInput.tangent.w);

@@ -44,6 +44,7 @@ void Model::GatherRenderables(MeshSorter& sorter, const GpuBuffer& meshConstants
     }
 }
 
+// 剔除，排序，打包添加到MeshSorter中
 void ModelInstance::GatherRenderables(MeshSorter& sorter) const
 {
     if (m_Model != nullptr)
@@ -144,64 +145,6 @@ void ModelInstance::Update(GraphicsContext& gfxContext, float deltaTime)
             // 所以我们什么都不做，直接进入下一次 for 循环。
         }
     }
-
-    //for (const GraphNode* Node = sceneGraph; ; ++Node) // for里不写终止条件，硬件预取友好，分支预测优化，未吃透逻辑
-
-    //{
-
-    //    // 当前节点的局部变换（local transform）
-
-    //    Matrix4 transform = Node->xform;
-
-
-
-    //    // 乘以父节点，得到世界变换，如右手腕跟右小臂变换继承关系
-
-    //    transform = ParentMaterix * transform;
-
-
-
-    //    auto t = Node->matrixIdx;
-
-
-
-    //    MeshConstants& cbv = cb[Node->matrixIdx]; // 根据节点 index 找到对应 CB 位置 !!!!!!!!!!!!!!!!
-
-    //    cbv.World = transform;
-
-    //    cbv.WorldIT = InverseTranspose(transform.Get3x3());
-
-
-
-    //    // 维护矩阵栈以正确处理树状层级
-
-    //    if (Node->hasChildren) // 有子（下一层）0
-
-    //    {
-
-    //        if (Node->hasSibling) // 有兄弟姐妹（同层级）
-
-    //        {
-
-    //            matrixStack[stackIdx++] = ParentMaterix; // 如果有兄弟节点，保存当前父矩阵（用于回溯）
-
-    //        }
-
-    //        ParentMaterix = transform; // 进入子节点：当前 transform 成为新的 parent
-
-    //    }
-
-    //    else if (!Node->hasChildren)
-
-    //    {
-
-    //        if (stackIdx == 0) break;
-
-    //        ParentMaterix = matrixStack[--stackIdx];
-
-    //    }
-
-    //}
 
     // 4. 解除映射并异步拷贝至GPU
     m_MeshConstantsCPU.Unmap();

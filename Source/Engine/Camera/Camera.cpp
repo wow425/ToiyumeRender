@@ -24,8 +24,8 @@ void BaseCamera::SetLookDirection(Vector3 forward, Vector3 up)
     up = Cross(right, forward);
 
     // 4. 构建旋转基矩阵
-    // 在该引擎约定中，相机看向 -forward 方向
-    m_Basis = Matrix3(right, up, -forward);
+    // 强制左手系！！（在 DirectX 中，默认使用左手坐标系，+Z 轴指向前方）
+    m_Basis = Matrix3(right, up, forward);
     // 将旋转矩阵转换为四元数并存储到相机到世界的变换中
     m_CameraToWorld.SetRotation(Quaternion(m_Basis));
 }
@@ -55,33 +55,52 @@ void Camera::UpdateProjMatrix(void)
 {
     // 基础透视参数计算
     float Y = 1.0f / std::tanf(m_VerticalFOV * 0.5f); // 焦距 (Focal Length)
-    float X = Y * m_AspectRatio;
+    float X = Y / m_AspectRatio;  // 修复：应该是除以长宽比，而不是乘以
     float Q1, Q2;
 
-    // 核心逻辑：反转 Z 轴 (Reverse-Z)
-    // 目的：将近平面映射为 1.0，远平面映射为 0.0，配合 F32 深度图极大提升远景精度。
+    // 核心逻辑：DX左手系投影矩阵
+    // Near平面映射到0.0, Far平面映射到1.0
+    // 对于列向量乘法（或HLSL行向量乘法）
     if (m_ReverseZ)
     {
-        if (m_InfiniteZ) { Q1 = 0.0f; Q2 = m_NearClip; }
-        else {
-            Q1 = m_NearClip / (m_FarClip - m_NearClip);
-            Q2 = Q1 * m_FarClip;
+        // Reverse-Z: Near=1.0, Far=0.0
+        if (m_InfiniteZ) 
+        { 
+            Q1 = 0.0f; 
+            Q2 = m_NearClip; 
+        }
+        else 
+        {
+            // Q1 = NearZ / (NearZ - FarZ)
+            // Q2 = (NearZ * FarZ) / (NearZ - FarZ)
+            Q1 = m_NearClip / (m_NearClip - m_FarClip);
+            Q2 = (m_NearClip * m_FarClip) / (m_NearClip - m_FarClip);
         }
     }
-    else // 传统映射：Near=0, Far=1
+    else 
     {
-        if (m_InfiniteZ) { Q1 = -1.0f; Q2 = -m_NearClip; }
-        else {
-            Q1 = m_FarClip / (m_NearClip - m_FarClip);
-            Q2 = Q1 * m_NearClip;
+        // 传统映射：Near=0.0, Far=1.0
+        if (m_InfiniteZ) 
+        { 
+            Q1 = 1.0f; 
+            Q2 = -m_NearClip; 
+        }
+        else 
+        {
+            // Q1 = FarZ / (FarZ - NearZ)
+            // Q2 = -(NearZ * FarZ) / (FarZ - NearZ)
+            Q1 = m_FarClip / (m_FarClip - m_NearClip);
+            Q2 = -(m_NearClip * m_FarClip) / (m_FarClip - m_NearClip);
         }
     }
 
-    // 填充 4x4 投影矩阵（DirectX 标准：左手系，行优先或列优先取决于设置）
+    // DirectX 左手系投影矩阵 (行向量形式)
+    // 通常 HLSL 中使用: position = mul(viewPos, ViewProjMatrix)
+    // 这对应行向量乘法，矩阵按行存储
     SetProjMatrix(Matrix4(
         Vector4(X, 0.0f, 0.0f, 0.0f),
         Vector4(0.0f, Y, 0.0f, 0.0f),
-        Vector4(0.0f, 0.0f, Q1, -1.0f), // 注意：-1.0 用于将 Z 存储到 W 中，实现透视除法
+        Vector4(0.0f, 0.0f, Q1, 1.0f),  // DX 左手系：第三列的W分量为1
         Vector4(0.0f, 0.0f, Q2, 0.0f)
     ));
 }

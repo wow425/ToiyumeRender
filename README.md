@@ -163,7 +163,14 @@ DX12 渲染器学习与改造
 <p> 2. 简化GraphicsCore初始化逻辑，以确保Debug Layer能正常启动<p>
 <p> 3. VS接收到的Mesh CB数据异常已修复，原因是DFS读取Mesh数据写入上传堆环节，DFS没写对<p>
 </p>
-</details>6
+</details>
+
+<details>
+<summary><b>2026-05-2: </b></summary>
+<p> 修BUG<p>
+<p> 视图投影矩阵数据错误<p>
+</p>
+</details>
 
 </td>
 <td width="50%" valign="top">

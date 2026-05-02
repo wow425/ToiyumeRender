@@ -12,9 +12,7 @@ SamplerState occlusionSampler : register(s2);
 SamplerState emissiveSampler : register(s3);
 SamplerState normalSampler : register(s4);
 
-
-
-cbuffer MaterialConstants : register(b0) // 已核对cpp端结构体定义顺序
+cbuffer MaterialConstants : register(b0)
 {
     float4 baseColorFactor; // default=[1,1,1,1]
     float3 emissiveFactor; // default=[0,0,0]
@@ -42,9 +40,6 @@ struct VSOutput
     float3 worldPos : TEXCOORD2;
 };
 
-
-
-
 // Flag helpers ??
 static const uint BASECOLOR = 0;
 static const uint METALLICROUGHNESS = 1;
@@ -52,16 +47,12 @@ static const uint OCCLUSION = 2;
 static const uint EMISSIVE = 3;
 static const uint NORMAL = 4;
 
-#define UVSET( offset ) vsOutput.uv0
-
-
-
-
 [RootSignature(Renderer_RootSig)]
 float4 main(VSOutput vsOutput) : SV_Target0
 {
     // Load and modulate textures
-    float4 baseColor = baseColorFactor * baseColorTexture.Sample(baseColorSampler, UVSET(BASECOLOR));
+    float4 baseColor = baseColorFactor * baseColorTexture.Sample(baseColorSampler, vsOutput.uv0);
 
     return float4(baseColor.rgb, 1.0);
+    //return float4(1.0f, 0.0f, 0.0f, 1.0f);
 }

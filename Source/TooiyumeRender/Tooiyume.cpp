@@ -74,7 +74,10 @@ void Tooiyume::Startup(void)
     float fov = m_Camera.GetFOV();
     float dist = radius / tanf(fov * 0.5f);
     Vector3 eye = Vector3(0, 0, dist);
-    m_Camera.SetEyeAtUp(eye, Vector3(kZero), Vector3(kYUnitVector)); // 可能有问题
+    // DX左手系：前向是+Z方向，所以焦点应该在eye前方
+    Vector3 at = Vector3(0, 0, 0);  // 观察原点
+    Vector3 up = Vector3(kYUnitVector);
+    m_Camera.SetEyeAtUp(eye, at, up);
 
     // 镜头设置
     m_Camera.SetZRange(1.0f, 10000.0f);
@@ -100,6 +103,9 @@ void Tooiyume::Update(float deltaT)
     gfxContext.Finish();
 
     // 视口，裁剪矩阵更新
+    m_MainViewport.TopLeftX = 0.0f; // taa用
+    m_MainViewport.TopLeftY = 0.0f;
+
     m_MainViewport.Width = (float)g_SceneColorBuffer.GetWidth();
     m_MainViewport.Height = (float)g_SceneColorBuffer.GetHeight();
     m_MainViewport.MinDepth = 0.0f;
@@ -136,7 +142,15 @@ void Tooiyume::RenderScene(void)
 
     m_ModelInst.GatherRenderables(sorter); // 剔除，排序，打包添加到MeshSorter中
 
+    sorter.Sort();
+
+    gfxContext.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
+    gfxContext.ClearColor(g_SceneColorBuffer);
+
+    gfxContext.SetViewportAndScissor(viewport, scissor); // 设置视口和裁剪矩形
     sorter.RenderMeshes(MeshSorter::kOpaque, gfxContext, globals); // 还没完成全套不用MeshSorter::kNumPasses
+
+
 
     gfxContext.Finish();
 }

@@ -43,7 +43,7 @@ void LoadMaterials(Model& model,
 {
     static_assert((_alignof(MaterialConstants) & 255) == 0, "CBVs need 256 byte alignment");
 
-    // 1. Load textures
+    // 1. Load textures加载纹理
     const uint32_t numTextures = (uint32_t)textureNames.size();
     model.textures.resize(numTextures);
     for (size_t ti = 0; ti < numTextures; ++ti)
@@ -135,6 +135,7 @@ void LoadMaterials(Model& model,
     }
 
     // 第四步：将计算好的 Table Offset 回填到每个 Mesh 对象中
+    // Mesh PSO绑定处
     uint8_t* meshPtr = model.m_MeshData.get();
     for (uint32_t i = 0; i < model.m_NumMeshes; ++i)
     {
@@ -143,7 +144,7 @@ void LoadMaterials(Model& model,
         mesh.srvTable = offsetPair & 0xFFFF;
         mesh.samplerTable = offsetPair >> 16;
         // 根据 Mesh 的 PSO 标志位 (如是否带骨骼、是否透明) 关联对应的渲染管线状态
-        mesh.pso = Renderer::GetPSO(mesh.psoFlags);
+        mesh.pso = Renderer::GetPSO(mesh.psoFlags); // Mesh PSO绑定处
         // 指针偏移，跳过变长的 Draw Call 数据区
         meshPtr += sizeof(Mesh) + (mesh.numDraws - 1) * sizeof(Mesh::Draw);
     }
