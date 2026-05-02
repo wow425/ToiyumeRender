@@ -168,7 +168,7 @@ DX12 渲染器学习与改造
 <details>
 <summary><b>2026-05-2: </b></summary>
 <p> 修BUG<p>
-<p> 视图投影矩阵数据错误<p>
+<p> PS未将数据绘制到back buffer不在于OM阶段，PS阶段，而是光栅化阶段深度剔除掉了，因为视图投影矩阵数据错误，导致透视除法后的z值小于0，而DX的NDC在[0,1]<p>
 </p>
 </details>
 
