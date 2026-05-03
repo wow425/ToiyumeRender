@@ -11,21 +11,21 @@ using namespace GameCore;
 
 FlyingFPSCamera::FlyingFPSCamera(Camera& camera, Vector3 worldUp) : CameraController(camera)
 {
-    m_WorldUp = Normalize(worldUp);
-    m_WorldNorth = Normalize(Cross(m_WorldUp, Vector3(kXUnitVector)));
-    m_WorldEast = Cross(m_WorldNorth, m_WorldUp);
+    m_WorldUp = Normalize(worldUp); // Y
+    m_WorldNorth = Normalize(Cross(Vector3(kXUnitVector), m_WorldUp)); // +Z
+    m_WorldEast = Cross(m_WorldUp, m_WorldNorth); // X
 
     m_HorizontalLookSensitivity = 2.0f;
     m_VerticalLookSensitivity = 2.0f;
-    m_MoveSpeed = 1000.0f;
-    m_StrafeSpeed = 1000.0f;
+    m_MoveSpeed = 100.0f;
+    m_StrafeSpeed = 100.0f;
     m_MouseSensitivityX = 1.0f;
     m_MouseSensitivityY = 1.0f;
 
-    m_CurrentPitch = Sin(Dot(camera.GetForwardVec(), m_WorldUp));
+    m_CurrentPitch = ASin(Dot(camera.GetForwardVec(), m_WorldUp));
 
-    Vector3 forward = Normalize(Cross(m_WorldUp, camera.GetRightVec()));
-    m_CurrentHeading = ATan2(-Dot(forward, m_WorldEast), Dot(forward, m_WorldNorth));
+    Vector3 forward = Normalize(Cross(camera.GetRightVec(), m_WorldUp));
+    m_CurrentHeading = ATan2(Dot(forward, m_WorldEast), Dot(forward, m_WorldNorth));
 
     m_FineMovement = false;
     m_FineRotation = false;
@@ -97,8 +97,8 @@ void FlyingFPSCamera::Update(float deltaTime)
     else if (m_CurrentHeading <= -XM_PI)
         m_CurrentHeading += XM_2PI;
 
-    Matrix3 orientation = Matrix3(m_WorldEast, m_WorldUp, -m_WorldNorth) * Matrix3::MakeYRotation(m_CurrentHeading) * Matrix3::MakeXRotation(m_CurrentPitch);
-    Vector3 position = orientation * Vector3(strafe, ascent, -forward) + m_TargetCamera.GetPosition();
+    Matrix3 orientation = Matrix3(m_WorldEast, m_WorldUp, m_WorldNorth) * Matrix3::MakeYRotation(m_CurrentHeading) * Matrix3::MakeXRotation(m_CurrentPitch);
+    Vector3 position = orientation * Vector3(strafe, ascent, forward) + m_TargetCamera.GetPosition();
     m_TargetCamera.SetTransform(AffineTransform(orientation, position));
     m_TargetCamera.Update();
 }

@@ -133,10 +133,14 @@ DX12 渲染器学习与改造
 <summary><b>2026-04-26: </b></summary>
 <p> Renderer方法编写完毕，Model模块完成<p>  
 <p>    // TODO: 完成预编译shader带宏定义脚本<p>
+</p>
+</details>
 
 <details>
 <summary><b>2026-04-27: </b></summary>
 <p> 程序运行流程跑通，但LoadMaterials方法仅支持标准PBR规范每网格5纹理规格，明日修改逻辑以增加不规范非PBR模型<p>  
+</p>
+</details>
 
 <details>
 <summary><b>2026-04-28: </b></summary>
@@ -170,6 +174,13 @@ DX12 渲染器学习与改造
 <p> 修BUG<p>
 <p> PS未将数据绘制到back buffer不在于OM阶段，PS阶段，而是光栅化阶段深度剔除掉了，因为视图投影矩阵数据错误，导致透视除法后的z值小于0，而DX的NDC在[0,1]<p>
 <p>明日简化重写camera类，并复习推理一遍camera相关数学知识<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-3: </b></summary>
+<p> 修BUG<p>
+<p> 变换矩阵问题没修好，明天复习原理，全部重新写一遍得了<p>
 </p>
 </details>
 

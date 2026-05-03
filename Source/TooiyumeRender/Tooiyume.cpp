@@ -68,15 +68,11 @@ void Tooiyume::Startup(void)
     bool forceRebuild = true; // ?
 
     m_ModelInst = Renderer::LoadModel(L"D:/CS-Self-Study/Computer_Graphics/DX12/ToiyumeRender/Source/TooiyumeRender/Model/Saber/saber_emiya.gltf", forceRebuild);
-    // 暂时不用包围盒定位camera
-    // 采用基于 FOV 的简单距离估计
-    float radius = 1.0f;
-    float fov = m_Camera.GetFOV();
-    float dist = radius / tanf(fov * 0.5f);
-    Vector3 eye = Vector3(0, 0, dist);
-    // DX左手系：前向是+Z方向，所以焦点应该在eye前方
-    Vector3 at = Vector3(0, 0, 0);  // 观察原点
-    Vector3 up = Vector3(kYUnitVector);
+
+
+    Vector3 eye = Vector3(0, 0, 0);
+    Vector3 at = Vector3(0, 0, 1.0f);  
+    Vector3 up = Vector3(0, 1.0f, 0);
     m_Camera.SetEyeAtUp(eye, at, up);
 
     // 镜头设置

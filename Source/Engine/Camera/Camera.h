@@ -1,6 +1,8 @@
 ﻿#pragma once
 
 // 规定强制使用左手系
+// Forward = +Z（全项目统一）
+// 行向量 v * M
 
 
 #include "Math/VectorMath.h"
@@ -44,25 +46,15 @@ namespace Math
 
         OrthogonalTransform m_CameraToWorld; // 相机到世界的正交变换
 
-        // 冗余缓存：加速获取相机局部基向量 (Basis) 的查找
+
         Matrix3 m_Basis;
 
-        // 视图矩阵：将世界空间坐标变换到观察空间。在此定义中：+X 右，+Y 上，-Z 前。
+
         Matrix4 m_ViewMatrix;
-
-        // 投影矩阵：将观察空间变换到裁剪空间 (Clip Space)。由 FOV、长宽比及近远平面决定。
         Matrix4 m_ProjMatrix;
-
-        // View 和 Proj 的级联矩阵：一步完成世界到裁剪空间的变换。
         Matrix4 m_ViewProjMatrix;
-
-        // 上一帧的 ViewProj 矩阵：用于计算当前像素与上一帧像素的位移差 (Velocity Buffer)。
-        Matrix4 m_PreviousViewProjMatrix;
-
-        // 重投影矩阵：将当前帧的裁剪空间坐标映射回上一帧的裁剪空间。
-        Matrix4 m_ReprojectMatrix;
-
-
+        Matrix4 m_PreviousViewProjMatrix;   // 上一帧的 ViewProj 矩阵：用于计算当前像素与上一帧像素的位移差 (Velocity Buffer)。
+        Matrix4 m_ReprojectMatrix;          // 重投影矩阵：将当前帧的裁剪空间坐标映射回上一帧的裁剪空间。
     };
 
     class Camera : public BaseCamera
@@ -73,20 +65,12 @@ namespace Math
         // 控制“观察空间到投影空间 (View-to-Projection)”的矩阵
         // 设置透视矩阵参数：垂直视野、宽高比、近裁剪面距离、远裁剪面距离
         void SetPerspectiveMatrix(float verticalFovRadians, float aspectHeightOverWidth, float nearZClip, float farZClip);
-
-        // 设置垂直视野（弧度制），并自动更新投影矩阵
         void SetFOV(float verticalFovInRadians) { m_VerticalFOV = verticalFovInRadians; UpdateProjMatrix(); }
-
-        // 设置长宽比（高/宽），并自动更新投影矩阵
         void SetAspectRatio(float heightOverWidth) { m_AspectRatio = heightOverWidth; UpdateProjMatrix(); }
-
-        // 设置近远裁剪面范围，并自动更新投影矩阵
         void SetZRange(float nearZ, float farZ) { m_NearClip = nearZ; m_FarClip = farZ; UpdateProjMatrix(); }
 
-        // 开启/关闭反转 Z 轴 (Reverse-Z) 功能，并自动更新投影矩阵
         void ReverseZ(bool enable) { m_ReverseZ = enable; UpdateProjMatrix(); }
 
-        // 属性获取器 (Getters)
         float GetFOV() const { return m_VerticalFOV; }      // 获取当前视野
         float GetNearClip() const { return m_NearClip; }    // 获取近裁剪面距离
         float GetFarClip() const { return m_FarClip; }      // 获取远裁剪面距离
@@ -96,7 +80,7 @@ namespace Math
         float GetClearDepth() const { return m_ReverseZ ? 0.0f : 1.0f; }
 
     private:
-        // 根据当前参数重新计算并更新投影矩阵
+
         void UpdateProjMatrix(void);
 
         float m_VerticalFOV;    // 垂直视野角度（以弧度为单位）
@@ -104,23 +88,21 @@ namespace Math
         float m_NearClip;       // 近裁剪面距离
         float m_FarClip;        // 远裁剪面距离
 
-        // 反转 Z 轴标志：开启后将近平面映射为 Z=1，远平面映射为 Z=0，以提升远景的深度精度
-        bool m_ReverseZ;
 
-        // 无限远 Z 标志：将远裁剪面设置在无穷远处
-        bool m_InfiniteZ;
+        bool m_ReverseZ;        // 反转 Z 轴标志：开启后将近平面映射为 Z=1，远平面映射为 Z=0，以提升远景的深度精度
+        bool m_InfiniteZ;       // 无限远 Z 标志：将远裁剪面设置在无穷远处
     };
 
-    // 通过“眼点、焦点、上向量”设置相机位姿（经典的 Look-At 逻辑）
+    // 相机放在eye， 朝向at， up确定头顶方向
     inline void BaseCamera::SetEyeAtUp(Vector3 eye, Vector3 at, Vector3 up)
     {
-        // 计算视线方向：目标点减去相机位置 = 前向矢量 (Forward Vector)
+        // eye相机位置， at相机看向的目标点， up相机的上方向参考
+        // forward=at−eye 相机朝向
         SetLookDirection(at - eye, up);
-        // 设置相机的世界坐标位置
+
         SetPosition(eye);
     }
 
-    // 设置相机位置：直接修改相机到世界变换矩阵 (Camera-to-World) 的平移部分
     inline void BaseCamera::SetPosition(Vector3 worldPos)
     {
         m_CameraToWorld.SetTranslation(worldPos);
@@ -130,8 +112,8 @@ namespace Math
     inline void BaseCamera::SetTransform(const AffineTransform& xform)
     {
         // 关键点：通过提取矩阵的基向量并强制正交化，防止因浮点运算累积导致的矩阵“切变”
-        // 在该引擎中，-Z 是前向 (Forward)，因此取负
-        SetLookDirection(-xform.GetZ(), xform.GetY());
+        // 左手坐标系，+z为前方向
+        SetLookDirection(xform.GetZ(), xform.GetY());
         SetPosition(xform.GetTranslation());
     }
 

@@ -261,7 +261,11 @@ void MeshSorter::RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalCon
     // context.SetDescriptorTable(kCommonSRVs, m_CommonTextures);
 
     // Set common shader constants
-    globals.ViewProjMatrix = m_Camera->GetViewProjMatrix();
+
+    auto t = m_Camera->GetViewMatrix();
+    auto t1 = m_Camera->GetProjMatrix();
+
+    globals.ViewProjMatrix = m_Camera->GetViewProjMatrix(); // cpu端采用行向量，不转置，shader端也采用行向量写法
     globals.CameraPos = m_Camera->GetPosition();
 
     context.SetDynamicConstantBufferView(kCommonCBV, sizeof(GlobalConstants), &globals);
