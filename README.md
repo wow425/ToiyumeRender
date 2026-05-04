@@ -184,6 +184,16 @@ DX12 渲染器学习与改造
 </p>
 </details>
 
+<details>
+<summary><b>2026-05-4: </b></summary>
+<p> BUG修复完毕，借鉴miniengine搭的渲染器框架完工！<p>
+<p> 起初看renderdoc里上传VS的viewproj矩阵数据不标准，照着啃camera类，但四元数的内容看的不太明白，便简化成非四元数camera类了<p>
+<p> camera类修改完成仍然无法渲染物体到color buffer，沿着渲染管线排查光栅化状态，背面剔除跟绕序都没问题，问题出在深度测试<p> 
+<p> depthbuffer默认深度值为0，这是无限z情况下才行的，关闭了无限z并没有动态变化，而且depthbuffer的描述符描述中的depth value也是缺少动态修改，写死为0的，将其修改成使用depth value值<p> 
+<p> TODO:开闭无限z跟反转z使得光栅化状态配置跟depth buffer配置随之变化<p> 
+</p>
+</details>
+
 </td>
 <td width="50%" valign="top">
 

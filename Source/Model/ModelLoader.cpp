@@ -319,6 +319,10 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
     // 调用内部函数，真正去触发或绑定这些纹理资源 (SRV 创建等)。
     LoadMaterials(*model, materialTextures, textureNames, textureOptions, basePath);
 
+    // 包围盒
+    model->m_BoundingSphere = BoundingSphere(*(XMFLOAT4*)header.boundingSphere);
+    model->m_BoundingBox = AxisAlignedBox(Vector3(*(XMFLOAT3*)header.minPos), Vector3(*(XMFLOAT3*)header.maxPos));
+
 
     // 顺利通关，返回模型指针。
     return model;

@@ -1,4 +1,4 @@
-//
+﻿//
 // Copyright (c) Microsoft. All rights reserved.
 // This code is licensed under the MIT License (MIT).
 // THIS CODE IS PROVIDED *AS IS* WITHOUT WARRANTY OF
@@ -30,6 +30,8 @@ namespace Math
     // Uniform scale, rotation (quaternion), and translation that fits in two vec4s
     class UniformTransform;
 
+
+
     // This transform strictly prohibits non-uniform scale.  Scale itself is barely tolerated.
     class OrthogonalTransform
     {
@@ -60,12 +62,13 @@ namespace Math
                 Vector4(SetWToZero(m_rotation * Vector3((XMVECTOR)vec))) +
                 Vector4(SetWToOne(m_translation)) * vec.GetW();
         }
-        // BoundingSphere operator* (BoundingSphere sphere) const;
-        // 有bug先不管
+        //INLINE BoundingSphere operator* (BoundingSphere sphere) const {
+        //    return BoundingSphere(*this * sphere.GetCenter(), sphere.GetRadius());
+        //}
 
-        INLINE OrthogonalTransform operator* (const OrthogonalTransform& xform) const {
-            return OrthogonalTransform(m_rotation * xform.m_rotation, m_rotation * xform.m_translation + m_translation);
-        }
+        //INLINE OrthogonalTransform operator* (const OrthogonalTransform& xform) const {
+        //    return OrthogonalTransform(m_rotation * xform.m_rotation, m_rotation * xform.m_translation + m_translation);
+        //}
 
         INLINE OrthogonalTransform operator~ () const {
             Quaternion invertedRotation = ~m_rotation;
@@ -108,8 +111,8 @@ namespace Math
         INLINE Scalar GetScale() const { return m_repr.GetW(); }
         INLINE Vector3 GetTranslation() const { return (Vector3)m_repr; }
 
-         // BoundingSphere operator*(const BoundingSphere& sphere) const;
-        // 有bug先不管
+        // BoundingSphere operator*(const BoundingSphere& sphere) const;
+       // 有bug先不管
 
     private:
         Vector4 m_repr;
@@ -151,8 +154,11 @@ namespace Math
             return m_rotation * (vec * m_translationScale.GetScale()) + m_translationScale.GetTranslation();
         }
 
-       // BoundingSphere operator*(BoundingSphere sphere) const;
-        // 有bug先不管
+        //INLINE BoundingSphere operator*(BoundingSphere sphere) const
+        //{
+        //    return BoundingSphere(*this * sphere.GetCenter(), GetScale() * sphere.GetRadius());
+        //}
+
 
 
     private:

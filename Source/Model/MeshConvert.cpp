@@ -76,7 +76,7 @@ void OptimizeMesh(Renderer::Primitive& outPrim, const glTF::Primitive& inPrim, c
         if (indexCount > 0xFFFF)
         {
             b32BitIndices = true;
-            outPrim.IB = std::make_shared<std::vector<std::byte>>(4 * indexCount);
+            outPrim.IB = std::make_shared<std::vector<Utility::byte>>(4 * indexCount);
             indices = outPrim.IB->data();
             uint32_t* tmp = (uint32_t*)indices;
             for (uint32_t i = 0; i < indexCount; ++i)
@@ -85,7 +85,7 @@ void OptimizeMesh(Renderer::Primitive& outPrim, const glTF::Primitive& inPrim, c
         else
         {
             b32BitIndices = false;
-            outPrim.IB = std::make_shared<std::vector<std::byte>>(2 * indexCount);
+            outPrim.IB = std::make_shared<std::vector<Utility::byte>>(2 * indexCount);
             indices = outPrim.IB->data();
             uint16_t* tmp = (uint16_t*)indices;
             for (uint16_t i = 0; i < indexCount; ++i)
@@ -130,7 +130,7 @@ void OptimizeMesh(Renderer::Primitive& outPrim, const glTF::Primitive& inPrim, c
         }
         b32BitIndices = maxIndex > 0xFFFF;
         uint32_t indexSize = b32BitIndices ? 4 : 2;
-        outPrim.IB = std::make_shared<std::vector<std::byte>>(indexSize * indexCount);
+        outPrim.IB = std::make_shared<std::vector<Utility::byte>>(indexSize * indexCount);
         if (b32BitIndices)
         {
             ASSERT(inPrim.indices->componentType == Accessor::kUnsignedInt);
@@ -203,163 +203,192 @@ void OptimizeMesh(Renderer::Primitive& outPrim, const glTF::Primitive& inPrim, c
 
     ASSERT_SUCCEEDED(vbr.Read(position.get(), "POSITION", 0, vertexCount));
     {
+        // Local space bounds
+        Vector3 sphereCenterLS = (Vector3(*(XMFLOAT3*)inPrim.minPos) + Vector3(*(XMFLOAT3*)inPrim.maxPos)) * 0.5f;
+        Scalar maxRadiusLSSq(kZero);
 
+        // Object space bounds
+        // (This would be expressed better with an AffineTransform * Vector3)
+        Vector3 sphereCenterOS = Vector3(localToObject * Vector4(sphereCenterLS));
+        Scalar maxRadiusOSSq(kZero);
 
-        if (HasNormals)
+        outPrim.m_BBoxLS = AxisAlignedBox(kZero);
+        outPrim.m_BBoxOS = AxisAlignedBox(kZero);
+
+        for (uint32_t v = 0; v < vertexCount/*maxIndex*/; ++v)
         {
-            ASSERT_SUCCEEDED(vbr.Read(normal.get(), "NORMAL", 0, vertexCount));
+            Vector3 positionLS = Vector3(position[v]);
+            maxRadiusLSSq = Max(maxRadiusLSSq, LengthSquare(sphereCenterLS - positionLS));
+
+            outPrim.m_BBoxLS.AddPoint(positionLS);
+
+            Vector3 positionOS = Vector3(localToObject * Vector4(positionLS));
+            maxRadiusOSSq = Max(maxRadiusOSSq, LengthSquare(sphereCenterOS - positionOS));
+
+            outPrim.m_BBoxOS.AddPoint(positionOS);
         }
+
+        outPrim.m_BoundsLS = Math::BoundingSphere(sphereCenterLS, Sqrt(maxRadiusLSSq));
+        outPrim.m_BoundsOS = Math::BoundingSphere(sphereCenterOS, Sqrt(maxRadiusOSSq));
+        ASSERT(outPrim.m_BoundsOS.GetRadius() > 0.0f);
+    }
+
+    if (HasNormals)
+    {
+        ASSERT_SUCCEEDED(vbr.Read(normal.get(), "NORMAL", 0, vertexCount));
+    }
+    else
+    {
+        const size_t faceCount = indexCount / 3;
+
+        if (b32BitIndices)
+            ComputeNormals((const uint32_t*)indices, faceCount, position.get(), vertexCount, CNORM_DEFAULT, normal.get());
         else
-        {
-            const size_t faceCount = indexCount / 3;
+            ComputeNormals((const uint16_t*)indices, faceCount, position.get(), vertexCount, CNORM_DEFAULT, normal.get());
+    }
 
-            if (b32BitIndices)
-                ComputeNormals((const uint32_t*)indices, faceCount, position.get(), vertexCount, CNORM_DEFAULT, normal.get());
-            else
-                ComputeNormals((const uint16_t*)indices, faceCount, position.get(), vertexCount, CNORM_DEFAULT, normal.get());
-        }
+    if (HasUV0)
+    {
+        texcoord0.reset(new XMFLOAT2[vertexCount]);
+        ASSERT_SUCCEEDED(vbr.Read(texcoord0.get(), "TEXCOORD", 0, vertexCount));
+    }
 
-        if (HasUV0)
-        {
-            texcoord0.reset(new XMFLOAT2[vertexCount]);
-            ASSERT_SUCCEEDED(vbr.Read(texcoord0.get(), "TEXCOORD", 0, vertexCount));
-        }
+    if (HasUV1)
+    {
+        texcoord1.reset(new XMFLOAT2[vertexCount]);
+        ASSERT_SUCCEEDED(vbr.Read(texcoord1.get(), "TEXCOORD", 1, vertexCount));
+    }
 
-        if (HasUV1)
-        {
-            texcoord1.reset(new XMFLOAT2[vertexCount]);
-            ASSERT_SUCCEEDED(vbr.Read(texcoord1.get(), "TEXCOORD", 1, vertexCount));
-        }
+    if (HasTangents)
+    {
+        tangent.reset(new XMFLOAT4[vertexCount]);
+        ASSERT_SUCCEEDED(vbr.Read(tangent.get(), "TANGENT", 0, vertexCount));
+    }
+    else
+    {
+        ASSERT(maxIndex < vertexCount);
+        ASSERT(indexCount % 3 == 0);
 
-        if (HasTangents)
+        HRESULT hr = S_OK;
+
+        if (HasUV0 && material.normalUV == 0)
         {
             tangent.reset(new XMFLOAT4[vertexCount]);
-            ASSERT_SUCCEEDED(vbr.Read(tangent.get(), "TANGENT", 0, vertexCount));
-        }
-        else
-        {
-            ASSERT(maxIndex < vertexCount);
-            ASSERT(indexCount % 3 == 0);
-
-            HRESULT hr = S_OK;
-
-            if (HasUV0 && material.normalUV == 0)
+            if (b32BitIndices)
             {
-                tangent.reset(new XMFLOAT4[vertexCount]);
-                if (b32BitIndices)
-                {
-                    hr = ComputeTangentFrame((uint32_t*)indices, indexCount / 3, position.get(), normal.get(), texcoord0.get(),
-                        vertexCount, tangent.get());
-                }
-                else
-                {
-                    hr = ComputeTangentFrame((uint16_t*)indices, indexCount / 3, position.get(), normal.get(), texcoord0.get(),
-                        vertexCount, tangent.get());
-                }
+                hr = ComputeTangentFrame((uint32_t*)indices, indexCount / 3, position.get(), normal.get(), texcoord0.get(),
+                    vertexCount, tangent.get());
             }
-            else if (HasUV1 && material.normalUV == 1)
+            else
             {
-                tangent.reset(new XMFLOAT4[vertexCount]);
-                if (b32BitIndices)
-                {
-                    hr = ComputeTangentFrame((uint32_t*)indices, indexCount / 3, position.get(), normal.get(), texcoord1.get(),
-                        vertexCount, tangent.get());
-                }
-                else
-                {
-                    hr = ComputeTangentFrame((uint16_t*)indices, indexCount / 3, position.get(), normal.get(), texcoord1.get(),
-                        vertexCount, tangent.get());
-                }
+                hr = ComputeTangentFrame((uint16_t*)indices, indexCount / 3, position.get(), normal.get(), texcoord0.get(),
+                    vertexCount, tangent.get());
             }
-
-            ASSERT_SUCCEEDED(hr, "Error generating a tangent frame");
         }
-
-
-
-        // Use VBWriter to generate a new, interleaved and compressed vertex buffer
-        std::vector<D3D12_INPUT_ELEMENT_DESC> OutputElements;
-
-        outPrim.psoFlags = PSOFlags::kHasPosition | PSOFlags::kHasNormal;
-        OutputElements.push_back({ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT });
-        OutputElements.push_back({ "NORMAL", 0, DXGI_FORMAT_R10G10B10A2_UNORM, 0, D3D12_APPEND_ALIGNED_ELEMENT });
-        if (tangent.get())
+        else if (HasUV1 && material.normalUV == 1)
         {
-            OutputElements.push_back({ "TANGENT", 0, DXGI_FORMAT_R10G10B10A2_UNORM, 0, D3D12_APPEND_ALIGNED_ELEMENT });
-            outPrim.psoFlags |= PSOFlags::kHasTangent;
-        }
-        if (texcoord0.get())
-        {
-            OutputElements.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT });
-            outPrim.psoFlags |= PSOFlags::kHasUV0;
-        }
-        if (texcoord1.get())
-        {
-            OutputElements.push_back({ "TEXCOORD", 1, DXGI_FORMAT_R16G16_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT });
-            outPrim.psoFlags |= PSOFlags::kHasUV1;
-        }
-
-        if (material.alphaBlend)
-            outPrim.psoFlags |= PSOFlags::kAlphaBlend;
-        if (material.alphaTest)
-            outPrim.psoFlags |= PSOFlags::kAlphaTest;
-
-
-        D3D12_INPUT_LAYOUT_DESC layout = { OutputElements.data(), (uint32_t)OutputElements.size() };
-
-        VBWriter vbw;
-        vbw.Initialize(layout);
-
-        uint32_t offsets[10];
-        uint32_t strides[D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
-        ComputeInputLayout(layout, offsets, strides);
-        uint32_t stride = strides[0];
-
-        outPrim.VB = std::make_shared<std::vector<std::byte>>(stride * vertexCount);
-        ASSERT_SUCCEEDED(vbw.AddStream(outPrim.VB->data(), vertexCount, 0, stride));
-
-        vbw.Write(position.get(), "POSITION", 0, vertexCount);
-        vbw.Write(normal.get(), "NORMAL", 0, vertexCount, true);
-        if (tangent.get())
-            vbw.Write(tangent.get(), "TANGENT", 0, vertexCount, true);
-        if (texcoord0.get())
-            vbw.Write(texcoord0.get(), "TEXCOORD", 0, vertexCount);
-        if (texcoord1.get())
-            vbw.Write(texcoord1.get(), "TEXCOORD", 1, vertexCount);
-
-        // Now write a VB for positions only (or positions and UV when alpha testing)
-        uint32_t depthStride = 12;
-        std::vector<D3D12_INPUT_ELEMENT_DESC> DepthElements;
-        DepthElements.push_back({ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT });
-        if (material.alphaTest)
-        {
-            depthStride += 4;
-            DepthElements.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT });
+            tangent.reset(new XMFLOAT4[vertexCount]);
+            if (b32BitIndices)
+            {
+                hr = ComputeTangentFrame((uint32_t*)indices, indexCount / 3, position.get(), normal.get(), texcoord1.get(),
+                    vertexCount, tangent.get());
+            }
+            else
+            {
+                hr = ComputeTangentFrame((uint16_t*)indices, indexCount / 3, position.get(), normal.get(), texcoord1.get(),
+                    vertexCount, tangent.get());
+            }
         }
 
-
-        VBWriter dvbw;
-        dvbw.Initialize({ DepthElements.data(), (uint32_t)DepthElements.size() });
-
-        outPrim.DepthVB = std::make_shared<std::vector<std::byte>>(depthStride * vertexCount);
-        ASSERT_SUCCEEDED(dvbw.AddStream(outPrim.DepthVB->data(), vertexCount, 0, depthStride));
-
-        dvbw.Write(position.get(), "POSITION", 0, vertexCount);
-        if (material.alphaTest)
-        {
-            dvbw.Write(material.baseColorUV ? texcoord1.get() : texcoord0.get(), "TEXCOORD", 0, vertexCount);
-        }
-
-
-        ASSERT(material.index < 0x8000, "Only 15-bit material indices allowed");
-
-        outPrim.vertexStride = (uint16_t)stride;
-        outPrim.index32 = b32BitIndices ? 1 : 0;
-        outPrim.materialIdx = material.index;
-
-        outPrim.primCount = indexCount;
-
-        // TODO:  Generate optimized depth-only streams
+        ASSERT_SUCCEEDED(hr, "Error generating a tangent frame");
     }
+
+
+
+    // Use VBWriter to generate a new, interleaved and compressed vertex buffer
+    std::vector<D3D12_INPUT_ELEMENT_DESC> OutputElements;
+
+    outPrim.psoFlags = PSOFlags::kHasPosition | PSOFlags::kHasNormal;
+    OutputElements.push_back({ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT });
+    OutputElements.push_back({ "NORMAL", 0, DXGI_FORMAT_R10G10B10A2_UNORM, 0, D3D12_APPEND_ALIGNED_ELEMENT });
+    if (tangent.get())
+    {
+        OutputElements.push_back({ "TANGENT", 0, DXGI_FORMAT_R10G10B10A2_UNORM, 0, D3D12_APPEND_ALIGNED_ELEMENT });
+        outPrim.psoFlags |= PSOFlags::kHasTangent;
+    }
+    if (texcoord0.get())
+    {
+        OutputElements.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT });
+        outPrim.psoFlags |= PSOFlags::kHasUV0;
+    }
+    if (texcoord1.get())
+    {
+        OutputElements.push_back({ "TEXCOORD", 1, DXGI_FORMAT_R16G16_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT });
+        outPrim.psoFlags |= PSOFlags::kHasUV1;
+    }
+
+    if (material.alphaBlend)
+        outPrim.psoFlags |= PSOFlags::kAlphaBlend;
+    if (material.alphaTest)
+        outPrim.psoFlags |= PSOFlags::kAlphaTest;
+    if (material.twoSided)
+        outPrim.psoFlags |= PSOFlags::kTwoSided;
+
+    D3D12_INPUT_LAYOUT_DESC layout = { OutputElements.data(), (uint32_t)OutputElements.size() };
+
+    VBWriter vbw;
+    vbw.Initialize(layout);
+
+    uint32_t offsets[10];
+    uint32_t strides[D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
+    ComputeInputLayout(layout, offsets, strides);
+    uint32_t stride = strides[0];
+
+    outPrim.VB = std::make_shared<std::vector<Utility::byte>>(stride * vertexCount);
+    ASSERT_SUCCEEDED(vbw.AddStream(outPrim.VB->data(), vertexCount, 0, stride));
+
+    vbw.Write(position.get(), "POSITION", 0, vertexCount);
+    vbw.Write(normal.get(), "NORMAL", 0, vertexCount, true);
+    if (tangent.get())
+        vbw.Write(tangent.get(), "TANGENT", 0, vertexCount, true);
+    if (texcoord0.get())
+        vbw.Write(texcoord0.get(), "TEXCOORD", 0, vertexCount);
+    if (texcoord1.get())
+        vbw.Write(texcoord1.get(), "TEXCOORD", 1, vertexCount);
+
+
+    // Now write a VB for positions only (or positions and UV when alpha testing)
+    uint32_t depthStride = 12;
+    std::vector<D3D12_INPUT_ELEMENT_DESC> DepthElements;
+    DepthElements.push_back({ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT });
+    if (material.alphaTest)
+    {
+        depthStride += 4;
+        DepthElements.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT });
+    }
+
+
+    VBWriter dvbw;
+    dvbw.Initialize({ DepthElements.data(), (uint32_t)DepthElements.size() });
+
+    outPrim.DepthVB = std::make_shared<std::vector<Utility::byte>>(depthStride * vertexCount);
+    ASSERT_SUCCEEDED(dvbw.AddStream(outPrim.DepthVB->data(), vertexCount, 0, depthStride));
+
+    dvbw.Write(position.get(), "POSITION", 0, vertexCount);
+    if (material.alphaTest)
+    {
+        dvbw.Write(material.baseColorUV ? texcoord1.get() : texcoord0.get(), "TEXCOORD", 0, vertexCount);
+    }
+
+
+    ASSERT(material.index < 0x8000, "Only 15-bit material indices allowed");
+
+    outPrim.vertexStride = (uint16_t)stride;
+    outPrim.index32 = b32BitIndices ? 1 : 0;
+    outPrim.materialIdx = material.index;
+
+    outPrim.primCount = indexCount;
+
+    // TODO:  Generate optimized depth-only streams
 }
 

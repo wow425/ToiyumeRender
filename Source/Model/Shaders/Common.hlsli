@@ -1,6 +1,9 @@
 ﻿#ifndef __COMMON_HLSLI__
 #define __COMMON_HLSLI__
 
+// 1. 全局约定：所有矩阵默认行主序，适配 C++ DirectXMath
+#pragma pack_matrix(row_major) 
+
 #pragma warning(disable : 3557) // single-iteration loop
 
 // 1.shader编译时优化资源布局。2. 编译时验证

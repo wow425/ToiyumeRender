@@ -4,7 +4,8 @@
 #pragma once
 
 #include "glTF.h"
-
+#include "Math/BoundingSphere.h"
+#include "Math/BoundingBox.h"   
 #include <cstdint>
 #include <string>
 
@@ -14,6 +15,10 @@ namespace Renderer
 
     struct Primitive
     {
+        BoundingSphere m_BoundsLS;  // local space bounds
+        BoundingSphere m_BoundsOS;  // object space bounds
+        AxisAlignedBox m_BBoxLS;       // local space AABB
+        AxisAlignedBox m_BBoxOS;       // object space AABB
         Utility::ByteArray VB;
         Utility::ByteArray IB;
         Utility::ByteArray DepthVB;

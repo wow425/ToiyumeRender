@@ -37,6 +37,8 @@ namespace Renderer
     // 
     struct ModelData
     {
+        BoundingSphere m_BoundingSphere;
+        AxisAlignedBox m_BoundingBox;
         std::vector<::byte> m_GeometryData; // 几何数据
         std::vector<MaterialTextureData> m_MaterialTextures; // 材质纹理描述
         std::vector<MaterialConstantData> m_MaterialConstants; // 材质常量数据
@@ -57,6 +59,7 @@ namespace Renderer
         uint32_t numTextures;
         uint32_t stringTableSize;
         uint32_t geometrySize;
+        float    boundingSphere[4];
         float    minPos[3];
         float    maxPos[3];
     };
@@ -66,7 +69,9 @@ namespace Renderer
         std::vector < ::byte >& bufferMemory,
         glTF::Mesh& srcMesh,
         uint32_t matrixIdx,
-        const Matrix4& localToObject
+        const Matrix4& localToObject,
+        BoundingSphere& boundingSphere,
+        AxisAlignedBox& boundingBox
     );
 
     bool BuildModel(ModelData& model, const glTF::Asset& asset, int sceneIdx = -1);

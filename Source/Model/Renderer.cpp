@@ -55,6 +55,7 @@ void Renderer::Initialize(void)
     //m_RootSig[kSkinMatrices].InitAsBufferSRV(20, D3D12_SHADER_VISIBILITY_VERTEX);
     m_RootSig.Finalize(L"RootSig", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
+
     DXGI_FORMAT ColorFormat = g_SceneColorBuffer.GetFormat();
     DXGI_FORMAT DepthFormat = g_SceneDepthBuffer.GetFormat();
     // 构建输入布局
@@ -84,7 +85,7 @@ void Renderer::Initialize(void)
     m_DefaultPSO.SetRootSignature(m_RootSig);                                           // 根签名
     m_DefaultPSO.SetRasterizerState(RasterizerDefault);                                 // 光栅状态
     m_DefaultPSO.SetBlendState(BlendDisable);                                           // 混合模式     默认关闭
-    m_DefaultPSO.SetDepthStencilState(DepthStateReadWrite);                              // 深度模板状态 
+    m_DefaultPSO.SetDepthStencilState(DepthStateReadWrite);                              // 深度模板状态 DepthStateDisabled  DepthStateReadWrite
     m_DefaultPSO.SetInputLayout(0, nullptr);                                            // 输入布局
     m_DefaultPSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);      // 图元拓扑
     m_DefaultPSO.SetRenderTargetFormats(1, &ColorFormat, DepthFormat);                  // RTV绑定
@@ -261,13 +262,8 @@ void MeshSorter::RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalCon
     // context.SetDescriptorTable(kCommonSRVs, m_CommonTextures);
 
     // Set common shader constants
-
-    auto t = m_Camera->GetViewMatrix();
-    auto t1 = m_Camera->GetProjMatrix();
-
     globals.ViewProjMatrix = m_Camera->GetViewProjMatrix(); // cpu端采用行向量，不转置，shader端也采用行向量写法
     globals.CameraPos = m_Camera->GetPosition();
-
     context.SetDynamicConstantBufferView(kCommonCBV, sizeof(GlobalConstants), &globals);
 
     //

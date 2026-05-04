@@ -24,7 +24,7 @@ cbuffer MaterialConstants : register(b0)
 
 cbuffer GlobalConstants : register(b1) // 已核对cpp端结构体定义顺序
 {
-    float4x4 ViewProj;
+    row_major float4x4 ViewProj;
     float3 ViewerPos;
 }
 
@@ -54,5 +54,5 @@ float4 main(VSOutput vsOutput) : SV_Target0
     float4 baseColor = baseColorFactor * baseColorTexture.Sample(baseColorSampler, vsOutput.uv0);
 
     return float4(baseColor.rgb, 1.0);
-    //return float4(1.0f, 0.0f, 0.0f, 1.0f);
+    // return float4(1, 0, 0, 1);
 }

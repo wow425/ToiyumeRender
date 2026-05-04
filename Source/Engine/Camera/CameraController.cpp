@@ -17,14 +17,14 @@ FlyingFPSCamera::FlyingFPSCamera(Camera& camera, Vector3 worldUp) : CameraContro
 
     m_HorizontalLookSensitivity = 2.0f;
     m_VerticalLookSensitivity = 2.0f;
-    m_MoveSpeed = 100.0f;
-    m_StrafeSpeed = 100.0f;
+    m_MoveSpeed = 1.0f; // 前进/后退速度
+    m_StrafeSpeed = 1.0f; // 横向平移速度
     m_MouseSensitivityX = 1.0f;
     m_MouseSensitivityY = 1.0f;
 
-    m_CurrentPitch = ASin(Dot(camera.GetForwardVec(), m_WorldUp));
+    m_CurrentPitch = ASin(Dot(camera.GetLook(), m_WorldUp));
 
-    Vector3 forward = Normalize(Cross(camera.GetRightVec(), m_WorldUp));
+    Vector3 forward = Normalize(Cross(camera.GetRight(), m_WorldUp));
     m_CurrentHeading = ATan2(Dot(forward, m_WorldEast), Dot(forward, m_WorldNorth));
 
     m_FineMovement = false;
@@ -57,16 +57,19 @@ void FlyingFPSCamera::Update(float deltaTime)
 
     float yaw = GameInput::GetTimeCorrectedAnalogInput(GameInput::kAnalogRightStickX) * m_HorizontalLookSensitivity * panScale;
     float pitch = GameInput::GetTimeCorrectedAnalogInput(GameInput::kAnalogRightStickY) * m_VerticalLookSensitivity * panScale;
+
     float forward = m_MoveSpeed * speedScale * (
         GameInput::GetTimeCorrectedAnalogInput(GameInput::kAnalogLeftStickY) +
         (GameInput::IsPressed(GameInput::kKey_w) ? deltaTime : 0.0f) +
         (GameInput::IsPressed(GameInput::kKey_s) ? -deltaTime : 0.0f)
         );
+
     float strafe = m_StrafeSpeed * speedScale * (
         GameInput::GetTimeCorrectedAnalogInput(GameInput::kAnalogLeftStickX) +
         (GameInput::IsPressed(GameInput::kKey_d) ? deltaTime : 0.0f) +
         (GameInput::IsPressed(GameInput::kKey_a) ? -deltaTime : 0.0f)
         );
+
     float ascent = m_StrafeSpeed * speedScale * (
         GameInput::GetTimeCorrectedAnalogInput(GameInput::kAnalogRightTrigger) -
         GameInput::GetTimeCorrectedAnalogInput(GameInput::kAnalogLeftTrigger) +
@@ -83,7 +86,6 @@ void FlyingFPSCamera::Update(float deltaTime)
         ApplyMomentum(m_LastAscent, ascent, deltaTime);
     }
 
-    // don't apply momentum to mouse inputs
     yaw += GameInput::GetAnalogInput(GameInput::kAnalogMouseX) * m_MouseSensitivityX;
     pitch += GameInput::GetAnalogInput(GameInput::kAnalogMouseY) * m_MouseSensitivityY;
 
@@ -97,9 +99,16 @@ void FlyingFPSCamera::Update(float deltaTime)
     else if (m_CurrentHeading <= -XM_PI)
         m_CurrentHeading += XM_2PI;
 
-    Matrix3 orientation = Matrix3(m_WorldEast, m_WorldUp, m_WorldNorth) * Matrix3::MakeYRotation(m_CurrentHeading) * Matrix3::MakeXRotation(m_CurrentPitch);
-    Vector3 position = orientation * Vector3(strafe, ascent, forward) + m_TargetCamera.GetPosition();
-    m_TargetCamera.SetTransform(AffineTransform(orientation, position));
+    Vector3 look = BuildLookDirection(m_WorldEast, m_WorldUp, m_WorldNorth, m_CurrentHeading, m_CurrentPitch);
+
+    // FPS 飞行相机：沿当前朝向移动
+    Vector3 right = Normalize(Cross(look, m_WorldUp));
+    Vector3 up = Normalize(Cross(right, look));
+
+    Vector3 position = m_TargetCamera.GetPosition();
+    position += right * strafe + up * ascent + look * forward;
+
+    m_TargetCamera.SetEyeAtUp(position, position + look, m_WorldUp);
     m_TargetCamera.Update();
 }
 
@@ -115,12 +124,9 @@ void FlyingFPSCamera::SetHeadingPitchAndPosition(float heading, float pitch, con
     m_CurrentPitch = XMMin(XM_PIDIV2, m_CurrentPitch);
     m_CurrentPitch = XMMax(-XM_PIDIV2, m_CurrentPitch);
 
-    Matrix3 orientation =
-        Matrix3(m_WorldEast, m_WorldUp, -m_WorldNorth) *
-        Matrix3::MakeYRotation(m_CurrentHeading) *
-        Matrix3::MakeXRotation(m_CurrentPitch);
+    Vector3 look = BuildLookDirection(m_WorldEast, m_WorldUp, m_WorldNorth, m_CurrentHeading, m_CurrentPitch);
 
-    m_TargetCamera.SetTransform(AffineTransform(orientation, position));
+    m_TargetCamera.SetEyeAtUp(position, position + look, m_WorldUp);
     m_TargetCamera.Update();
 }
 

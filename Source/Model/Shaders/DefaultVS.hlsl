@@ -1,4 +1,10 @@
-﻿#include "Common.hlsli"
+﻿
+// CPU端采用行向量，不转置，shader端也采用行向量写法, 矩阵使用row_major,都用左乘
+//
+//
+//
+
+#include "Common.hlsli"
 
 cbuffer MeshConstants : register(b0)
 {
@@ -37,12 +43,8 @@ struct VSOutput
     float3 worldPos : TEXCOORD2;
 };
 
-// HLSL采用行向量，从左往右顺序，v * matrix
-// DX 左手系规定：
-// - 世界空间：+X右，+Y上，+Z前
-// - 观察空间：+X右，+Y上，+Z后（指向相机后方）
-// - 裁剪空间：NDC范围 [-1,1]（X,Y），[0,1]（Z在DX中）
-// CPU端采用行向量，不转置，shader端采用行向量写法
+
+
 
 // 属性语法。[Name(Argument)]。 提供关于xx的额外信息，此为根签名绑定该函数
 [RootSignature(Renderer_RootSig)]
@@ -54,9 +56,8 @@ VSOutput main(VSInput vsInput)
 #ifndef NO_TANGENT_FRAME
     float4 tangent = vsInput.tangent * 2 - 1;
 #endif
-    // object space -> world space
+
     vsOutput.worldPos = mul(float4(vsInput.position, 1.0), WorldMatrix).xyz;
-    // world space -> clip space
     vsOutput.position = mul(float4(vsOutput.worldPos, 1.0), ViewProjMatrix);
 
     vsOutput.normal = mul(normal, (float3x3) WorldIT);

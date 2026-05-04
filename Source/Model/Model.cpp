@@ -54,6 +54,8 @@ void ModelInstance::GatherRenderables(MeshSorter& sorter) const
     }
 }
 
+ModelInstance::ModelInstance() : m_Locator(kIdentity) {}
+
 ModelInstance::ModelInstance(std::shared_ptr<const Model> sourceModel)
     : m_Model(sourceModel), m_Locator(kIdentity)
 {
@@ -82,6 +84,12 @@ ModelInstance& ModelInstance::operator= (std::shared_ptr<const Model> sourceMode
 {
     m_Model = sourceModel;
     m_Locator = UniformTransform(kIdentity);
+
+
+    auto s = m_Locator.GetScale();
+    auto t = m_Locator.GetTranslation();
+
+
     if (sourceModel == nullptr)
     {
         m_MeshConstantsCPU.Destroy();
@@ -119,6 +127,12 @@ void ModelInstance::Update(GraphicsContext& gfxContext, float deltaTime)
         cbv.World = transform;
         cbv.WorldIT = InverseTranspose(transform.Get3x3());
 
+        //m_BoundingSphereTransforms[Node->matrixIdx] = AffineTransform(
+        //    (Vector3)transform.GetX(),
+        //    (Vector3)transform.GetY(),
+        //    (Vector3)transform.GetZ(),
+        //    (Vector3)transform.GetW());
+
         // 维护矩阵栈以正确处理树状层级
         if (Node->hasChildren) // 有子（下一层）0
         {
@@ -155,6 +169,43 @@ void ModelInstance::Update(GraphicsContext& gfxContext, float deltaTime)
     gfxContext.TransitionResource(m_MeshConstantsGPU, D3D12_RESOURCE_STATE_GENERIC_READ);
 }
 
+
+void ModelInstance::Resize(float newRadius)
+{
+    if (m_Model == nullptr)
+        return;
+
+    m_Locator.SetScale(newRadius / m_Model->m_BoundingSphere.GetRadius());
+}
+
+Vector3 ModelInstance::GetCenter() const
+{
+    if (m_Model == nullptr)
+        return Vector3(kOrigin);
+
+    return m_Locator * m_Model->m_BoundingSphere.GetCenter();
+}
+
+Scalar ModelInstance::GetRadius() const
+{
+    if (m_Model == nullptr)
+        return Scalar(kZero);
+
+    // return m_Locator.GetScale() * m_Model->m_BoundingSphere.GetRadius();
+    return  m_Model->m_BoundingSphere.GetRadius();
+}
+
+
+Math::OrientedBox ModelInstance::GetBoundingBox() const
+{
+    if (m_Model == nullptr)
+        return AxisAlignedBox(Vector3(kZero), Vector3(kZero));
+
+    //Utility::Printf(L"m_Locator: [%f, %f, %f]\n", m_Locator.GetRotation(), m_Locator.GetScale(), m_Locator.GetTranslation());
+    //return m_Locator * m_Model->m_BoundingBox;
+
+    return  m_Model->m_BoundingBox;
+}
 
 
 

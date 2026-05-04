@@ -69,13 +69,8 @@ void Tooiyume::Startup(void)
 
     m_ModelInst = Renderer::LoadModel(L"D:/CS-Self-Study/Computer_Graphics/DX12/ToiyumeRender/Source/TooiyumeRender/Model/Saber/saber_emiya.gltf", forceRebuild);
 
-
-    Vector3 eye = Vector3(0, 0, 0);
-    Vector3 at = Vector3(0, 0, 1.0f);  
-    Vector3 up = Vector3(0, 1.0f, 0);
-    m_Camera.SetEyeAtUp(eye, at, up);
-
-    // 镜头设置
+    // Camera设置
+    m_Camera.SetEyeAtUp(Vector3(0.0f, 0.0f, 5.0f), Vector3(0.0f, 0.0f, -5.0f), Vector3(kYUnitVector));
     m_Camera.SetZRange(1.0f, 10000.0f);
     m_CameraController.reset(new FlyingFPSCamera(m_Camera, Vector3(kYUnitVector)));
 }
@@ -86,7 +81,7 @@ void Tooiyume::Update(float deltaT)
     // 性能分析，输入，镜头，模型更新，资源回收
 
     // 镜头常量数据更新
-    m_CameraController->Update(deltaT);
+    m_CameraController->Update(deltaT); // 要修改
 
     GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Update");
 
@@ -126,6 +121,7 @@ void Tooiyume::RenderScene(void)
     globals.ViewProjMatrix = m_Camera.GetViewProjMatrix();
     globals.CameraPos = m_Camera.GetPosition();
 
+
     gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, true); // 立刻执行转换
     gfxContext.ClearDepth(g_SceneDepthBuffer);
 
@@ -141,9 +137,9 @@ void Tooiyume::RenderScene(void)
     sorter.Sort();
 
     gfxContext.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
-    gfxContext.ClearColor(g_SceneColorBuffer);
-
     gfxContext.SetViewportAndScissor(viewport, scissor); // 设置视口和裁剪矩形
+
+    gfxContext.ClearColor(g_SceneColorBuffer);
     sorter.RenderMeshes(MeshSorter::kOpaque, gfxContext, globals); // 还没完成全套不用MeshSorter::kNumPasses
 
 

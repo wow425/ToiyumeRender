@@ -28,7 +28,9 @@ void Renderer::CompileMesh(
     std::vector<byte>& bufferMemory,
     glTF::Mesh& srcMesh,
     uint32_t matrixIdx,
-    const Matrix4& localToObject
+    const Matrix4& localToObject,
+    BoundingSphere& boundingSphere,
+    AxisAlignedBox& boundingBox
 )
 {
     // We still have a lot of work to do.  Now that we know about all of the primitives in this mesh
@@ -47,9 +49,12 @@ void Renderer::CompileMesh(
     for (uint32_t i = 0; i < primitives.size(); ++i)
     {
         OptimizeMesh(primitives[i], srcMesh.primitives[i], localToObject);
-
+        sphereOS = sphereOS.Union(primitives[i].m_BoundsOS);
+        bboxOS.AddBoundingBox(primitives[i].m_BBoxOS);
     }
 
+    boundingSphere = sphereOS;
+    boundingBox = bboxOS;
 
 
     std::map<uint32_t, std::vector<Primitive*>> renderMeshes;
@@ -149,6 +154,8 @@ void Renderer::CompileMesh(
 
 static uint32_t WalkGraph(
     std::vector<GraphNode>& sceneGraph,
+    BoundingSphere& modelBSphere,
+    AxisAlignedBox& modelBBox,
     std::vector<Mesh*>& meshList,
     std::vector<byte>& bufferMemory,
     const std::vector<glTF::Node*>& siblings,
@@ -186,10 +193,13 @@ static uint32_t WalkGraph(
 
         const Matrix4 LocalXform = xform * thisGraphNode.xform;
 
-        if (curNode->mesh != nullptr)
+        if (!curNode->pointsToCamera && curNode->mesh != nullptr)
         {
-            CompileMesh(meshList, bufferMemory, *curNode->mesh, curPos, LocalXform);
-
+            BoundingSphere sphereOS;
+            AxisAlignedBox boxOS;
+            CompileMesh(meshList, bufferMemory, *curNode->mesh, curPos, LocalXform, sphereOS, boxOS);
+            modelBSphere = modelBSphere.Union(sphereOS);
+            modelBBox.AddBoundingBox(boxOS);
         }
 
         uint32_t nextPos = curPos + 1;
@@ -197,7 +207,7 @@ static uint32_t WalkGraph(
         if (curNode->children.size() > 0)
         {
             thisGraphNode.hasChildren = 1;
-            nextPos = WalkGraph(sceneGraph, meshList, bufferMemory, curNode->children, nextPos, LocalXform);
+            nextPos = WalkGraph(sceneGraph, modelBSphere, modelBBox, meshList, bufferMemory, curNode->children, nextPos, LocalXform);
         }
 
         // Are there more siblings?
@@ -381,11 +391,10 @@ bool Renderer::BuildModel(ModelData& model, const glTF::Asset& asset, int sceneI
     // Aggregate all of the vertex and index buffers in this unified buffer
     std::vector<byte>& bufferMemory = model.m_GeometryData;
 
-
-    uint32_t numNodes = WalkGraph(model.m_SceneGraph, model.m_Meshes, bufferMemory, scene->nodes, 0, Matrix4(kIdentity));
+    model.m_BoundingSphere = BoundingSphere(kZero);
+    model.m_BoundingBox = AxisAlignedBox(kZero);
+    uint32_t numNodes = WalkGraph(model.m_SceneGraph, model.m_BoundingSphere, model.m_BoundingBox, model.m_Meshes, bufferMemory, scene->nodes, 0, Matrix4(kIdentity));
     model.m_SceneGraph.resize(numNodes);
-
-
 
     return true;
 }
@@ -411,6 +420,16 @@ bool Renderer::SaveModel(const std::wstring& filePath, const ModelData& data)
         header.stringTableSize += (uint32_t)str.size() + 1;
     header.geometrySize = (uint32_t)data.m_GeometryData.size();
 
+    header.boundingSphere[0] = data.m_BoundingSphere.GetCenter().GetX();
+    header.boundingSphere[1] = data.m_BoundingSphere.GetCenter().GetY();
+    header.boundingSphere[2] = data.m_BoundingSphere.GetCenter().GetZ();
+    header.boundingSphere[3] = data.m_BoundingSphere.GetRadius();
+    header.minPos[0] = data.m_BoundingBox.GetMin().GetX();
+    header.minPos[1] = data.m_BoundingBox.GetMin().GetY();
+    header.minPos[2] = data.m_BoundingBox.GetMin().GetZ();
+    header.maxPos[0] = data.m_BoundingBox.GetMax().GetX();
+    header.maxPos[1] = data.m_BoundingBox.GetMax().GetY();
+    header.maxPos[2] = data.m_BoundingBox.GetMax().GetZ();
 
     outFile.write((char*)&header, sizeof(FileHeader));
     outFile.write((char*)data.m_GeometryData.data(), header.geometrySize);
@@ -422,7 +441,6 @@ bool Renderer::SaveModel(const std::wstring& filePath, const ModelData& data)
     for (uint32_t i = 0; i < header.numTextures; ++i)
         outFile << data.m_TextureNames[i] << '\0';
     outFile.write((char*)data.m_TextureOptions.data(), header.numTextures * sizeof(uint8_t));
-
 
 
 

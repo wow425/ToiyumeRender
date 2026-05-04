@@ -33,6 +33,8 @@ namespace PSOFlags
         kHasUV1 = 0x010,
         kAlphaBlend = 0x020,
         kAlphaTest = 0x040,
+        kTwoSided = 0x080,
+        kHasSkin = 0x100,  // Implies having indices and weights
     };
 }
 
@@ -91,6 +93,8 @@ public:
 
     void GatherRenderables(Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const;
 
+    Math::BoundingSphere m_BoundingSphere; // Object-space bounding sphere
+    Math::AxisAlignedBox m_BoundingBox;
 
     ByteAddressBuffer m_DataBuffer;         // 网格数据
     ByteAddressBuffer m_MaterialConstants;  // 材质CB
@@ -107,7 +111,7 @@ protected:
 class ModelInstance
 {
 public:
-    ModelInstance() {}
+    ModelInstance();
     ModelInstance(std::shared_ptr<const Model> sourceModel);
     ModelInstance(const ModelInstance& modelInstance);
 
@@ -124,11 +128,16 @@ public:
     void Update(GraphicsContext& gfxContext, float deltaTime);
     void GatherRenderables(Renderer::MeshSorter& sorter) const;
 
+    void Resize(float newRadius);
+    Math::Vector3 GetCenter() const;
+    Math::Scalar GetRadius() const;
+    Math::BoundingSphere GetBoundingSphere() const;
+    Math::OrientedBox GetBoundingBox() const;
 
 private:
     std::shared_ptr<const Model> m_Model;
     UploadBuffer m_MeshConstantsCPU;
     ByteAddressBuffer m_MeshConstantsGPU;
-
+    std::unique_ptr<Math::AffineTransform[]> m_BoundingSphereTransforms;
     Math::UniformTransform m_Locator;
 };

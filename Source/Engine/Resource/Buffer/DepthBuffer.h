@@ -1,11 +1,11 @@
-#pragma once
+﻿#pragma once
 
 #include "PixelBuffer.h"
 
 class DepthBuffer : public PixelBuffer
 {
 public:
-    DepthBuffer(float ClearDepth = 0.0f, uint8_t ClearStencil = 0)
+    DepthBuffer(float ClearDepth = 1.0f, uint8_t ClearStencil = 0)
         : m_ClearDepth(ClearDepth), m_ClearStencil(ClearStencil)
     {
         m_hDSV[0].ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
@@ -45,7 +45,7 @@ protected:
     //DSV,OM（output merger）阶段用
     // A,B。读写与只读组合排并
     // 0双读写。1.只读深度，读写模板。2.读写深度，只读模板。3.双只读
-    D3D12_CPU_DESCRIPTOR_HANDLE m_hDSV[4]; 
+    D3D12_CPU_DESCRIPTOR_HANDLE m_hDSV[4];
     D3D12_CPU_DESCRIPTOR_HANDLE m_hDepthSRV; // 深度SRV
     D3D12_CPU_DESCRIPTOR_HANDLE m_hStencilSRV; // 模板SRV
 };

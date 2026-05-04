@@ -1,5 +1,9 @@
 ﻿# 📦 MiniEngine Core 模块结构指南
 
+## 0. 数学矩阵规定
+* 采用右手坐标系，CPP端跟shader端都采用行主序，上传前不转置，shader端用row_major，都采用左乘矩阵乘法
+* FrontCounterClockwise = true，投影矩阵翻转z
+
 
 ---
 
