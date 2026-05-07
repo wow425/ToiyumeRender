@@ -220,6 +220,26 @@ DX12 渲染器学习与改造
 </p>
 </details>
 
+<details>
+<summary><b>2026-05-5: </b></summary>
+<p> 休息 <p> 
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-6: </b></summary>
+<p>学习延迟渲染管线理论<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-7: </b></summary>
+<p>克隆Delt06DX12学习项目https://github.com/Delt06/dx12-renderer?utm_source=chatgpt.com<p>
+<p> 边学习Miniengine完全实现Graphics API驱动层，和边学习Delt06DX12实现GPU Infrastructure抽象层，RenderGraph帧图跟Render Pass调度层<p>
+<p> 接下来学习重心转向Delt06DX12实现上层抽象和实现延迟渲染全流程<p>
+</p>
+</details>
+
 <!-- 月总结 -->
 <h4 id="2026-05-月总结">📝 2026-05 月总结</h4>
 <p>完成渲染器框架搭建</p>

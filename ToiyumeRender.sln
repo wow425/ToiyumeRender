@@ -16,8 +16,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TooiyumeRender", "Source\To
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Model", "Source\Model\Model.vcxproj", "{3E2F08AC-0937-4435-99D2-53B5968E27F8}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "App", "Source\App\App.vcxproj", "{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -50,14 +48,6 @@ Global
 		{3E2F08AC-0937-4435-99D2-53B5968E27F8}.Release|x64.Build.0 = Release|x64
 		{3E2F08AC-0937-4435-99D2-53B5968E27F8}.Release|x86.ActiveCfg = Release|Win32
 		{3E2F08AC-0937-4435-99D2-53B5968E27F8}.Release|x86.Build.0 = Release|Win32
-		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Debug|x64.ActiveCfg = Debug|x64
-		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Debug|x64.Build.0 = Debug|x64
-		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Debug|x86.ActiveCfg = Debug|Win32
-		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Debug|x86.Build.0 = Debug|Win32
-		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Release|x64.ActiveCfg = Release|x64
-		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Release|x64.Build.0 = Release|x64
-		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Release|x86.ActiveCfg = Release|Win32
-		{5D5CC1B3-B818-4AAA-BE47-4C28401106FE}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
