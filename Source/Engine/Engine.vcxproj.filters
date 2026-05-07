@@ -15,281 +15,354 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Resource\GpuResource.h">
+    <ClInclude Include="03_RHI\Resource\GpuResource.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Application\PCH.h">
+    <ClInclude Include="01_Application\PCH.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\d3dx12.h">
+    <ClInclude Include="03_RHI\d3dx12.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\Buffer\UploadBuffer.h">
+    <ClInclude Include="04_GPUInfrastructure\Upload\UploadBuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Utility\Utility.h">
+    <ClInclude Include="12_Utility\Utility.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\GraphicsCore.h">
+    <ClInclude Include="03_RHI\GraphicsCore.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\Command\CommandListManager.h">
+    <ClInclude Include="03_RHI\CommandSystem\CommandListManager.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\Command\CommandContext.h">
+    <ClInclude Include="03_RHI\CommandSystem\CommandContext.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\Command\CommandAllocatorPool.h">
+    <ClInclude Include="03_RHI\CommandSystem\CommandAllocatorPool.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\Buffer\GpuBuffer.h">
+    <ClInclude Include="03_RHI\Resource\GpuBuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\ResourceManager\BufferManager.h">
+    <ClInclude Include="05_ResourceSystem\01_Manager\BufferManager.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\Buffer\ColorBuffer.h">
+    <ClInclude Include="03_RHI\Resource\ColorBuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\Buffer\DepthBuffer.h">
+    <ClInclude Include="03_RHI\Resource\DepthBuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\Buffer\ShadowBuffer.h">
+    <ClInclude Include="04_GPUInfrastructure\Upload\ShadowBuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\Common.h">
+    <ClInclude Include="13_Math\Common.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\Texture\Texture.h">
+    <ClInclude Include="03_RHI\Resource\Texture.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Utility\DDSTextureLoader.h">
+    <ClInclude Include="12_Utility\DDSTextureLoader.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Utility\dds.h">
+    <ClInclude Include="12_Utility\dds.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Utility\assert.h">
+    <ClInclude Include="00_Core\assert.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\MemoryAllocator\LinearAllocator.h">
+    <ClInclude Include="04_GPUInfrastructure\MemoryAllocator\LinearAllocator.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\Buffer\PixelBuffer.h">
+    <ClInclude Include="03_RHI\Resource\PixelBuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\Buffer\ReadbackBuffer.h">
+    <ClInclude Include="04_GPUInfrastructure\Upload\ReadbackBuffer.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Utility\Color.h">
+    <ClInclude Include="12_Utility\Color.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\PipelineState\samplerManager.h">
+    <ClInclude Include="03_RHI\Pipeline\samplerManager.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\PipelineState\GraphicsCommon.h">
+    <ClInclude Include="03_RHI\Pipeline\GraphicsCommon.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\BoundingBox.h">
+    <ClInclude Include="13_Math\BoundingBox.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\BoundingPlane.h">
+    <ClInclude Include="13_Math\BoundingPlane.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\BoundingSphere.h">
+    <ClInclude Include="13_Math\BoundingSphere.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\Frustum.h">
+    <ClInclude Include="13_Math\Frustum.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\Matrix3.h">
+    <ClInclude Include="13_Math\Matrix3.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\Matrix4.h">
+    <ClInclude Include="13_Math\Matrix4.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\Quaternion.h">
+    <ClInclude Include="13_Math\Quaternion.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\Random.h">
+    <ClInclude Include="13_Math\Random.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\Scalar.h">
+    <ClInclude Include="13_Math\Scalar.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\Transform.h">
+    <ClInclude Include="13_Math\Transform.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\Vector.h">
+    <ClInclude Include="13_Math\Vector.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Utility\Hash.h">
+    <ClInclude Include="12_Utility\Hash.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\DescriptorHeap\DescriptorHeap.h">
+    <ClInclude Include="03_RHI\DescriptorSystem\DescriptorHeap.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Utility\FileUtility.h">
+    <ClInclude Include="12_Utility\FileUtility.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Resource\ResourceManager\TextureManager.h">
+    <ClInclude Include="05_ResourceSystem\01_Manager\TextureManager.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Math\VectorMath.h">
+    <ClInclude Include="13_Math\VectorMath.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\DescriptorHeap\DynamicDescriptorHeap.h">
+    <ClInclude Include="04_GPUInfrastructure\Dynamic Descriptor\DynamicDescriptorHeap.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\PipelineState\RootSignature.h">
+    <ClInclude Include="03_RHI\Pipeline\RootSignature.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\PipelineState\PipelineState.h">
+    <ClInclude Include="03_RHI\Pipeline\PipelineState.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Application\GameCore.h">
+    <ClInclude Include="01_Application\GameCore.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Application\Display.h">
+    <ClInclude Include="01_Application\Display.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Application\SystemTime.h">
+    <ClInclude Include="01_Application\SystemTime.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="RHI\Command\CommandSignature.h">
+    <ClInclude Include="03_RHI\CommandSystem\CommandSignature.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Camera\Camera.h">
+    <ClInclude Include="02_Camera\Camera.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Camera\CameraController.h">
+    <ClInclude Include="02_Camera\CameraController.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Application\GameInput.h">
+    <ClInclude Include="01_Application\GameInput.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Utility\CommandLineArg.h">
+    <ClInclude Include="00_Core\CommandLineArg.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="05_ResourceSystem\glTF.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="05_ResourceSystem\ModelLoader.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="10_Scene\Model.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="05_ResourceSystem\TextureConvert.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="10_Scene\MeshConvert.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="12_Utility\json.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="12_Utility\IndexOptimizePostTransform.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="09_Renderer\Renderer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="05_ResourceSystem\00_Buffers\ConstantBuffers.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Resource\GpuResource.cpp">
+    <ClCompile Include="03_RHI\Resource\GpuResource.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Application\PCH.cpp">
+    <ClCompile Include="01_Application\PCH.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\Buffer\UploadBuffer.cpp">
+    <ClCompile Include="04_GPUInfrastructure\Upload\UploadBuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Utility\Utility.cpp">
+    <ClCompile Include="12_Utility\Utility.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="RHI\GraphicsCore.cpp">
+    <ClCompile Include="03_RHI\GraphicsCore.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="RHI\Command\CommandListManager.cpp">
+    <ClCompile Include="03_RHI\CommandSystem\CommandListManager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="RHI\Command\CommandContext.cpp">
+    <ClCompile Include="03_RHI\CommandSystem\CommandContext.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="RHI\Command\CommandAllocatorPool.cpp">
+    <ClCompile Include="03_RHI\CommandSystem\CommandAllocatorPool.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\Buffer\GpuBuffer.cpp">
+    <ClCompile Include="03_RHI\Resource\GpuBuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\ResourceManager\BufferManager.cpp">
+    <ClCompile Include="05_ResourceSystem\01_Manager\BufferManager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\Buffer\ColorBuffer.cpp">
+    <ClCompile Include="03_RHI\Resource\ColorBuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\Buffer\DepthBuffer.cpp">
+    <ClCompile Include="03_RHI\Resource\DepthBuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\Buffer\ShadowBuffer.cpp">
+    <ClCompile Include="04_GPUInfrastructure\Upload\ShadowBuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\Texture\Texture.cpp">
+    <ClCompile Include="03_RHI\Resource\Texture.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Utility\DDSTextureLoader.cpp">
+    <ClCompile Include="12_Utility\DDSTextureLoader.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\MemoryAllocator\LinearAllocator.cpp">
+    <ClCompile Include="04_GPUInfrastructure\MemoryAllocator\LinearAllocator.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\Buffer\PixelBuffer.cpp">
+    <ClCompile Include="03_RHI\Resource\PixelBuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\Buffer\ReadbackBuffer.cpp">
+    <ClCompile Include="04_GPUInfrastructure\Upload\ReadbackBuffer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="RHI\PipelineState\samplerManager.cpp">
+    <ClCompile Include="03_RHI\Pipeline\samplerManager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="RHI\PipelineState\GraphicsCommon.cpp">
+    <ClCompile Include="03_RHI\Pipeline\GraphicsCommon.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Math\BoundingSphere.cpp">
+    <ClCompile Include="13_Math\BoundingSphere.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Math\Frustum.cpp">
+    <ClCompile Include="13_Math\Frustum.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Math\Random.cpp">
+    <ClCompile Include="13_Math\Random.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="RHI\DescriptorHeap\DescriptorHeap.cpp">
+    <ClCompile Include="03_RHI\DescriptorSystem\DescriptorHeap.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Utility\FileUtility.cpp">
+    <ClCompile Include="12_Utility\FileUtility.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Resource\ResourceManager\TextureManager.cpp">
+    <ClCompile Include="05_ResourceSystem\01_Manager\TextureManager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="RHI\DescriptorHeap\DynamicDescriptorHeap.cpp">
+    <ClCompile Include="04_GPUInfrastructure\Dynamic Descriptor\DynamicDescriptorHeap.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="RHI\PipelineState\RootSignature.cpp">
+    <ClCompile Include="03_RHI\Pipeline\RootSignature.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="RHI\PipelineState\PipelineState.cpp">
+    <ClCompile Include="03_RHI\Pipeline\PipelineState.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Application\GameCore.cpp">
+    <ClCompile Include="01_Application\GameCore.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Application\Display.cpp">
+    <ClCompile Include="01_Application\Display.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Application\SystemTime.cpp">
+    <ClCompile Include="01_Application\SystemTime.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="RHI\Command\CommandSignature.cpp">
+    <ClCompile Include="03_RHI\CommandSystem\CommandSignature.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Camera\Camera.cpp">
+    <ClCompile Include="02_Camera\Camera.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Camera\CameraController.cpp">
+    <ClCompile Include="02_Camera\CameraController.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Application\GameInput.cpp">
+    <ClCompile Include="01_Application\GameInput.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Utility\CommandLineArg.cpp">
+    <ClCompile Include="00_Core\CommandLineArg.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="04_GPUInfrastructure\State Tracking\ResourceStateTracker.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="05_ResourceSystem\glTF.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="05_ResourceSystem\ModelLoader.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="10_Scene\Model.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="05_ResourceSystem\TextureConvert.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="10_Scene\MeshConvert.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="10_Scene\ModelConvert.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="12_Utility\IndexOptimizePostTransform.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="09_Renderer\Renderer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="Math\Functions.inl">
+    <None Include="13_Math\Functions.inl">
       <Filter>头文件</Filter>
     </None>
     <None Include="packages.config" />
     <None Include="Engine.md" />
+    <None Include="01_Application\Application.md" />
+    <None Include="03_RHI\RHI.md" />
+    <None Include="04_GPUInfrastructure\GPUInfrastructure.md" />
+    <None Include="07_RenderPasses\RenderPasses.md" />
+    <None Include="08_RenderFeatures\RenderFeatures.md" />
+    <None Include="00_Core\Core.md" />
+    <None Include="02_Camera\Camera.md" />
+    <None Include="05_ResourceSystem\ResourceSystem.md" />
+    <None Include="06_RenderGraph\RenderGraph.md" />
+    <None Include="09_Renderer\Renderer.md" />
+    <None Include="10_Scene\Scene.md" />
+    <None Include="11_Shaders\Shaders.md" />
+    <None Include="12_Utility\Utility.md" />
+    <None Include="13_Math\Math.md" />
+    <None Include="11_Shaders\00_Common\Common.hlsli" />
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="11_Shaders\01_Default\DefaultPS.hlsl" />
+    <FxCompile Include="11_Shaders\01_Default\DefaultVS.hlsl" />
   </ItemGroup>
 </Project>

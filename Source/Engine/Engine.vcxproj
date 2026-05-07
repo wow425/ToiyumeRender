@@ -20,105 +20,181 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Camera\CameraController.h" />
-    <ClInclude Include="Camera\Camera.h" />
-    <ClInclude Include="Application\GameInput.h" />
-    <ClInclude Include="Utility\CommandLineArg.h" />
-    <ClInclude Include="RHI\Command\CommandSignature.h" />
-    <ClInclude Include="Resource\Buffer\ColorBuffer.h" />
-    <ClInclude Include="Resource\ResourceManager\BufferManager.h" />
-    <ClInclude Include="RHI\Command\CommandAllocatorPool.h" />
-    <ClInclude Include="RHI\Command\CommandContext.h" />
-    <ClInclude Include="RHI\Command\CommandListManager.h" />
-    <ClInclude Include="Resource\GpuResource.h" />
-    <ClInclude Include="Math\BoundingBox.h" />
-    <ClInclude Include="Math\BoundingPlane.h" />
-    <ClInclude Include="Math\BoundingSphere.h" />
-    <ClInclude Include="Math\Common.h" />
-    <ClInclude Include="Math\Frustum.h" />
-    <ClInclude Include="Math\Matrix3.h" />
-    <ClInclude Include="Math\Matrix4.h" />
-    <ClInclude Include="Math\Quaternion.h" />
-    <ClInclude Include="Math\Random.h" />
-    <ClInclude Include="Math\Scalar.h" />
-    <ClInclude Include="Math\Transform.h" />
-    <ClInclude Include="Math\Vector.h" />
-    <ClInclude Include="Utility\assert.h" />
-    <ClInclude Include="Utility\Color.h" />
-    <ClInclude Include="RHI\d3dx12.h" />
-    <ClInclude Include="Utility\dds.h" />
-    <ClInclude Include="Utility\Hash.h" />
-    <ClInclude Include="Application\PCH.h" />
-    <ClInclude Include="Resource\Buffer\UploadBuffer.h" />
-    <ClInclude Include="Utility\Utility.h" />
-    <ClInclude Include="RHI\GraphicsCore.h" />
-    <ClInclude Include="Resource\Buffer\GpuBuffer.h" />
-    <ClInclude Include="Resource\Buffer\DepthBuffer.h" />
-    <ClInclude Include="Resource\Buffer\ShadowBuffer.h" />
-    <ClInclude Include="Resource\Texture\Texture.h" />
-    <ClInclude Include="Utility\DDSTextureLoader.h" />
-    <ClInclude Include="Resource\MemoryAllocator\LinearAllocator.h" />
-    <ClInclude Include="Resource\Buffer\PixelBuffer.h" />
-    <ClInclude Include="Resource\Buffer\ReadbackBuffer.h" />
-    <ClInclude Include="RHI\PipelineState\samplerManager.h" />
-    <ClInclude Include="RHI\PipelineState\GraphicsCommon.h" />
-    <ClInclude Include="RHI\DescriptorHeap\DescriptorHeap.h" />
-    <ClInclude Include="Utility\FileUtility.h" />
-    <ClInclude Include="Resource\ResourceManager\TextureManager.h" />
-    <ClInclude Include="Math\VectorMath.h" />
-    <ClInclude Include="RHI\DescriptorHeap\DynamicDescriptorHeap.h" />
-    <ClInclude Include="RHI\PipelineState\RootSignature.h" />
-    <ClInclude Include="RHI\PipelineState\PipelineState.h" />
-    <ClInclude Include="Application\Display.h" />
-    <ClInclude Include="Application\GameCore.h" />
-    <ClInclude Include="Application\SystemTime.h" />
+    <ClInclude Include="02_Camera\CameraController.h" />
+    <ClInclude Include="02_Camera\Camera.h" />
+    <ClInclude Include="01_Application\GameInput.h" />
+    <ClInclude Include="05_ResourceSystem\00_Buffers\ConstantBuffers.h" />
+    <ClInclude Include="05_ResourceSystem\glTF.h" />
+    <ClInclude Include="09_Renderer\Renderer.h" />
+    <ClInclude Include="10_Scene\MeshConvert.h" />
+    <ClInclude Include="10_Scene\Model.h" />
+    <ClInclude Include="05_ResourceSystem\ModelLoader.h" />
+    <ClInclude Include="05_ResourceSystem\TextureConvert.h" />
+    <ClInclude Include="00_Core\CommandLineArg.h" />
+    <ClInclude Include="03_RHI\CommandSystem\CommandSignature.h" />
+    <ClInclude Include="03_RHI\Resource\ColorBuffer.h" />
+    <ClInclude Include="05_ResourceSystem\01_Manager\BufferManager.h" />
+    <ClInclude Include="03_RHI\CommandSystem\CommandAllocatorPool.h" />
+    <ClInclude Include="03_RHI\CommandSystem\CommandContext.h" />
+    <ClInclude Include="03_RHI\CommandSystem\CommandListManager.h" />
+    <ClInclude Include="03_RHI\Resource\GpuResource.h" />
+    <ClInclude Include="12_Utility\IndexOptimizePostTransform.h" />
+    <ClInclude Include="12_Utility\json.hpp" />
+    <ClInclude Include="13_Math\BoundingBox.h" />
+    <ClInclude Include="13_Math\BoundingPlane.h" />
+    <ClInclude Include="13_Math\BoundingSphere.h" />
+    <ClInclude Include="13_Math\Common.h" />
+    <ClInclude Include="13_Math\Frustum.h" />
+    <ClInclude Include="13_Math\Matrix3.h" />
+    <ClInclude Include="13_Math\Matrix4.h" />
+    <ClInclude Include="13_Math\Quaternion.h" />
+    <ClInclude Include="13_Math\Random.h" />
+    <ClInclude Include="13_Math\Scalar.h" />
+    <ClInclude Include="13_Math\Transform.h" />
+    <ClInclude Include="13_Math\Vector.h" />
+    <ClInclude Include="00_Core\assert.h" />
+    <ClInclude Include="12_Utility\Color.h" />
+    <ClInclude Include="03_RHI\d3dx12.h" />
+    <ClInclude Include="12_Utility\dds.h" />
+    <ClInclude Include="12_Utility\Hash.h" />
+    <ClInclude Include="01_Application\PCH.h" />
+    <ClInclude Include="04_GPUInfrastructure\Upload\UploadBuffer.h" />
+    <ClInclude Include="12_Utility\Utility.h" />
+    <ClInclude Include="03_RHI\GraphicsCore.h" />
+    <ClInclude Include="03_RHI\Resource\GpuBuffer.h" />
+    <ClInclude Include="03_RHI\Resource\DepthBuffer.h" />
+    <ClInclude Include="04_GPUInfrastructure\Upload\ShadowBuffer.h" />
+    <ClInclude Include="03_RHI\Resource\Texture.h" />
+    <ClInclude Include="12_Utility\DDSTextureLoader.h" />
+    <ClInclude Include="04_GPUInfrastructure\MemoryAllocator\LinearAllocator.h" />
+    <ClInclude Include="03_RHI\Resource\PixelBuffer.h" />
+    <ClInclude Include="04_GPUInfrastructure\Upload\ReadbackBuffer.h" />
+    <ClInclude Include="03_RHI\Pipeline\samplerManager.h" />
+    <ClInclude Include="03_RHI\Pipeline\GraphicsCommon.h" />
+    <ClInclude Include="03_RHI\DescriptorSystem\DescriptorHeap.h" />
+    <ClInclude Include="12_Utility\FileUtility.h" />
+    <ClInclude Include="05_ResourceSystem\01_Manager\TextureManager.h" />
+    <ClInclude Include="13_Math\VectorMath.h" />
+    <ClInclude Include="04_GPUInfrastructure\Dynamic Descriptor\DynamicDescriptorHeap.h" />
+    <ClInclude Include="03_RHI\Pipeline\RootSignature.h" />
+    <ClInclude Include="03_RHI\Pipeline\PipelineState.h" />
+    <ClInclude Include="01_Application\Display.h" />
+    <ClInclude Include="01_Application\GameCore.h" />
+    <ClInclude Include="01_Application\SystemTime.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Camera\CameraController.cpp" />
-    <ClCompile Include="Camera\Camera.cpp" />
-    <ClCompile Include="Application\GameInput.cpp" />
-    <ClCompile Include="Utility\CommandLineArg.cpp" />
-    <ClCompile Include="RHI\Command\CommandSignature.cpp" />
-    <ClCompile Include="Resource\Buffer\ColorBuffer.cpp" />
-    <ClCompile Include="Resource\ResourceManager\BufferManager.cpp" />
-    <ClCompile Include="RHI\Command\CommandAllocatorPool.cpp" />
-    <ClCompile Include="RHI\Command\CommandContext.cpp" />
-    <ClCompile Include="RHI\Command\CommandListManager.cpp" />
-    <ClCompile Include="Resource\GpuResource.cpp" />
-    <ClCompile Include="Math\BoundingSphere.cpp" />
-    <ClCompile Include="Math\Frustum.cpp" />
-    <ClCompile Include="Math\Random.cpp" />
-    <ClCompile Include="Application\PCH.cpp">
+    <ClCompile Include="02_Camera\CameraController.cpp" />
+    <ClCompile Include="02_Camera\Camera.cpp" />
+    <ClCompile Include="01_Application\GameInput.cpp" />
+    <ClCompile Include="04_GPUInfrastructure\State Tracking\ResourceStateTracker.cpp" />
+    <ClCompile Include="05_ResourceSystem\glTF.cpp" />
+    <ClCompile Include="09_Renderer\Renderer.cpp" />
+    <ClCompile Include="10_Scene\MeshConvert.cpp" />
+    <ClCompile Include="10_Scene\Model.cpp" />
+    <ClCompile Include="05_ResourceSystem\ModelLoader.cpp" />
+    <ClCompile Include="05_ResourceSystem\TextureConvert.cpp" />
+    <ClCompile Include="10_Scene\ModelConvert.cpp" />
+    <ClCompile Include="00_Core\CommandLineArg.cpp" />
+    <ClCompile Include="03_RHI\CommandSystem\CommandSignature.cpp" />
+    <ClCompile Include="03_RHI\Resource\ColorBuffer.cpp" />
+    <ClCompile Include="05_ResourceSystem\01_Manager\BufferManager.cpp" />
+    <ClCompile Include="03_RHI\CommandSystem\CommandAllocatorPool.cpp" />
+    <ClCompile Include="03_RHI\CommandSystem\CommandContext.cpp" />
+    <ClCompile Include="03_RHI\CommandSystem\CommandListManager.cpp" />
+    <ClCompile Include="03_RHI\Resource\GpuResource.cpp" />
+    <ClCompile Include="12_Utility\IndexOptimizePostTransform.cpp" />
+    <ClCompile Include="13_Math\BoundingSphere.cpp" />
+    <ClCompile Include="13_Math\Frustum.cpp" />
+    <ClCompile Include="13_Math\Random.cpp" />
+    <ClCompile Include="01_Application\PCH.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="Resource\Buffer\UploadBuffer.cpp" />
-    <ClCompile Include="Utility\Utility.cpp" />
-    <ClCompile Include="RHI\GraphicsCore.cpp" />
-    <ClCompile Include="Resource\Buffer\GpuBuffer.cpp" />
-    <ClCompile Include="Resource\Buffer\DepthBuffer.cpp" />
-    <ClCompile Include="Resource\Buffer\ShadowBuffer.cpp" />
-    <ClCompile Include="Resource\Texture\Texture.cpp" />
-    <ClCompile Include="Utility\DDSTextureLoader.cpp" />
-    <ClCompile Include="Resource\MemoryAllocator\LinearAllocator.cpp" />
-    <ClCompile Include="Resource\Buffer\PixelBuffer.cpp" />
-    <ClCompile Include="Resource\Buffer\ReadbackBuffer.cpp" />
-    <ClCompile Include="RHI\PipelineState\samplerManager.cpp" />
-    <ClCompile Include="RHI\PipelineState\GraphicsCommon.cpp" />
-    <ClCompile Include="RHI\DescriptorHeap\DescriptorHeap.cpp" />
-    <ClCompile Include="Utility\FileUtility.cpp" />
-    <ClCompile Include="Resource\ResourceManager\TextureManager.cpp" />
-    <ClCompile Include="RHI\DescriptorHeap\DynamicDescriptorHeap.cpp" />
-    <ClCompile Include="RHI\PipelineState\RootSignature.cpp" />
-    <ClCompile Include="RHI\PipelineState\PipelineState.cpp" />
-    <ClCompile Include="Application\Display.cpp" />
-    <ClCompile Include="Application\GameCore.cpp" />
-    <ClCompile Include="Application\SystemTime.cpp" />
+    <ClCompile Include="04_GPUInfrastructure\Upload\UploadBuffer.cpp" />
+    <ClCompile Include="12_Utility\Utility.cpp" />
+    <ClCompile Include="03_RHI\GraphicsCore.cpp" />
+    <ClCompile Include="03_RHI\Resource\GpuBuffer.cpp" />
+    <ClCompile Include="03_RHI\Resource\DepthBuffer.cpp" />
+    <ClCompile Include="04_GPUInfrastructure\Upload\ShadowBuffer.cpp" />
+    <ClCompile Include="03_RHI\Resource\Texture.cpp" />
+    <ClCompile Include="12_Utility\DDSTextureLoader.cpp" />
+    <ClCompile Include="04_GPUInfrastructure\MemoryAllocator\LinearAllocator.cpp" />
+    <ClCompile Include="03_RHI\Resource\PixelBuffer.cpp" />
+    <ClCompile Include="04_GPUInfrastructure\Upload\ReadbackBuffer.cpp" />
+    <ClCompile Include="03_RHI\Pipeline\samplerManager.cpp" />
+    <ClCompile Include="03_RHI\Pipeline\GraphicsCommon.cpp" />
+    <ClCompile Include="03_RHI\DescriptorSystem\DescriptorHeap.cpp" />
+    <ClCompile Include="12_Utility\FileUtility.cpp" />
+    <ClCompile Include="05_ResourceSystem\01_Manager\TextureManager.cpp" />
+    <ClCompile Include="04_GPUInfrastructure\Dynamic Descriptor\DynamicDescriptorHeap.cpp" />
+    <ClCompile Include="03_RHI\Pipeline\RootSignature.cpp" />
+    <ClCompile Include="03_RHI\Pipeline\PipelineState.cpp" />
+    <ClCompile Include="01_Application\Display.cpp" />
+    <ClCompile Include="01_Application\GameCore.cpp" />
+    <ClCompile Include="01_Application\SystemTime.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Math\Functions.inl" />
+    <None Include="00_Core\Core.md">
+      <SubType>
+      </SubType>
+    </None>
+    <None Include="01_Application\Application.md" />
+    <None Include="02_Camera\Camera.md">
+      <SubType>
+      </SubType>
+    </None>
+    <None Include="04_GPUInfrastructure\GPUInfrastructure.md">
+      <SubType>
+      </SubType>
+    </None>
+    <None Include="05_ResourceSystem\ResourceSystem.md">
+      <SubType>
+      </SubType>
+    </None>
+    <None Include="06_RenderGraph\RenderGraph.md">
+      <SubType>
+      </SubType>
+    </None>
+    <None Include="09_Renderer\Renderer.md">
+      <SubType>
+      </SubType>
+    </None>
+    <None Include="10_Scene\Scene.md">
+      <SubType>
+      </SubType>
+    </None>
+    <None Include="11_Shaders\00_Common\Common.hlsli" />
+    <None Include="11_Shaders\Shaders.md">
+      <SubType>
+      </SubType>
+    </None>
+    <None Include="12_Utility\Utility.md">
+      <SubType>
+      </SubType>
+    </None>
+    <None Include="13_Math\Functions.inl" />
+    <None Include="13_Math\Math.md">
+      <SubType>
+      </SubType>
+    </None>
     <None Include="packages.config" />
     <None Include="Engine.md" />
+    <None Include="08_RenderFeatures\RenderFeatures.md">
+      <SubType>
+      </SubType>
+    </None>
+    <None Include="07_RenderPasses\RenderPasses.md">
+      <SubType>
+      </SubType>
+    </None>
+    <None Include="03_RHI\RHI.md">
+      <SubType>
+      </SubType>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="11_Shaders\01_Default\DefaultPS.hlsl" />
+    <FxCompile Include="11_Shaders\01_Default\DefaultVS.hlsl" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

@@ -93,32 +93,7 @@
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <FxCompile Include="Shaders\DefaultVS.hlsl">
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
-    </FxCompile>
     <FxCompile Include="Shaders\Model\*.hlsl" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="ConstantBuffers.h" />
-    <ClInclude Include="glTF.h" />
-    <ClInclude Include="IndexOptimizePostTransform.h" />
-    <ClInclude Include="json.hpp" />
-    <ClInclude Include="MeshConvert.h" />
-    <ClInclude Include="Model.h" />
-    <ClInclude Include="ModelLoader.h" />
-    <ClInclude Include="Renderer.h" />
-    <ClInclude Include="TextureConvert.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="glTF.cpp" />
-    <ClCompile Include="IndexOptimizePostTransform.cpp" />
-    <ClCompile Include="MeshConvert.cpp" />
-    <ClCompile Include="Model.cpp" />
-    <ClCompile Include="ModelConvert.cpp" />
-    <ClCompile Include="ModelLoader.cpp" />
-    <ClCompile Include="Renderer.cpp" />
-    <ClCompile Include="TextureConvert.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Engine\Engine.vcxproj">
@@ -127,12 +102,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
-    <FxCompile Include="Shaders\DefaultPS.hlsl">
-      <FileType>Document</FileType>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
-    </FxCompile>
-    <None Include="Shaders\Common.hlsli" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="..\..\packages\directxmesh_desktop_win10.2026.4.1.1\build\native\directxmesh_desktop_win10.targets" Condition="Exists('..\..\packages\directxmesh_desktop_win10.2026.4.1.1\build\native\directxmesh_desktop_win10.targets')" />
