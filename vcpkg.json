@@ -1,0 +1,16 @@
+{
+    "name": "tooiyume-renderer",
+    "version": "0.1.0",
+    "dependencies": [
+        {
+            "name": "directxtex",
+            "features": [ "dx12" ]
+        },
+        {
+            "name": "directxmesh",
+            "features": [ "dx12" ]
+        },
+        "directx-headers",
+        "directx-dxc"
+    ]
+}

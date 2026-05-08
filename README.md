@@ -235,9 +235,15 @@ DX12 渲染器学习与改造
 <details>
 <summary><b>2026-05-7: </b></summary>
 <p>克隆Delt06DX12学习项目https://github.com/Delt06/dx12-renderer?utm_source=chatgpt.com<p>
-<p>重构文件层次关系，改用cmake管理<p>
+<p>已重构文件层次关系，将改用cmake管理<p>
 <p> 边学习Miniengine完全实现GPU Infrastructure层，和边学习Delt06DX12实现RenderGraph帧图跟Render Pass调度层<p>
 <p> 接下来学习重心转向Delt06DX12实现上层抽象和实现延迟渲染全流程<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-7: </b></summary>
+<p>改用cmake管理和vcpkg导包。dxc离线编译还没弄<p>
 </p>
 </details>
 
