@@ -24,7 +24,7 @@ cbuffer MaterialConstants : register(b0)
 
 cbuffer GlobalConstants : register(b1) // 已核对cpp端结构体定义顺序
 {
-    row_major float4x4 ViewProj;
+    float4x4 ViewProj;
     float3 ViewerPos;
 }
 

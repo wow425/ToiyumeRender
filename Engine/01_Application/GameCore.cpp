@@ -1,153 +1,159 @@
-﻿#include "00_Core/PCH.h"
+#include "00_Core/PCH.h"
 #include "GameCore.h"
 #include "03_RHI/GraphicsCore.h"
 #include "00_Core/SystemTime.h"
 #include "01_Application/GameInput.h"
 #include "05_ResourceSystem/01_Manager/BufferManager.h"
 #include "03_RHI/CommandSystem/CommandContext.h"
-// #include "PostEffects.h"
 #include "Display.h"
-// #include "Util/CommandLineArg.h"
+
 #include <shellapi.h>
 
 #pragma comment(lib, "runtimeobject.lib") //
 
+
+
+
+
 namespace GameCore
 {
-    using namespace Graphics;
+	using namespace Graphics;
 
-    bool gIsSupending = false;
+	bool gIsSupending = false;
 
-    void InitializeApplication(IGameApp& game)
-    {
-        // 图形模块初始化
-        Graphics::Initialize(false);
-        // 计时器模块
-        SystemTime::Initialize();
-        // IO输入还没啃
-        GameInput::Initialize();
-        //EngineTuning::Initialize();
+	HWND g_hWnd = nullptr;
 
-        game.Startup();
+	void InitializeApplication(IGameApp& game)
+	{
+
+		Graphics::Initialize(false);// 图形模块初始化
+
+		SystemTime::Initialize();// 计时器模块
+
+		GameInput::Initialize();// IO输入还没啃
+		//EngineTuning::Initialize();
+
+		game.Startup();
+	}
+
+	bool UpdateApplication(IGameApp& game)
+	{
+		// 更新
+		{
+			float DeltaTime = Graphics::GetFrameTime();				// 获取每帧时间
+			GameInput::Update(DeltaTime);
+			game.Update(DeltaTime);									// 每帧数据更新
+		}
 
 
-    }
+		// 渲染
+		{
+			game.RenderScene();										// 绘制
+			Display::Present();										// 阉割未完成。
+		}
 
-    void TerminateApplication(IGameApp& game)
-    {
-        g_CommandManager.IdleGPU();
 
-        game.Cleanup();
+		return !game.IsDone();
+	}
 
-        GameInput::Shutdown();
-    }
+	void TerminateApplication(IGameApp& game)
+	{
+		g_CommandManager.IdleGPU();
 
-    bool UpdateApplication(IGameApp& game)
-    {
-        // 获取每帧时间
-        float DeltaTime = Graphics::GetFrameTime();
+		game.Cleanup();
 
-        GameInput::Update(DeltaTime);
-        game.Update(DeltaTime); // 每帧数据更新
-        game.RenderScene(); // 绘制
+		GameInput::Shutdown();
+	}
 
-        Display::Present(); // 阉割未完成
+	// Default implementation to be overridden by the application
+	bool IGameApp::IsDone(void)
+	{
+		return GameInput::IsFirstPressed(GameInput::kKey_escape);
+	}
 
-        return !game.IsDone();
-    }
 
-    // Default implementation to be overridden by the application
-    bool IGameApp::IsDone(void)
-    {
-        return GameInput::IsFirstPressed(GameInput::kKey_escape);
-    }
+	LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
-    HWND g_hWnd = nullptr;
+	int RunApplication(IGameApp& app, const wchar_t* className, HINSTANCE hInst, int nCmdShow)
+	{
+		// 检查是否支持SSE2（Streaming SIMD Extensions 2）指令集
+		if (!XMVerifyCPUSupport())
+			return 1;
+		// 
+		Microsoft::WRL::Wrappers::RoInitializeWrapper InitializeWinRT(RO_INIT_MULTITHREADED);
+		ASSERT_SUCCEEDED(InitializeWinRT);
 
-    LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+		// Register class
+		WNDCLASSEX wcex;
+		wcex.cbSize = sizeof(WNDCLASSEX);
+		wcex.style = CS_HREDRAW | CS_VREDRAW;
+		wcex.lpfnWndProc = WndProc;
+		wcex.cbClsExtra = 0;
+		wcex.cbWndExtra = 0;
+		wcex.hInstance = hInst;
+		wcex.hIcon = LoadIcon(hInst, IDI_APPLICATION);
+		wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+		wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+		wcex.lpszMenuName = nullptr;
+		wcex.lpszClassName = className;
+		wcex.hIconSm = LoadIcon(hInst, IDI_APPLICATION);
+		ASSERT(0 != RegisterClassEx(&wcex), "Unable to register a window");
 
-    int RunApplication(IGameApp& app, const wchar_t* className, HINSTANCE hInst, int nCmdShow)
-    {
-        // 检查是否支持SSE2（Streaming SIMD Extensions 2）指令集
-        if (!XMVerifyCPUSupport())
-            return 1;
-        // 
-        Microsoft::WRL::Wrappers::RoInitializeWrapper InitializeWinRT(RO_INIT_MULTITHREADED);
-        ASSERT_SUCCEEDED(InitializeWinRT);
+		// Create window
+		RECT rc = { 0, 0, (LONG)g_DisplayWidth, (LONG)g_DisplayHeight };
+		AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
 
-        // Register class
-        WNDCLASSEX wcex;
-        wcex.cbSize = sizeof(WNDCLASSEX);
-        wcex.style = CS_HREDRAW | CS_VREDRAW;
-        wcex.lpfnWndProc = WndProc;
-        wcex.cbClsExtra = 0;
-        wcex.cbWndExtra = 0;
-        wcex.hInstance = hInst;
-        wcex.hIcon = LoadIcon(hInst, IDI_APPLICATION);
-        wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-        wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-        wcex.lpszMenuName = nullptr;
-        wcex.lpszClassName = className;
-        wcex.hIconSm = LoadIcon(hInst, IDI_APPLICATION);
-        ASSERT(0 != RegisterClassEx(&wcex), "Unable to register a window");
+		g_hWnd = CreateWindow(className, className, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+			rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInst, nullptr);
+		ASSERT(g_hWnd != 0);
+		// ===========================================================================================================
+		// ===========================================================================================================
+		// ===========================================================================================================   
+		InitializeApplication(app);  // 初始化应用
 
-        // Create window
-        RECT rc = { 0, 0, (LONG)g_DisplayWidth, (LONG)g_DisplayHeight };
-        AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
+		ShowWindow(g_hWnd, nCmdShow/*SW_SHOWDEFAULT*/);
 
-        g_hWnd = CreateWindow(className, className, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-            rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInst, nullptr);
-        ASSERT(g_hWnd != 0);
+		do
+		{
+			MSG msg = {};
+			bool done = false;
+			while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+			{
+				TranslateMessage(&msg);
+				DispatchMessage(&msg);
 
-        // 初始化应用
-        InitializeApplication(app);
+				if (msg.message == WM_QUIT)
+					done = true;
+			}
+			if (done)
+				break;
+		} while (UpdateApplication(app));	// 更新应用
 
-        ShowWindow(g_hWnd, nCmdShow/*SW_SHOWDEFAULT*/);
+		TerminateApplication(app); // 终止应用
+		Graphics::Shutdown(); // 没完成
+		return 0;
+	}
 
-        do
-        {
-            MSG msg = {};
-            bool done = false;
-            while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
-            {
-                TranslateMessage(&msg);
-                DispatchMessage(&msg);
 
-                if (msg.message == WM_QUIT)
-                    done = true;
-            }
+	LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+	{
+		switch (message)
+		{
+		case WM_SIZE:
+			Display::Resize((UINT)(UINT64)lParam & 0xFFFF, (UINT)(UINT64)lParam >> 16);
+			break;
 
-            if (done)
-                break;
-        } while (UpdateApplication(app));	// 更新应用
+		case WM_DESTROY:
+			PostQuitMessage(0);
+			break;
 
-        TerminateApplication(app); // 终止应用
-        Graphics::Shutdown(); // 没完成
-        return 0;
-    }
+		default:
+			return DefWindowProc(hWnd, message, wParam, lParam);
+		}
 
-    //--------------------------------------------------------------------------------------
-    // 应用每次接收到消息时调用
-    //--------------------------------------------------------------------------------------
-    LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-    {
-        switch (message)
-        {
-        case WM_SIZE:
-            Display::Resize((UINT)(UINT64)lParam & 0xFFFF, (UINT)(UINT64)lParam >> 16);
-            break;
+		return 0;
+	}
 
-        case WM_DESTROY:
-            PostQuitMessage(0);
-            break;
-
-        default:
-            return DefWindowProc(hWnd, message, wParam, lParam);
-        }
-
-        return 0;
-    }
 
 }
-
 

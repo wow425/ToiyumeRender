@@ -28,3 +28,4 @@ find_package(DirectX-Headers CONFIG REQUIRED)
 # ==========================================
 add_subdirectory(Engine)
 add_subdirectory(Demos/DefaultApp)
+add_subdirectory(Demos/DeferredApp)

@@ -19,30 +19,6 @@ target_include_directories(TooiyumeEngine PUBLIC
 )
 
 
-# 1. 包含我们自己写的 CMake 模块 (相当于 #include "cmake/CompileShader.cmake")
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompileShader.cmake)
-
-# 2. 收集所有的 Shader 源码路径
-set(SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/11_Shaders")
-
-# 3. 逐个调用刚才定义的函数，编译你的 Shader
-# 语法: compile_shader(源文件路径 ShaderModel 入口函数 "宏定义列表")
-
-# 编译 Vertex Shader
-compile_shader(
-    "${SHADER_DIR}/DefaultVS.hlsl" 
-    "vs_6_6" 
-    "MainVS" 
-    "ENABLE_INSTANCING=1;DEBUG" # 宏定义项
-)
-
-# 编译 Pixel Shader
-compile_shader(
-    "${SHADER_DIR}/DefaultPS.hlsl" 
-    "ps_6_6" 
-    "MainPS" 
-    "USE_PBR=1"
-)
 
 
 

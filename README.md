@@ -242,8 +242,15 @@ DX12 渲染器学习与改造
 </details>
 
 <details>
-<summary><b>2026-05-7: </b></summary>
+<summary><b>2026-05-8: </b></summary>
 <p>改用cmake管理和vcpkg导包。dxc离线编译还没弄<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-11: </b></summary>
+<p>添加lightingsystem类，shadowbuffer类<p>
+<p>接下来实现部分内容解耦以提升扩展性，方便实现DeferredApp<p>
 </p>
 </details>
 
