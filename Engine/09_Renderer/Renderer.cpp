@@ -58,7 +58,7 @@ void Renderer::Initialize(void)
 
 
 	DXGI_FORMAT ColorFormat = g_SceneColorBuffer.GetFormat();
-	DXGI_FORMAT DepthFormat = g_SceneDepthBuffer.GetFormat();
+	DXGI_FORMAT DepthFormat = g_DepthBuffer.GetFormat();
 	// 构建输入布局
 	D3D12_INPUT_ELEMENT_DESC posOnly[] =
 	{

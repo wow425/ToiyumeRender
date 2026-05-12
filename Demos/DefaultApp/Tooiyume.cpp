@@ -7,6 +7,9 @@
 #include "05_ResourceSystem/01_Manager/BufferManager.h"
 //#include "TemporalEffects.h"
 #include "09_Renderer/Renderer.h"
+#include "09_Renderer/BaseRenderer.h"
+#include "09_Renderer/RendererRegistry.h"
+#include "09_Renderer/BaseRenderer.h"
 #include "10_Scene/Model.h"
 #include "10_Scene/ModelLoader.h"
 
@@ -117,14 +120,14 @@ void Tooiyume::RenderScene(void)
 	globals.CameraPos = m_Camera.GetPosition();
 
 
-	gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, true); // 立刻执行转换
-	gfxContext.ClearDepth(g_SceneDepthBuffer);
+	gfxContext.TransitionResource(g_DepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, true); // 立刻执行转换
+	gfxContext.ClearDepth(g_DepthBuffer);
 
 	MeshSorter sorter(MeshSorter::kDefault); // Main Pass
 	sorter.SetCamera(m_Camera);
 	sorter.SetViewport(viewport);
 	sorter.SetScissor(scissor);
-	sorter.SetDepthStencilTarget(g_SceneDepthBuffer);
+	sorter.SetDepthStencilTarget(g_DepthBuffer);
 	sorter.AddRenderTarget(g_SceneColorBuffer);
 
 	m_ModelInst.GatherRenderables(sorter); // 剔除，排序，打包添加到MeshSorter中

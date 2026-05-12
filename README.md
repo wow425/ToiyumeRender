@@ -254,6 +254,13 @@ DX12 渲染器学习与改造
 </p>
 </details>
 
+<details>
+<summary><b>2026-05-11: </b></summary>
+<p>今日课多，完成BaseRenderer类和RendererRegistry类，明日修改Renderer类以适配BaseRenderer类，实现engine提供抽象接口，demo具体实现，便于以后扩展<p>
+</p>
+</details>
+
+
 <!-- 月总结 -->
 <h4 id="2026-05-月总结">📝 2026-05 月总结</h4>
 <p>完成渲染器框架搭建</p>

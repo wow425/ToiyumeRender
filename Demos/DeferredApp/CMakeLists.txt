@@ -2,7 +2,7 @@
 # 编译可执行文件
 # ==========================================
 # 使用 WIN32 标志隐藏 Windows 黑框控制台
-add_executable(DeferredApp WIN32 DeferredApp.cpp)
+add_executable(DeferredApp WIN32 "../../Engine/09_Renderer/Deferred/DeferredApp.cpp")
 
 # 链接引擎库
 target_link_libraries(DeferredApp PRIVATE TooiyumeEngine)
