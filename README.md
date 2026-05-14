@@ -255,11 +255,19 @@ DX12 渲染器学习与改造
 </details>
 
 <details>
-<summary><b>2026-05-11: </b></summary>
+<summary><b>2026-05-12: </b></summary>
 <p>今日课多，完成BaseRenderer类和RendererRegistry类，明日修改Renderer类以适配BaseRenderer类，实现engine提供抽象接口，demo具体实现，便于以后扩展<p>
 </p>
 </details>
 
+<details>
+<summary><b>2026-05-14: </b></summary>
+<p>RendererRegistry类设计延迟实例化，先创建规则creator，再生成对象RendererPtr，实现反射式自动注册<p>
+<p>现代 Renderer 的核心思想是pass决定资源，而不是engine预创建资源<p>
+<p>miniengine的pso绑定设计成一个全局方法，读取model的mesh数据时，根据解析出来的参数值应用对应的输入布局和shader来生成pso，并pso绑定mesh，绘制时直接调用<p>
+<p> 需要设计material系统解耦。需要将mesh与pso解耦，需要设计material系统。实现资源（Mesh / Material）与渲染策略（PSO / Pass）解耦<p>
+</p> 
+</details>
 
 <!-- 月总结 -->
 <h4 id="2026-05-月总结">📝 2026-05 月总结</h4>

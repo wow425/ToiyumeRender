@@ -6,10 +6,9 @@
 #include "03_RHI/CommandSystem/CommandContext.h"
 #include "05_ResourceSystem/01_Manager/BufferManager.h"
 //#include "TemporalEffects.h"
-#include "09_Renderer/Renderer.h"
+#include "09_Renderer/forwardRenderer.h"
 #include "09_Renderer/BaseRenderer.h"
 #include "09_Renderer/RendererRegistry.h"
-#include "09_Renderer/BaseRenderer.h"
 #include "10_Scene/Model.h"
 #include "10_Scene/ModelLoader.h"
 
@@ -34,7 +33,7 @@ public:
 
 private:
 
-	Camera m_Camera;
+	::Camera::Camera m_Camera;
 	unique_ptr<CameraController> m_CameraController;
 
 	D3D12_VIEWPORT m_MainViewport;

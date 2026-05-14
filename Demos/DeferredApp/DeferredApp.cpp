@@ -6,7 +6,7 @@
 #include "03_RHI/CommandSystem/CommandContext.h"
 #include "05_ResourceSystem/01_Manager/BufferManager.h"
 //#include "TemporalEffects.h"
-#include "09_Renderer/Renderer.h"
+#include "DeferredRenderer.h"
 #include "10_Scene/Model.h"
 #include "10_Scene/ModelLoader.h"
 

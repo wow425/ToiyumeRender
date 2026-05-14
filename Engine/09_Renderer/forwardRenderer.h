@@ -130,7 +130,7 @@ namespace Renderer
 		DrawPass m_CurrentPass;            // 当前pass
 		uint32_t m_CurrentDraw;            // 当前draw
 
-		const BaseCamera* m_Camera;
+		const ::Camera::Camera* m_Camera;
 		D3D12_VIEWPORT m_Viewport;
 		D3D12_RECT m_Scissor;
 		uint32_t m_NumRTVs;
