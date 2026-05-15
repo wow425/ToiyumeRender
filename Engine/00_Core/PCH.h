@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #pragma warning(disable:4201) // 准许无名结构体/联合体 (Nameless struct/union)
 #pragma warning(disable:4238) // 准许右值当左值用
@@ -27,7 +27,7 @@
 
 #include <d3d12.h>
 #include <dxgi1_6.h> // 1.6dxgi
-#include "03_RHI/d3dx12.h"
+#include "02_RHI/d3dx12.h"
 #ifdef _DEBUG
 #include <dxgidebug.h>
 #endif
@@ -48,6 +48,6 @@
 #include <ppltasks.h> // 并行任务库 (Parallel Patterns Library)，提供并行算法和异步任务支持
 #include <functional> // 常用于命令录制的回调或者事件系统
 
-#include "12_Utility/Utility.h"
-#include "13_Math/Common.h" // 数学库
-#include "00_Core/CommandLineArg.h"
+#include "00_Core/Utility/Utility.h"
+#include "00_Core/Math/Common.h" // 数学库
+#include "00_Core/Utility/CommandLineArg.h"

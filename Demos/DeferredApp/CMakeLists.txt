@@ -3,7 +3,7 @@
 # ==========================================
 add_executable(DeferredApp WIN32 
 DeferredApp.cpp
-DeferredRenderer.cpp
+"../../Engine/04_Renderer/Renderer/Deferred/DeferredRenderer.cpp"
 )
 
 # 链接引擎库

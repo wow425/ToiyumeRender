@@ -6,11 +6,11 @@
 #include "00_Core/PCH.h"
 #include "00_Core/SystemTime.h"
 #include "Display.h"
-#include "03_RHI/GraphicsCore.h"
-#include "03_RHI/CommandSystem/CommandContext.h"
-#include "03_RHI/Pipeline/RootSignature.h"
-#include "03_RHI/Resource/ColorBuffer.h"
-#include "05_ResourceSystem/01_Manager/BufferManager.h"
+#include "02_RHI/GraphicsCore.h"
+#include "02_RHI/Command/CommandContext.h"
+#include "02_RHI/Pipeline/RootSignature.h"
+#include "02_RHI/Resource/ColorBuffer.h"
+#include "04_Renderer/BufferManager.h"
 
 
 

@@ -1,16 +1,16 @@
 #include "00_Core/SystemTime.h"
 #include "01_Application/GameCore.h"
 #include "01_Application/Display.h"
-#include "02_Camera/Camera.h"
-#include "02_Camera/CameraController.h"
-#include "03_RHI/CommandSystem/CommandContext.h"
-#include "05_ResourceSystem/01_Manager/BufferManager.h"
+#include "05_Scene/Camera/Camera.h"
+#include "05_Scene/Camera/CameraController.h"
+#include "02_RHI/Command/CommandContext.h"
+#include "04_Renderer/BufferManager.h"
 //#include "TemporalEffects.h"
-#include "09_Renderer/forwardRenderer.h"
-#include "09_Renderer/BaseRenderer.h"
-#include "09_Renderer/RendererRegistry.h"
-#include "10_Scene/Model.h"
-#include "10_Scene/ModelLoader.h"
+#include "04_Renderer/Renderer/Forward/ForwardRenderer.h"
+#include "04_Renderer/Renderer/Base/BaseRenderer.h"
+#include "04_Renderer/Renderer/Base/RendererRegistry.h"
+#include "05_Scene/Model/Model.h"
+#include "05_Scene/Model/ModelLoader.h"
 
 
 using namespace GameCore;
@@ -33,7 +33,7 @@ public:
 
 private:
 
-	::Camera::Camera m_Camera;
+	Renderer::Camera m_Camera;
 	unique_ptr<CameraController> m_CameraController;
 
 	D3D12_VIEWPORT m_MainViewport;

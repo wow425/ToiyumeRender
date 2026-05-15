@@ -8,21 +8,24 @@ file(GLOB_RECURSE ENGINE_SOURCES
     "*.hpp"
 )
 
-# 编译为静态库
+# ==========================================
+# Engine 静态库
+# ==========================================
 add_library(TooiyumeEngine STATIC ${ENGINE_SOURCES})
 
 # ==========================================
-# Include 路径设置 (满足 #include "00_Core/..." 格式)
+# PCH (Precompiled Header)
+# ==========================================
+target_precompile_headers(TooiyumeEngine PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/00_Core/PCH.h"
+)
+
+# ==========================================
+# Include 路径设置 
 # ==========================================
 target_include_directories(TooiyumeEngine PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
-
-
-
-
-
-
 
 
 # ==========================================

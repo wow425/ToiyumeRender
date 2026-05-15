@@ -1,10 +1,10 @@
 #include "00_Core/PCH.h"
 #include "GameCore.h"
-#include "03_RHI/GraphicsCore.h"
+#include "02_RHI/GraphicsCore.h"
 #include "00_Core/SystemTime.h"
 #include "01_Application/GameInput.h"
-#include "05_ResourceSystem/01_Manager/BufferManager.h"
-#include "03_RHI/CommandSystem/CommandContext.h"
+#include "04_Renderer/BufferManager.h"
+#include "02_RHI/Command/CommandContext.h"
 #include "Display.h"
 
 #include <shellapi.h>
