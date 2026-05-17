@@ -45,40 +45,40 @@ namespace Scene
 		m_ViewMatrix = Invert(m_CameraToWorldMatrix);
 		m_ViewProjMatrix = m_ViewMatrix * m_ProjMatrix;
 
-		{
-			OutputDebugStringW(L"视图矩阵测试！！！");
-			OutputDebugStringW(L"------------------------------------------------\n");
-			const float* matPtr = reinterpret_cast<const float*>(&m_ViewMatrix);
-			for (int row = 0; row < 4; ++row) {
-				// 按照 4x4 的格式对齐输出，保留 4 位小数
-				Utility::Printf(L"Row %d: [%9.4f, %9.4f, %9.4f, %9.4f]\n",
-					row,
-					matPtr[row * 4 + 0],
-					matPtr[row * 4 + 1],
-					matPtr[row * 4 + 2],
-					matPtr[row * 4 + 3]);
-			}
-			OutputDebugStringW(L"------------------------------------------------\n");
-		}
+		//{
+		//	OutputDebugStringW(L"视图矩阵测试！！！");
+		//	OutputDebugStringW(L"------------------------------------------------\n");
+		//	const float* matPtr = reinterpret_cast<const float*>(&m_ViewMatrix);
+		//	for (int row = 0; row < 4; ++row) {
+		//		// 按照 4x4 的格式对齐输出，保留 4 位小数
+		//		Utility::Printf(L"Row %d: [%9.4f, %9.4f, %9.4f, %9.4f]\n",
+		//			row,
+		//			matPtr[row * 4 + 0],
+		//			matPtr[row * 4 + 1],
+		//			matPtr[row * 4 + 2],
+		//			matPtr[row * 4 + 3]);
+		//	}
+		//	OutputDebugStringW(L"------------------------------------------------\n");
+		//}
 
 
 
-		{
-			OutputDebugStringW(L"视图投影矩阵测试！！！");
-			OutputDebugStringW(L"------------------------------------------------\n");
+		//{
+		//	OutputDebugStringW(L"视图投影矩阵测试！！！");
+		//	OutputDebugStringW(L"------------------------------------------------\n");
 
-			const float* matPtr1 = reinterpret_cast<const float*>(&m_ViewProjMatrix);
-			for (int row = 0; row < 4; ++row) {
-				// 按照 4x4 的格式对齐输出，保留 4 位小数
-				Utility::Printf(L"Row %d: [%9.4f, %9.4f, %9.4f, %9.4f]\n",
-					row,
-					matPtr1[row * 4 + 0],
-					matPtr1[row * 4 + 1],
-					matPtr1[row * 4 + 2],
-					matPtr1[row * 4 + 3]);
-			}
-			OutputDebugStringW(L"------------------------------------------------\n");
-		}
+		//	const float* matPtr1 = reinterpret_cast<const float*>(&m_ViewProjMatrix);
+		//	for (int row = 0; row < 4; ++row) {
+		//		// 按照 4x4 的格式对齐输出，保留 4 位小数
+		//		Utility::Printf(L"Row %d: [%9.4f, %9.4f, %9.4f, %9.4f]\n",
+		//			row,
+		//			matPtr1[row * 4 + 0],
+		//			matPtr1[row * 4 + 1],
+		//			matPtr1[row * 4 + 2],
+		//			matPtr1[row * 4 + 3]);
+		//	}
+		//	OutputDebugStringW(L"------------------------------------------------\n");
+		//}
 
 		m_ReprojectMatrix = m_PreviousViewProjMatrix * Invert(GetViewProjMatrix());
 

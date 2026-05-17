@@ -51,7 +51,7 @@ namespace Renderer
 			m_MainScissor.bottom = (LONG)desc.height;
 		}
 		m_CreateDesc = desc;
-		m_CreateDesc.backBufferFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		m_CreateDesc.backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 		m_CreateDesc.depthBufferFormat = DXGI_FORMAT_D32_FLOAT;
 
 		BuildRootSignature();
@@ -153,7 +153,7 @@ namespace Renderer
 			context.SetDynamicConstantBufferView(kCommonCBV, sizeof(GlobalConstants), &globals);
 		}
 
-		context.PIXBeginEvent(L"ForwardRenderer: Begin");
+		context.PIXBeginEvent(L"ForwardRenderer");
 		// 1.ShadowPass
 		{
 			context.PIXSetEvent(L"ShadowPass");
@@ -240,11 +240,6 @@ namespace Renderer
 				++CurrentDraw;
 			}
 		}
-
-
-
-
-		context.PIXSetEvent(L"ForwardRenderer: End");
 	}
 
 	void ForwardRenderer::EndFrame(::GraphicsContext& frameContext, const RenderFrameDesc& frame)

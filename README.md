@@ -277,6 +277,13 @@ DX12 渲染器学习与改造
 </p> 
 </details>
 
+<details>
+<summary><b>2026-05-17: </b></summary>
+<p>完成Renderer类的重构，Display类不再负责管理SceneColor，仅持有来自Renderer类传来的SceneColor，BufferManager类负责管理，但目前尚未构成完成的BufferManager<p>
+<p> 完成模型导入层，材质层与渲染策略层的解耦。模型导入层仅存储几何信息，材质层存储材质信息，两者交与渲染策略层以选择PSO<p>
+</p> 
+</details>
+
 <!-- 月总结 -->
 <h4 id="2026-05-月总结">📝 2026-05 月总结</h4>
 <p>完成渲染器框架搭建</p>

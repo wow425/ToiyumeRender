@@ -37,7 +37,7 @@ private:
 	unique_ptr<CameraController> m_CameraController;
 
 	// 模型
-	ModelInstance saber_emiyaModelInst;
+	ModelInstance Models[10];
 };
 
 // 启动!
@@ -50,7 +50,10 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
 
 Renderer::ForwardRenderer ForwardRenderer;
 
-
+std::wstring saber_emiya = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Saber/saber_emiya.glb";
+std::wstring toneriko = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/toneriko/toneriko1.gltf";
+std::wstring saberCaster3NoArmor = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/saberCaster/saberCaster3NoArmor.gltf";
+std::wstring ChosenSword = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/saberCaster/ChosenSword.gltf";
 
 
 
@@ -65,7 +68,9 @@ void Tooiyume::Startup(void)
 	// 模型加载
 	std::wstring gltfFileName;
 	bool forceRebuild = true;
-	saber_emiyaModelInst = Renderer::LoadModel(L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Saber/saber_emiya.gltf", forceRebuild);
+	Models[0] = Renderer::LoadModel(saberCaster3NoArmor, forceRebuild);
+	Models[1] = Renderer::LoadModel(ChosenSword, forceRebuild);
+
 
 	// Camera设置
 	m_Camera.SetEyeAtUp(Vector3(0.0f, 0.0f, 5.0f), Vector3(0.0f, 0.0f, -5.0f), Vector3(kYUnitVector));
@@ -85,7 +90,8 @@ void Tooiyume::Update(float deltaT)
 
 	// 模型常量数据更新
 	{
-		saber_emiyaModelInst.Update(gfxContext, deltaT);
+		Models[0].Update(gfxContext, deltaT);
+		Models[1].Update(gfxContext, deltaT);
 	}
 
 
@@ -101,9 +107,11 @@ void Tooiyume::RenderScene(void)
 	Renderer::RenderFrameDesc renderFrame;
 	renderFrame.camera = &m_Camera;
 
-
-
-	ForwardRenderer.ModelSort(saber_emiyaModelInst); // 模型排序
+	// 模型排序
+	{
+		ForwardRenderer.ModelSort(Models[0]);
+		ForwardRenderer.ModelSort(Models[1]);
+	}
 	ForwardRenderer.Render(gfxContext, renderFrame, Renderer::DrawPass::kOpaque);
 
 
@@ -115,7 +123,8 @@ void Tooiyume::RenderScene(void)
 
 void Tooiyume::Cleanup(void)
 {
-	saber_emiyaModelInst = nullptr;
+	Models[0] = nullptr;
+	Models[1] = nullptr;
 
 	ForwardRenderer.Shutdown();
 
