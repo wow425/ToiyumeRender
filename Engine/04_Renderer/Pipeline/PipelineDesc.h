@@ -11,49 +11,51 @@
 
 
 #include <cstdint>
+#include <cstddef>
+#include <functional>
 
 namespace Renderer
 {
-    enum VertexLayoutFlags : uint32_t
-    {
-        kVertex_Position = 1,   // 00001
-        kVertex_Normal = 2,   // 00010
-        kVertex_Tangent = 4,   // 00100
-        kVertex_UV0 = 8,   // 01000
-        kVertex_UV1 = 16,  // 10000
-    };
+	enum VertexLayoutFlags : uint32_t
+	{
+		kVertex_Position = 1,   // 00001
+		kVertex_Normal = 2,   // 00010
+		kVertex_Tangent = 4,   // 00100
+		kVertex_UV0 = 8,   // 01000
+		kVertex_UV1 = 16,  // 10000
+	};
 
-    enum class RenderPassType
-    {
-        Depth,
-        Forward, 
-        Deferred,
-        Shadow,
-        Transparent,
-    };
+	enum class RenderPassType
+	{
+		Depth,
+		Forward,
+		Deferred,
+		Shadow,
+		Transparent,
+	};
 
-    struct PipelineDesc
-    {
-        uint32_t VertexFlags = 0;
-        uint32_t MaterialFlags = 0;
-        RenderPassType PassType = RenderPassType::Forward; // 
+	struct PipelineDesc
+	{
+		uint32_t VertexFlags = 0;
+		uint32_t MaterialFlags = 0;
+		RenderPassType PassType = RenderPassType::Forward; // 
 
-        bool operator==(const PipelineDesc& rhs) const
-        {
-            return     VertexFlags == rhs.VertexFlags &&
-                MaterialFlags == rhs.MaterialFlags &&
-                PassType == rhs.PassType;
-        }
+		bool operator==(const PipelineDesc& rhs) const
+		{
+			return     VertexFlags == rhs.VertexFlags &&
+				MaterialFlags == rhs.MaterialFlags &&
+				PassType == rhs.PassType;
+		}
 
-        // 提供哈希以便作为 Pipeline Manager (PSO Cache) 的 Key
-        struct Hash
-        {
-            size_t operator()(const PipelineDesc& desc) const
-            {
-                return std::hash<uint32_t>()(desc.VertexFlags) ^
-                    (std::hash<uint32_t>()(desc.MaterialFlags) << 1) ^
-                    (std::hash<uint8_t>()(static_cast<uint8_t>(desc.PassType)) << 2);
-            }
-        };
-    };
+		// 提供哈希以便作为 Pipeline Manager (PSO Cache) 的 Key
+		struct Hash
+		{
+			size_t operator()(const PipelineDesc& desc) const
+			{
+				return std::hash<uint32_t>()(desc.VertexFlags) ^
+					(std::hash<uint32_t>()(desc.MaterialFlags) << 1) ^
+					(std::hash<uint8_t>()(static_cast<uint8_t>(desc.PassType)) << 2);
+			}
+		};
+	};
 }

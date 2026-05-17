@@ -18,6 +18,7 @@
 
 #include "05_Scene/Camera/Camera.h"
 #include "02_RHI/Resource/GpuBuffer.h"
+#include "02_RHI/Descriptor/DescriptorHeap.h"
 #include "02_RHI/Command/CommandContext.h"
 #include "02_RHI/Resource/Heap/UploadBuffer.h"
 #include "03_AssetSystem/Importers/Texture/TextureManager.h"
@@ -38,16 +39,19 @@ struct Mesh; // Model
 
 namespace Renderer
 {
+	extern DescriptorHeap s_TextureHeap;  // texture堆。存放CBV/SRV/UAV描述符堆
+	extern DescriptorHeap s_SamplerHeap;  // sampler堆
+
 	struct ForwardBuffer
 	{
-		std::shared_ptr<ColorBuffer> SceneColorBuffer;
+		std::shared_ptr<ColorBuffer> SceneColorBuffer[8];
 		std::shared_ptr<DepthBuffer> DepthBuffer;
 	};
+
 
 	class ForwardRenderer final : public BaseRenderer
 	{
 	public:
-		~ForwardRenderer() noexcept override;
 
 		std::wstring GetName() const override { return L"ForwardRenderer"; }
 
@@ -57,9 +61,12 @@ namespace Renderer
 
 		void BeginFrame(const RenderFrameDesc& frame) override;
 		void Update(const RenderFrameDesc& frame) override;
-		void Render(::Renderer::MeshSorter::DrawPass pass, GraphicsContext& context, GlobalConstants& globals, const RenderFrameDesc& frame) override;
+
+		void Render(GraphicsContext& context, const RenderFrameDesc& frame, DrawPass pass, BatchType batchType = kDefault) override;
 		void EndFrame(GraphicsContext& context, const RenderFrameDesc& frame) override;
 
+
+		ForwardBuffer GetForwardBuffer(void) { return *m_ForwardBuffer; }
 		RendererFeature GetFeatures() const override
 		{
 			return RendererFeature::Deferred
@@ -69,7 +76,11 @@ namespace Renderer
 				| RendererFeature::PostProcess;
 		}
 
-		uint8_t GetPSO(uint16_t psoFlags) override;
+		uint8_t GetPSO(uint16_t vertexFlags) override;
+		const GraphicsPSO& GetPSO(const PipelineDesc& desc) override;
+		void BindRenderState(GraphicsContext& context) override;
+		void BindMaterial(GraphicsContext& context, const Material& material) override;
+
 
 	private:
 		void BuildRootSignature();
@@ -79,12 +90,11 @@ namespace Renderer
 		void CreateForwardBufferTargets();
 
 		void UpdateGlobalDescriptors();
+		uint8_t GetPSOIndex(const PipelineDesc& desc);
 
 	private:
 		RootSignature m_RootSig;
 
-		DescriptorHeap m_TextureHeap;  // texture堆。存放CBV/SRV/UAV描述符堆
-		DescriptorHeap m_SamplerHeap;  // sampler堆
 		DescriptorHandle m_CommonTextures; // 通用纹理的描述符句柄 (如阴影贴图、SSAO 结果等全局共享的贴图)。
 
 		std::vector<GraphicsPSO> m_PSOCache;

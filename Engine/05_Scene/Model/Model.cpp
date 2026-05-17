@@ -23,8 +23,8 @@ void Model::GatherRenderables(MeshSorter& sorter, const GpuBuffer& meshConstants
 
 	for (uint32_t i = 0; i < m_NumMeshes; ++i)
 	{
-		const Mesh& mesh = *(const Mesh*)pMesh;
-		const Material& material = m_Materials[mesh.materialCBV]; // 取出解耦的材质实例
+		const Renderer::Mesh& mesh = *(const Renderer::Mesh*)pMesh;
+		const Renderer::Material& material = m_Materials[mesh.materialSlotIdx]; // 取出解耦的材质实例
 		float distance = 0.0f; // 用于排序（透明排序 / front-to-back）暂时不用管，阉割掉
 		// 提交到渲染队列，等待后续Drawcall录制。 目前阉割掉优化排序
 
@@ -35,11 +35,11 @@ void Model::GatherRenderables(MeshSorter& sorter, const GpuBuffer& meshConstants
 		// 提交到渲染队列，带上 Material 的引用以供策略判断
 		sorter.AddMesh(mesh, material, 0.0f,
 			meshConstants.GetGpuVirtualAddress() + sizeof(MeshConstants) * mesh.meshCBV,
-			m_MaterialConstants.GetGpuVirtualAddress() + sizeof(MaterialConstants) * mesh.materialCBV,
+			mesh.materialSlotIdx,
 			m_DataBuffer.GetGpuVirtualAddress());
 
 		// 偏移到下一个Mesh
-		pMesh += sizeof(Mesh) + (mesh.numDraws - 1) * sizeof(Mesh::Draw);
+		pMesh += sizeof(Renderer::Mesh) + (mesh.numDraws - 1) * sizeof(Renderer::Mesh::Draw);
 	}
 }
 

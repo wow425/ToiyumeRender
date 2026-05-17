@@ -6,7 +6,7 @@
 
 #include "00_Core/PCH.h"
 #include "Texture.h"
-#include "00_Core/Utility/DDSTextureLoader.h"
+#include "03_AssetSystem/Importers/Texture/DDSTextureLoader.h"
 #include "00_Core/Utility/FileUtility.h"
 #include "02_RHI/GraphicsCore.h"
 #include "02_RHI/Command/CommandContext.h"

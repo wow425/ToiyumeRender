@@ -44,7 +44,7 @@ namespace Renderer
 	template<typename T>
 	struct RendererAutoRegister
 	{
-		explicit RendererAutoRegister(std::wstring& name) // 自动注册函数
+		explicit RendererAutoRegister(const std::wstring& name) // 自动注册函数
 		{
 			static_assert(std::is_base_of_v < BaseRenderer, T>,
 				"T must derive from BaseRenderer"); // 编译时检查T是否继承自BaseRenderer

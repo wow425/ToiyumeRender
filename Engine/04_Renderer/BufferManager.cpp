@@ -21,26 +21,12 @@
 #define BASE_COLOR_FORMAT DXGI_FORMAT_R8G8B8A8_UNORM
 #define NORMAL_FORMAT DXGI_FORMAT_R16G16_FLOAT
 #define MATERIAL_FORMAT DXGI_FORMAT_R8G8B8A8_UNORM
+
 #define HDR_COLOR_FORMAT DXGI_FORMAT_R16G16B16A16_FLOAT
-
-
-
 #define SDR_COLOR_FORMAT DXGI_FORMAT_R8G8B8A8_UNORM
+
 #define NORMAL_COLOR_FORMAT DXGI_FORMAT_R10G10B10A2_UNORM
 #define DSV_FORMAT DXGI_FORMAT_D24_UNORM_S8_UINT
-
-// 初始化Color，Normal，Depth Buffer（创建对应堆与描述符）
-//void Graphics::InitializeRenderingBuffers(uint32_t bufferWidth, uint32_t bufferHeight)
-//{
-//	GraphicsContext& InitContext = GraphicsContext::Begin();
-//
-//
-//
-//
-//
-//
-//	InitContext.Finish();
-//}
 
 namespace Graphics
 {

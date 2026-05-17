@@ -6,10 +6,10 @@
 #include "00_Core/PCH.h"
 #include "00_Core/SystemTime.h"
 #include "Display.h"
+#include "02_RHI/Resource/ColorBuffer.h" 
 #include "02_RHI/GraphicsCore.h"
 #include "02_RHI/Command/CommandContext.h"
 #include "02_RHI/Pipeline/RootSignature.h"
-#include "02_RHI/Resource/ColorBuffer.h"
 #include "04_Renderer/BufferManager.h"
 
 
@@ -28,6 +28,10 @@ DXGI_FORMAT SwapChainFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 using namespace Math;
 using namespace Graphics;
 
+namespace Display
+{
+	std::shared_ptr<ColorBuffer> SceneColorBuffer;
+}
 namespace
 {
 	float s_FrameTime = 0.0f;
@@ -37,7 +41,7 @@ namespace
 
 namespace Graphics
 {
-	void PreparePresentSDR();
+	void PreparePresentSDR(ColorBuffer& SceneColorBuffer);
 
 
 	enum eResolution { k720p, k900p, k1080p, k1440p, k1800p, k2160p };
@@ -99,7 +103,7 @@ namespace Graphics
 
 		g_CommandManager.IdleGPU();
 
-		InitializeRenderingBuffers(NativeWidth, NativeHeight);
+		// InitializeRenderingBuffers(NativeWidth, NativeHeight);
 	}
 
 	void SetDisplayResolution(void)
@@ -157,7 +161,7 @@ void Display::Resize(uint32_t width, uint32_t height)
 	// 强制等待确保上述创建完成
 	g_CommandManager.IdleGPU();
 	// 创建叠加层，水平模糊缓冲区
-	ResizeDisplayDependentBuffers(g_NativeWidth, g_NativeHeight);
+	// ResizeDisplayDependentBuffers(g_NativeWidth, g_NativeHeight);
 }
 
 // 
@@ -203,7 +207,7 @@ void Display::Initialize(void)
 	//s_PresentRS.Reset(4, 2); // 根签名设置为4根参，2静态采样器
 
 	//PresentSDRPS.SetRootSignature(s_PresentRS);
-	SetNativeResolution();
+	// SetNativeResolution();
 }
 
 void Display::Shutdown(void)
@@ -217,13 +221,10 @@ void Display::Shutdown(void)
 
 // 原本是最终 Present Pass（后处理→屏幕）
 // 目前不需要，直接 Present 后交换链后台缓冲区到屏幕
-void Display::Present(void)
+void Display::Present()
 {
 	// 最终 Present Pass（后处理→屏幕）。将先前绘制的scenecolorbuffer复制给最后呈现用的back buffer并present。目前阉割
-	PreparePresentSDR();
-
-
-	s_SwapChain1->Present(0, 0); // s_SwapChain1绑定的是DisplayPlane
+	PreparePresentSDR(*Display::SceneColorBuffer);
 
 	g_CurrentBuffer = (g_CurrentBuffer + 1) % SWAP_CHAIN_BUFFER_COUNT;
 
@@ -234,21 +235,23 @@ void Display::Present(void)
 	++s_FrameIndex;
 
 	// 动态分辨率模型（Runtime Resolution System）
-	SetNativeResolution();
-	SetDisplayResolution();
+	// SetNativeResolution();
+	// SetDisplayResolution();
 }
 
 
 // 最终 Present Pass（后处理→屏幕）
-void Graphics::PreparePresentSDR(void)
+void Graphics::PreparePresentSDR(ColorBuffer& SceneColorBuffer)
 {
 	GraphicsContext& Context = GraphicsContext::Begin(L"Present");
 
-	Context.CopyBuffer(g_DisplayPlane[g_CurrentBuffer], g_SceneColorBuffer);
+	Context.CopyBuffer(g_DisplayPlane[g_CurrentBuffer], SceneColorBuffer);
 
 	Context.TransitionResource(g_DisplayPlane[g_CurrentBuffer], D3D12_RESOURCE_STATE_PRESENT);
 
 	Context.Finish();
+
+	s_SwapChain1->Present(0, 0); // s_SwapChain1绑定的是DisplayPlane
 }
 
 uint64_t Graphics::GetFrameCount(void) { return s_FrameIndex; }

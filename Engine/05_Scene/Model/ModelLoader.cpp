@@ -1,5 +1,5 @@
 
-// 该类没怎么啃，就用ai带着看了遍
+
 
 #include "00_Core/PCH.h"
 #include "05_Scene/Model/ModelLoader.h"
@@ -18,7 +18,6 @@ using namespace Renderer;
 using namespace Graphics;
 
 // 缓存已创建的采样器组合。Key: 寻址模式组合, Value: 描述符堆中的偏移
-// 理由：避免为相同参数的采样器重复在堆中分配空间，节省描述符容量。
 std::unordered_map<uint32_t, uint32_t> g_SamplerPermutations;
 
 // 根据位掩码（AddressModes）动态获取或创建 D3D12 采样器描述符
@@ -33,10 +32,21 @@ D3D12_CPU_DESCRIPTOR_HANDLE GetSampler(uint32_t addressModes)
 	return samplerDesc.CreateDescriptor();
 }
 
-// 为模型加载材质并设置描述符表
-// TODO:加载非PBR规范模型纹理时失效，明日修逻辑
+static uint32_t ConvertToRenderMaterialFlags(const MaterialConstantData& material)
+{
+	uint32_t flags = Renderer::kMaterial_None;
+	if ((material.flags & (1u << 7)) != 0)
+		flags |= Renderer::kMaterial_AlphaBlend;
+	if ((material.flags & (1u << 6)) != 0)
+		flags |= Renderer::kMaterial_AlphaTest;
+	if ((material.flags & (1u << 5)) != 0)
+		flags |= Renderer::kMaterial_DoubleSided;
+	return flags;
+}
+
 void LoadMaterials(Model& model,
 	const std::vector<MaterialTextureData>& materialTextures,   // 材质纹理数据
+	const std::vector<MaterialConstantData>& materialConstants, // 材质参数数据
 	const std::vector<std::wstring>& textureNames,              // 文件名
 	const std::vector<uint8_t>& textureOptions,
 	const std::wstring& basePath)                               // 路径
@@ -44,44 +54,46 @@ void LoadMaterials(Model& model,
 	static_assert((_alignof(MaterialConstants) & 255) == 0, "CBVs need 256 byte alignment");
 
 	// 1. Load textures加载纹理
-	const uint32_t numTextures = (uint32_t)textureNames.size();
-	model.textures.resize(numTextures);
-	for (size_t ti = 0; ti < numTextures; ++ti)
 	{
-		std::wstring originalFile = basePath + textureNames[ti];
-		// 动态编译：若无 DDS 或原始文件更新，则调用纹理转换工具生成优化过的 DDS
-		CompileTextureOnDemand(originalFile, textureOptions[ti]);
+		const uint32_t numTextures = (uint32_t)textureNames.size();
+		model.textures.resize(numTextures);
+		for (size_t ti = 0; ti < numTextures; ++ti)
+		{
+			std::wstring originalFile = basePath + textureNames[ti];
+			// 动态编译：若无 DDS 或原始文件更新，则调用纹理转换工具生成优化过的 DDS
+			CompileTextureOnDemand(originalFile, textureOptions[ti]);
 
-		std::wstring ddsFile = Utility::RemoveExtension(originalFile) + L".dds";
-		// 从磁盘载入 GPU 资源
-		model.textures[ti] = TextureManager::LoadDDSFromFile(ddsFile);
+			std::wstring ddsFile = Utility::RemoveExtension(originalFile) + L".dds";
+			// 从磁盘载入 GPU 资源
+			model.textures[ti] = TextureManager::LoadDDSFromFile(ddsFile);
+		}
 	}
 
-	// Generate descriptor tables and record offsets for each material
 	// 生成描述符表和记录材质偏移量
-	const uint32_t numMaterials = (uint32_t)materialTextures.size(); // 每个网格1个材质
-	std::vector<uint32_t> tableOffsets(numMaterials); // 每个材质的offset
+	const uint32_t numMaterials = (uint32_t)materialTextures.size();
+	model.m_Materials.resize(numMaterials);
 
-	// 遍历为每个网格赋予纹理（目前即使1个网格只有1张材质，也按照PBR标准划分5个纹理槽位，使用default填充)
+	// 遍历为每个网格赋予纹理（按照PBR标准划分5个纹理槽位，无则使用default填充)
 	for (uint32_t matIdx = 0; matIdx < numMaterials; ++matIdx)
 	{
-		const MaterialTextureData& srcMat = materialTextures[matIdx]; // 该网格材质
+		const MaterialTextureData& srcMat = materialTextures[matIdx];
 
-		// kNumTextures 通常为 5 (Diffuse, Normal, Specular 等)，此处省略了kBlackTransparent2D
+		// 分配纹理描述符表（Texture Descriptor Table）。每个材质一个表，每个表包含5个纹理槽位（BaseColor, Emissive, Normal, Metallic, Roughness）
+		// 并将纹理描述符从源（模型纹理或默认纹理）复制到新分配的表中
 		DescriptorHandle TextureHandles = Renderer::s_TextureHeap.Alloc(kNumTextures);
 		uint32_t SRVDescriptorTable = Renderer::s_TextureHeap.GetOffsetOfHandle(TextureHandles);
 
 		uint32_t DestCount = kNumTextures;
 		uint32_t SourceCounts[kNumTextures] = { 1, 1, 1, 1, 1 };
 
-		// 默认备选纹理，防止材质缺失贴图导致采样非法地址导致 GPU 挂起 (TDR)
+		// 默认备选纹理
 		D3D12_CPU_DESCRIPTOR_HANDLE DefaultTextures[kNumTextures] =
 		{
-			GetDefaultTexture(kWhiteOpaque2D), // Diffuse
-			GetDefaultTexture(kWhiteOpaque2D), // Specular
-			GetDefaultTexture(kWhiteOpaque2D), // Normal
-			GetDefaultTexture(kBlackTransparent2D), // Emissive
-			GetDefaultTexture(kDefaultNormalMap) // Reflection
+			GetDefaultTexture(kWhiteOpaque2D), // baseColorFactor
+			GetDefaultTexture(kWhiteOpaque2D), // emissiveFactor
+			GetDefaultTexture(kWhiteOpaque2D), // normalTextureScale
+			GetDefaultTexture(kBlackTransparent2D), // metallicFactor
+			GetDefaultTexture(kDefaultNormalMap) // roughnessFactor
 		};
 		for (uint32_t i = 0; i < kNumTextures; ++i) // 验证所有默认纹理是否有效
 		{
@@ -104,20 +116,22 @@ void LoadMaterials(Model& model,
 
 		g_Device->CopyDescriptors(1, &TextureHandles, &DestCount, DestCount,
 			SourceTextures, SourceCounts, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
+		///////////////////////////////////////////////////////////////////////////
+		//
+		//
 		// 第三步：处理采样器描述符 (Sampler Descriptor)
 		uint32_t addressModes = srcMat.addressModes;
 		auto samplerMapLookup = g_SamplerPermutations.find(addressModes);
 
+		// 若该采样器组合未缓存，则在采样器堆中分配并拷贝
 		if (samplerMapLookup == g_SamplerPermutations.end())
 		{
-			// 若该采样器组合未缓存，则在采样器堆中分配并拷贝
 			DescriptorHandle SamplerHandles = Renderer::s_SamplerHeap.Alloc(kNumTextures);
 			uint32_t SamplerDescriptorTable = Renderer::s_SamplerHeap.GetOffsetOfHandle(SamplerHandles);
 			g_SamplerPermutations[addressModes] = SamplerDescriptorTable;
 
-			// 编码 Offset：低 16 位存 SRV 偏移，高 16 位存 Sampler 偏移
-			tableOffsets[matIdx] = SRVDescriptorTable | SamplerDescriptorTable << 16;
+			model.m_Materials[matIdx].SRVTable = SRVDescriptorTable;
+			model.m_Materials[matIdx].SamplerTable = SamplerDescriptorTable;
 
 			D3D12_CPU_DESCRIPTOR_HANDLE SourceSamplers[kNumTextures];
 			for (uint32_t j = 0; j < kNumTextures; ++j)
@@ -130,23 +144,12 @@ void LoadMaterials(Model& model,
 		}
 		else
 		{
-			tableOffsets[matIdx] = SRVDescriptorTable | samplerMapLookup->second << 16;
+			model.m_Materials[matIdx].SRVTable = SRVDescriptorTable;
+			model.m_Materials[matIdx].SamplerTable = samplerMapLookup->second;
 		}
-	}
 
-	// 第四步：将计算好的 Table Offset 回填到每个 Mesh 对象中
-	// Mesh PSO绑定处
-	uint8_t* meshPtr = model.m_MeshData.get();
-	for (uint32_t i = 0; i < model.m_NumMeshes; ++i)
-	{
-		Mesh& mesh = *(Mesh*)meshPtr;
-		uint32_t offsetPair = tableOffsets[mesh.materialCBV];
-		mesh.srvTable = offsetPair & 0xFFFF;
-		mesh.samplerTable = offsetPair >> 16;
-		// 根据 Mesh 的 PSO 标志位 (如是否带骨骼、是否透明) 关联对应的渲染管线状态
-		mesh.pso = Renderer::GetPSO(mesh.psoFlags); // Mesh PSO绑定处
-		// 指针偏移，跳过变长的 Draw Call 数据区
-		meshPtr += sizeof(Mesh) + (mesh.numDraws - 1) * sizeof(Mesh::Draw);
+		model.m_Materials[matIdx].Flags = ConvertToRenderMaterialFlags(materialConstants[matIdx]);
+		model.m_Materials[matIdx].MaterialCBV = model.m_MaterialConstants.GetGpuVirtualAddress() + sizeof(MaterialConstants) * matIdx;
 	}
 }
 
@@ -184,7 +187,6 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
 	bool needBuild = forceRebuild;
 
 	// 触发重建的条件：1. 缓存文件缺失。 2. 原始文件存在，且其最后修改时间 (st_mtime) 晚于缓存文件。
-	// 这保证了美术人员在 DCC 软件 (如 Maya/Blender) 中修改并导出模型后，引擎能自动热重载 (Hot Reload / ホットリロード)。
 	if (miniFileMissing || !sourceFileMissing && sourceFileStat.st_mtime > miniFileStat.st_mtime)
 		needBuild = true;
 
@@ -253,7 +255,6 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
 	std::wstring basePath = Utility::GetBasePath(filePath);
 
 	// 5. 内存分配与数据灌入 (Memory Allocation & Loading)
-	// 实例化引擎层的 Model 对象。
 	std::shared_ptr<Model> model(new Model);
 
 	// 加载场景图层级树 (Scene Graph) - 主要用于骨骼动画和物件挂载。
@@ -278,23 +279,22 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
 	inFile.read((char*)model->m_SceneGraph.get(), header.numNodes * sizeof(GraphNode));
 	inFile.read((char*)model->m_MeshData.get(), header.meshDataSize);
 
+	std::vector<MaterialConstantData> materialConstantData(header.numMaterials);
 	// 【DX12 核心：材质常量上传】(Material Constant Buffer / マテリアル定数バッファ)
 	if (header.numMaterials > 0)
 	{
 		UploadBuffer materialConstants;
-		// 为所有材质参数（如 Albedo, Roughness, Metallic 的数值）分配 Upload Buffer。
 		materialConstants.Create(L"Material Constant Upload", header.numMaterials * sizeof(MaterialConstants));
 		MaterialConstants* materialCBV = (MaterialConstants*)materialConstants.Map();
 
-		// 循环读取。在工业界，如果是严密的对齐数据，这里通常会优化为一个整块的 block read 而非循环单次 read，以减少函数调用开销。
 		for (uint32_t i = 0; i < header.numMaterials; ++i)
 		{
-			inFile.read((char*)materialCBV, sizeof(MaterialConstantData));
+			inFile.read((char*)&materialConstantData[i], sizeof(MaterialConstantData));
+			std::memcpy(materialCBV, &materialConstantData[i], sizeof(MaterialConstantData));
 			materialCBV++; // 指针偏移，写入下一个材质参数
 		}
 		materialConstants.Unmap();
 
-		// 同样，拷贝到 GPU 专属的 VRAM 中。
 		model->m_MaterialConstants.Create(L"Material Constants", header.numMaterials, sizeof(MaterialConstants), materialConstants);
 	}
 
@@ -317,14 +317,12 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
 	inFile.read((char*)textureOptions.data(), header.numTextures * sizeof(uint8_t));
 
 	// 调用内部函数，真正去触发或绑定这些纹理资源 (SRV 创建等)。
-	LoadMaterials(*model, materialTextures, textureNames, textureOptions, basePath);
+	LoadMaterials(*model, materialTextures, materialConstantData, textureNames, textureOptions, basePath);
 
 	// 包围盒
-	model->m_BoundingSphere = BoundingSphere(*(XMFLOAT4*)header.boundingSphere);
-	model->m_BoundingBox = AxisAlignedBox(Vector3(*(XMFLOAT3*)header.minPos), Vector3(*(XMFLOAT3*)header.maxPos));
+	model->m_BoundingSphere = Math::BoundingSphere(*(XMFLOAT4*)header.boundingSphere);
+	model->m_BoundingBox = Math::AxisAlignedBox(Math::Vector3(*(XMFLOAT3*)header.minPos), Math::Vector3(*(XMFLOAT3*)header.maxPos));
 
-
-	// 顺利通关，返回模型指针。
 	return model;
 }
 

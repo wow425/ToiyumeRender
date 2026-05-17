@@ -9,7 +9,7 @@
 
 namespace glTF { class Asset; struct Mesh; }
 
-#define CURRENT_MINI_FILE_VERSION 13
+#define CURRENT_MINI_FILE_VERSION 2
 
 namespace Renderer
 {
@@ -24,8 +24,8 @@ namespace Renderer
 	// 
 	struct ModelData
 	{
-		BoundingSphere m_BoundingSphere;
-		AxisAlignedBox m_BoundingBox;
+		Math::BoundingSphere m_BoundingSphere;
+		Math::AxisAlignedBox m_BoundingBox;
 		std::vector<::byte> m_GeometryData; // 几何数据
 		std::vector<MaterialTextureData> m_MaterialTextures; // 材质纹理描述
 		std::vector<MaterialConstantData> m_MaterialConstants; // 材质常量数据

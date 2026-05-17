@@ -20,13 +20,23 @@
 
 #include <d3d12.h>
 
-class BaseCamera;
+#include "02_RHI/Pipeline/PipelineState.h"
+#include "04_Renderer/Material/Material.h"
+#include "04_Renderer/Pipeline/PipelineDesc.h"
 
+class Camera;
+class GraphicsContext;
+class ModelInstance;
+class Material;
+struct GlobalConstants;
 
 
 namespace Renderer
 {
-	// class GraphicsContext;
+	class Meshsorter;
+
+	enum BatchType { kDefault, kShadows };
+	enum DrawPass { kZPass, kOpaque, kTransparent, kNumPasses };
 
 
 	// 根绑定槽位枚举
@@ -46,17 +56,15 @@ namespace Renderer
 	{
 		uint32_t width = 0;
 		uint32_t height = 0;
-
 		DXGI_FORMAT backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 		DXGI_FORMAT depthBufferFormat = DXGI_FORMAT_D32_FLOAT;
 
-		void* windowHandle = nullptr;
 	};
 
 	struct RenderFrameDesc
 	{
 		// const Scene* scene = nullptr;
-		const Camera* camera = nullptr;
+		const Scene::Camera* camera = nullptr;
 
 	};
 
@@ -71,8 +79,6 @@ namespace Renderer
 		Transparent = 1u << 5,
 		PostProcess = 1u << 6,
 	};
-
-
 
 	inline RendererFeature operator| (RendererFeature a, RendererFeature b)
 	{
@@ -95,35 +101,53 @@ namespace Renderer
 		return static_cast<uint32_t>(mask & feature) != 0;
 	}
 
+
+
 	class BaseRenderer
 	{
 	public:
 		virtual ~BaseRenderer() = default;
 
-		virtual std::wstring GetName() const = 0; // ?
+		virtual std::wstring GetName() const = 0;
 
 
 		virtual bool Initialize(const RendererCreateDesc& desc) = 0;
 		virtual void Shutdown() = 0;
-		virtual void OnResize(uint32_t width, uint32_t height) = 0; // ?
-
-		virtual void BeginFrame(const RenderFrameDesc& frame) {} // ?
+		virtual void OnResize(uint32_t width, uint32_t height) = 0;
+		virtual void BeginFrame(const RenderFrameDesc& frame) {}
 		virtual void Update(const RenderFrameDesc& frame) = 0;
-		virtual void Render(MeshSorter::DrawPass pass, GraphicsContext& context, GlobalConstants& globals, const RenderFrameDesc& frame) = 0;
-		virtual void EndFrame(GraphicsContext& context, const RenderFrameDesc& frame) {} // ?
+		virtual void Render(GraphicsContext& context, const RenderFrameDesc& frame, DrawPass pass, BatchType batchType = kDefault) = 0;
+		virtual void EndFrame(GraphicsContext& context, const RenderFrameDesc& frame) {}
 
 		virtual RendererFeature GetFeatures() const = 0;
 
-		// 根据传入的标志位（是否有法线、切线、蒙皮等）动态获取或编译 PSO。
-		virtual uint8_t GetPSO(uint16_t psoFlags);
+		virtual uint8_t GetPSO(uint16_t vertexFlags);
+		// Runtime render-strategy entry: MeshSorter 在实际绘制时用 PipelineDesc
+		// 让具体 renderer 解析为真实 GraphicsPSO 并绑定。
+		virtual const GraphicsPSO& GetPSO(const PipelineDesc& desc) = 0;
+		virtual void BindRenderState(GraphicsContext& context) = 0;
+		virtual void BindMaterial(GraphicsContext& context, const Material& material) = 0;
 
-		bool IsInitialized() const noexcept { return m_Initialized; } // ?
+
+
+		bool IsInitialized() const noexcept { return m_Initialized; }
+
+		D3D12_VIEWPORT GetMainViewport(void) { return m_MainViewport; }
+		D3D12_RECT GetMainScissor(void) { return m_MainScissor; }
+
+		void ModelSort(const ModelInstance& model);
 
 	protected:
 		RendererCreateDesc m_CreateDesc{};
 		bool m_Initialized = false;
 
 		GraphicsPSO m_DefaultPSO;
+
+		D3D12_VIEWPORT m_MainViewport = {};
+		D3D12_RECT m_MainScissor = {};
+		uint32_t m_NumRTVs = 0;
+
+		MeshSorter DefaultSorter{ BatchType::kDefault };
 	};
 	using RendererPtr = std::unique_ptr<BaseRenderer>; // ?
 
@@ -131,47 +155,6 @@ namespace Renderer
 	class MeshSorter
 	{
 	public:
-		enum BatchType { kDefault, kShadows };
-		enum DrawPass { kZPass, kOpaque, kTransparent, kNumPasses };
-
-		MeshSorter(BatchType type)
-		{
-			m_BatchType = type;
-			m_Camera = nullptr;
-			m_Viewport = {};
-			m_Scissor = {};
-			m_NumRTVs = 0;
-			m_DSV = nullptr;
-			m_SortObjects.clear();
-			m_SortKeys.clear();
-			std::memset(m_PassCounts, 0, sizeof(m_PassCounts));
-			m_CurrentPass = kZPass;
-			m_CurrentDraw = 0;
-		}
-
-		void Sort();
-
-		void SetCamera(const BaseCamera& camera) { m_Camera = &camera; }
-		void SetViewport(const D3D12_VIEWPORT& viewport) { m_Viewport = viewport; }
-		void SetScissor(const D3D12_RECT& scissor) { m_Scissor = scissor; }
-		void AddRenderTarget(ColorBuffer& RTV)
-		{
-			ASSERT(m_NumRTVs < 8);
-			m_RTV[m_NumRTVs++] = &RTV;
-		}
-		void SetDepthStencilTarget(DepthBuffer& DSV) { m_DSV = &DSV; }
-
-		const Math::Matrix4& GetViewMatrix() const { return m_Camera->GetViewMatrix(); }
-
-		void AddMesh(const Mesh& mesh, const Material& material,float distance,
-			D3D12_GPU_VIRTUAL_ADDRESS meshCBV,
-			D3D12_GPU_VIRTUAL_ADDRESS materialCBV,
-			D3D12_GPU_VIRTUAL_ADDRESS bufferPtr);
-
-		void RenderMeshes(DrawPass pass, GraphicsContext& context, GlobalConstants& globals);
-
-	private:
-
 		struct SortKey
 		{
 			union
@@ -179,10 +162,10 @@ namespace Renderer
 				uint64_t value;
 				struct
 				{
-					uint64_t objectIdx : 16;
-					uint64_t psoIdx : 12;
-					uint64_t key : 32;
-					uint64_t passID : 4;
+					uint64_t objectIdx : 16;    // 物体ID，最多65536个物体
+					uint64_t psoIdx : 12;     // PSO索引，最多4096种PSO
+					uint64_t key : 32;        // 排序key，距离、透明度等
+					uint64_t passID : 4;      // passID，最多16个pass
 				};
 			};
 		};
@@ -190,24 +173,45 @@ namespace Renderer
 		struct SortObject
 		{
 			const Mesh* mesh;
+			const Material* material;
 			D3D12_GPU_VIRTUAL_ADDRESS meshCBV;
 			D3D12_GPU_VIRTUAL_ADDRESS materialCBV;
 			D3D12_GPU_VIRTUAL_ADDRESS bufferPtr;
 		};
 
+		MeshSorter(BatchType type)
+		{
+			m_BatchType = type;
+			m_SortObjects.clear();
+			m_SortKeys.clear();
+			std::memset(m_PassCounts, 0, sizeof(m_PassCounts));
+			m_CurrentPass = kZPass;
+			m_CurrentDraw = 0;
+		}
+
+
+
+		DrawPass GetCurrentPass(void) { return m_CurrentPass; }
+		uint32_t GetPassCounts(void) { return m_PassCounts[kNumPasses]; }
+		uint32_t GetCurrentDraw(void) { return  m_CurrentDraw; }
+		std::vector<uint64_t> GetSortkeys(void) { return m_SortKeys; }
+		std::vector<SortObject> GetSortObjects(void) { return m_SortObjects; }
+
+		void Sort();
+
+		void AddMesh(const Mesh& mesh, const Material& material, float distance,
+			D3D12_GPU_VIRTUAL_ADDRESS meshCBV,
+			D3D12_GPU_VIRTUAL_ADDRESS materialCBV,
+			D3D12_GPU_VIRTUAL_ADDRESS bufferPtr);
+
+	private:
 		std::vector<SortObject> m_SortObjects;
-		std::vector<uint64_t> m_SortKeys;
+		std::vector<uint64_t> m_SortKeys; // 已排序key集合
 		BatchType m_BatchType; // 批次类型（Main pass， shadow pass
-		uint32_t m_PassCounts[kNumPasses]; // pass计数（render pass含多少个需要绘制的物体）
+		uint32_t m_PassCounts[kNumPasses]; // 记录zpass，opaque，transparent的需要绘制物体数量（render pass含多少个需要绘制的物体）
 		DrawPass m_CurrentPass;            // 当前pass
 		uint32_t m_CurrentDraw;            // 当前draw
-
-		const BaseCamera* m_Camera;
-		D3D12_VIEWPORT m_Viewport;
-		D3D12_RECT m_Scissor;
-		uint32_t m_NumRTVs;
-		ColorBuffer* m_RTV[8];
-		DepthBuffer* m_DSV;
 	};
 };
+
 

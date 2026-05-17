@@ -41,6 +41,7 @@ namespace Graphics
 		static void DestroyColorBuffer(const std::wstring& ResourceID);
 		static void DestroyDepthBuffer(const std::wstring& ResourceID);
 
+
 	private:
 
 		static std::unordered_map<std::wstring, std::shared_ptr<ColorBuffer>> s_ColorBuffers;

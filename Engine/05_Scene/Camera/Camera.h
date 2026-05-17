@@ -8,7 +8,7 @@
 #include "00_Core/Math/VectorMath.h"
 #include "00_Core/Math/Frustum.h"
 
-namespace Renderer
+namespace Scene
 {
 	class BaseCamera
 	{
@@ -119,7 +119,7 @@ namespace Renderer
 	inline Camera::Camera() : m_ReverseZ(false), m_InfiniteZ(false)
 	{
 		// 默认关闭反转 Z (Reverse-Z)，默认视野 45 度 (PI/4)，长宽比 16:9，近平面 1.0，远平面 1000.0
-		SetPerspectiveMatrix(XM_PIDIV4, 9.0f / 16.0f, 1.0f, 1000.0f);
+		SetPerspectiveMatrix(DirectX::XM_PIDIV4, 9.0f / 16.0f, 1.0f, 1000.0f);
 	}
 
 	inline void Camera::SetPerspectiveMatrix(float verticalFovRadians, float aspectHeightOverWidth, float nearZClip, float farZClip)

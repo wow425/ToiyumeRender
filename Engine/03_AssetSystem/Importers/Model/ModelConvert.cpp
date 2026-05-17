@@ -104,13 +104,15 @@ void Renderer::CompileMesh(
 		mesh->ibOffset = (uint32_t)bufferMemory.size() + curIBOffset;
 		mesh->ibSize = (uint32_t)ibSize;
 		mesh->vbStride = (uint8_t)iter.second[0]->vertexStride;
+		mesh->vbDepthStride = (uint8_t)iter.second[0]->depthVertexStride;
 		mesh->ibFormat = uint8_t(iter.second[0]->index32 ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R16_UINT);
 		mesh->meshCBV = (uint16_t)matrixIdx;
-		mesh->materialCBV = iter.second[0]->materialIdx;
+		mesh->materialSlotIdx = iter.second[0]->materialIdx;
 		//mesh->psoFlags = iter.second[0]->psoFlags;
 		//mesh->pso = 0xFFFF;
-		// 【修改】：导入时不再记录 psoFlags，而是提取该 primitive 的顶点属性特征
-		// 假设 Primitive 结构已记录了该网格有无 Normal、UV (iter.second[0]->vertexFlags)
+		// Asset import records geometry features only.  The renderer combines
+		// these vertex flags with the material state at runtime to choose a PSO.
+		// 模型导入层只记录几何信息，材质层记录材质信息，渲染层在运行时将两者结合来选择PSO
 		mesh->vertexFlags = iter.second[0]->vertexFlags;
 
 		mesh->numDraws = (uint16_t)numDraws;

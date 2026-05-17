@@ -5,7 +5,7 @@
 #include "05_Scene/Camera/Camera.h"
 #include "00_Core/Math/VectorMath.h"
 
-class ShadowCamera : public Math::BaseCamera
+class ShadowCamera : public Scene::BaseCamera
 {
 public:
 

@@ -32,14 +32,12 @@ public:
 	virtual void RenderScene(void) override;
 
 private:
-
-	Renderer::Camera m_Camera;
+	// Camera
+	Scene::Camera  m_Camera;
 	unique_ptr<CameraController> m_CameraController;
 
-	D3D12_VIEWPORT m_MainViewport;
-	D3D12_RECT m_MainScissor;
-
-	ModelInstance m_ModelInst;
+	// 模型
+	ModelInstance saber_emiyaModelInst;
 };
 
 // 启动!
@@ -50,6 +48,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
 	return GameCore::WinRun<Tooiyume>(L"Tooiyume", hInst, cmd);
 }
 
+Renderer::ForwardRenderer ForwardRenderer;
 
 
 
@@ -57,14 +56,16 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
 
 void Tooiyume::Startup(void)
 {
+	Renderer::RendererCreateDesc desc;
+	desc.width = g_DisplayWidth;
+	desc.height = g_DisplayHeight;
 	// Renderer
-	Renderer::Initialize();
+	if (ForwardRenderer.Initialize(desc) != 1) return;
+	Display::SceneColorBuffer = ForwardRenderer.GetForwardBuffer().SceneColorBuffer[0];
 	// 模型加载
 	std::wstring gltfFileName;
-
-	bool forceRebuild = true; // ?
-
-	m_ModelInst = Renderer::LoadModel(L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Saber/saber_emiya.gltf", forceRebuild);
+	bool forceRebuild = true;
+	saber_emiyaModelInst = Renderer::LoadModel(L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Saber/saber_emiya.gltf", forceRebuild);
 
 	// Camera设置
 	m_Camera.SetEyeAtUp(Vector3(0.0f, 0.0f, 5.0f), Vector3(0.0f, 0.0f, -5.0f), Vector3(kYUnitVector));
@@ -75,69 +76,35 @@ void Tooiyume::Startup(void)
 
 void Tooiyume::Update(float deltaT)
 {
+	GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Update");
 	// 性能分析，输入，镜头，模型更新，资源回收
 
 	// 镜头常量数据更新
-	m_CameraController->Update(deltaT); // 要修改
+	m_CameraController->Update(deltaT);
 
-	GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Update");
 
 	// 模型常量数据更新
-	m_ModelInst.Update(gfxContext, deltaT);
-
+	{
+		saber_emiyaModelInst.Update(gfxContext, deltaT);
+	}
 
 
 	// 资源回收，标记为recycled
 	gfxContext.Finish();
-
-	// 视口，裁剪矩阵更新
-	m_MainViewport.TopLeftX = 0.0f; // taa用
-	m_MainViewport.TopLeftY = 0.0f;
-
-	m_MainViewport.Width = (float)g_SceneColorBuffer.GetWidth();
-	m_MainViewport.Height = (float)g_SceneColorBuffer.GetHeight();
-	m_MainViewport.MinDepth = 0.0f;
-	m_MainViewport.MaxDepth = 1.0f;
-
-	m_MainScissor.left = 0;
-	m_MainScissor.top = 0;
-	m_MainScissor.right = (LONG)g_SceneColorBuffer.GetWidth();
-	m_MainScissor.bottom = (LONG)g_SceneColorBuffer.GetHeight();
-
 }
 
 
 void Tooiyume::RenderScene(void)
 {
-	GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Render");
+	GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene ForwardRenderer");
 
-	const D3D12_VIEWPORT& viewport = m_MainViewport;
-	const D3D12_RECT& scissor = m_MainScissor;
-
-	GlobalConstants globals;
-	globals.ViewProjMatrix = m_Camera.GetViewProjMatrix();
-	globals.CameraPos = m_Camera.GetPosition();
+	Renderer::RenderFrameDesc renderFrame;
+	renderFrame.camera = &m_Camera;
 
 
-	gfxContext.TransitionResource(g_DepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, true); // 立刻执行转换
-	gfxContext.ClearDepth(g_DepthBuffer);
 
-	MeshSorter sorter(MeshSorter::kDefault); // Main Pass
-	sorter.SetCamera(m_Camera);
-	sorter.SetViewport(viewport);
-	sorter.SetScissor(scissor);
-	sorter.SetDepthStencilTarget(g_DepthBuffer);
-	sorter.AddRenderTarget(g_SceneColorBuffer);
-
-	m_ModelInst.GatherRenderables(sorter); // 剔除，排序，打包添加到MeshSorter中
-
-	sorter.Sort();
-
-	gfxContext.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
-	gfxContext.SetViewportAndScissor(viewport, scissor); // 设置视口和裁剪矩形
-
-	gfxContext.ClearColor(g_SceneColorBuffer);
-	sorter.RenderMeshes(MeshSorter::kOpaque, gfxContext, globals); // 还没完成全套不用MeshSorter::kNumPasses
+	ForwardRenderer.ModelSort(saber_emiyaModelInst); // 模型排序
+	ForwardRenderer.Render(gfxContext, renderFrame, Renderer::DrawPass::kOpaque);
 
 
 
@@ -148,9 +115,9 @@ void Tooiyume::RenderScene(void)
 
 void Tooiyume::Cleanup(void)
 {
-	m_ModelInst = nullptr;
+	saber_emiyaModelInst = nullptr;
 
-	Renderer::Shutdown();
+	ForwardRenderer.Shutdown();
 
 }
 
