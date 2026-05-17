@@ -7,33 +7,32 @@
 *  目前的设计是把这个方法放在抽象类里，子类实现该方法来生成pso，
 */
 
-
-
-
-
-
 #pragma once
 
 #include <cstdint>
 #include <memory>
 #include <string>
-
+#include <vector>
 #include <d3d12.h>
 
 #include "02_RHI/Pipeline/PipelineState.h"
 #include "04_Renderer/Material/Material.h"
 #include "04_Renderer/Pipeline/PipelineDesc.h"
 
-class Camera;
+
 class GraphicsContext;
 class ModelInstance;
-class Material;
 struct GlobalConstants;
 
+namespace Scene
+{
+	class Camera;
+}
 
 namespace Renderer
 {
-	class Meshsorter;
+	// class Meshsorter;
+	struct Mesh;
 
 	enum BatchType { kDefault, kShadows };
 	enum DrawPass { kZPass, kOpaque, kTransparent, kNumPasses };
@@ -101,7 +100,63 @@ namespace Renderer
 		return static_cast<uint32_t>(mask & feature) != 0;
 	}
 
+	class MeshSorter
+	{
+	public:
+		struct SortKey
+		{
+			union
+			{
+				uint64_t value;
+				struct
+				{
+					uint64_t objectIdx : 16;    // 物体ID，最多65536个物体
+					uint64_t psoIdx : 12;		// PSO索引，最多4096种PSO
+					uint64_t key : 32;			// 排序key，距离、透明度等
+					uint64_t passID : 4;		// passID，最多16个pass
+				};
+			};
+		};
 
+		struct SortObject
+		{
+			const Mesh* mesh;
+			const Material* material;
+			D3D12_GPU_VIRTUAL_ADDRESS meshCBV;
+			D3D12_GPU_VIRTUAL_ADDRESS bufferPtr;
+		};
+
+		MeshSorter(BatchType type)
+		{
+			m_BatchType = type;
+			m_SortObjects.clear();
+			m_SortKeys.clear();
+			std::memset(m_PassCounts, 0, sizeof(m_PassCounts));
+			m_CurrentPass = kZPass;
+			m_CurrentDraw = 0;
+		}
+
+		DrawPass GetCurrentPass(void) { return m_CurrentPass; }
+		const uint32_t* GetPassCounts(void) const { return m_PassCounts; }
+		uint32_t GetCurrentDraw(void) { return  m_CurrentDraw; }
+		const std::vector<uint64_t> GetSortkeys(void) { return m_SortKeys; }
+		const std::vector<SortObject> GetSortObjects(void) { return m_SortObjects; }
+
+		void Sort();
+
+		void AddMesh(const Mesh& mesh, const Material& material, float distance,
+			D3D12_GPU_VIRTUAL_ADDRESS meshCBV,
+			D3D12_GPU_VIRTUAL_ADDRESS materialCBV,
+			D3D12_GPU_VIRTUAL_ADDRESS bufferPtr);
+
+	private:
+		std::vector<SortObject> m_SortObjects;
+		std::vector<uint64_t> m_SortKeys; // 已排序key集合
+		BatchType m_BatchType; // 批次类型（Main pass， shadow pass
+		uint32_t m_PassCounts[kNumPasses]; // 记录zpass，opaque，transparent的需要绘制物体数量（render pass含多少个需要绘制的物体）
+		DrawPass m_CurrentPass;            // 当前pass
+		uint32_t m_CurrentDraw;            // 当前draw
+	};
 
 	class BaseRenderer
 	{
@@ -110,25 +165,22 @@ namespace Renderer
 
 		virtual std::wstring GetName() const = 0;
 
-
 		virtual bool Initialize(const RendererCreateDesc& desc) = 0;
 		virtual void Shutdown() = 0;
 		virtual void OnResize(uint32_t width, uint32_t height) = 0;
 		virtual void BeginFrame(const RenderFrameDesc& frame) {}
 		virtual void Update(const RenderFrameDesc& frame) = 0;
-		virtual void Render(GraphicsContext& context, const RenderFrameDesc& frame, DrawPass pass, BatchType batchType = kDefault) = 0;
+		virtual void Render(GraphicsContext& context, const RenderFrameDesc& frame, DrawPass pass,
+			BatchType batchType = kDefault) = 0;
 		virtual void EndFrame(GraphicsContext& context, const RenderFrameDesc& frame) {}
 
 		virtual RendererFeature GetFeatures() const = 0;
 
-		virtual uint8_t GetPSO(uint16_t vertexFlags);
 		// Runtime render-strategy entry: MeshSorter 在实际绘制时用 PipelineDesc
 		// 让具体 renderer 解析为真实 GraphicsPSO 并绑定。
 		virtual const GraphicsPSO& GetPSO(const PipelineDesc& desc) = 0;
 		virtual void BindRenderState(GraphicsContext& context) = 0;
 		virtual void BindMaterial(GraphicsContext& context, const Material& material) = 0;
-
-
 
 		bool IsInitialized() const noexcept { return m_Initialized; }
 
@@ -150,68 +202,6 @@ namespace Renderer
 		MeshSorter DefaultSorter{ BatchType::kDefault };
 	};
 	using RendererPtr = std::unique_ptr<BaseRenderer>; // ?
-
-
-	class MeshSorter
-	{
-	public:
-		struct SortKey
-		{
-			union
-			{
-				uint64_t value;
-				struct
-				{
-					uint64_t objectIdx : 16;    // 物体ID，最多65536个物体
-					uint64_t psoIdx : 12;     // PSO索引，最多4096种PSO
-					uint64_t key : 32;        // 排序key，距离、透明度等
-					uint64_t passID : 4;      // passID，最多16个pass
-				};
-			};
-		};
-
-		struct SortObject
-		{
-			const Mesh* mesh;
-			const Material* material;
-			D3D12_GPU_VIRTUAL_ADDRESS meshCBV;
-			D3D12_GPU_VIRTUAL_ADDRESS materialCBV;
-			D3D12_GPU_VIRTUAL_ADDRESS bufferPtr;
-		};
-
-		MeshSorter(BatchType type)
-		{
-			m_BatchType = type;
-			m_SortObjects.clear();
-			m_SortKeys.clear();
-			std::memset(m_PassCounts, 0, sizeof(m_PassCounts));
-			m_CurrentPass = kZPass;
-			m_CurrentDraw = 0;
-		}
-
-
-
-		DrawPass GetCurrentPass(void) { return m_CurrentPass; }
-		uint32_t GetPassCounts(void) { return m_PassCounts[kNumPasses]; }
-		uint32_t GetCurrentDraw(void) { return  m_CurrentDraw; }
-		std::vector<uint64_t> GetSortkeys(void) { return m_SortKeys; }
-		std::vector<SortObject> GetSortObjects(void) { return m_SortObjects; }
-
-		void Sort();
-
-		void AddMesh(const Mesh& mesh, const Material& material, float distance,
-			D3D12_GPU_VIRTUAL_ADDRESS meshCBV,
-			D3D12_GPU_VIRTUAL_ADDRESS materialCBV,
-			D3D12_GPU_VIRTUAL_ADDRESS bufferPtr);
-
-	private:
-		std::vector<SortObject> m_SortObjects;
-		std::vector<uint64_t> m_SortKeys; // 已排序key集合
-		BatchType m_BatchType; // 批次类型（Main pass， shadow pass
-		uint32_t m_PassCounts[kNumPasses]; // 记录zpass，opaque，transparent的需要绘制物体数量（render pass含多少个需要绘制的物体）
-		DrawPass m_CurrentPass;            // 当前pass
-		uint32_t m_CurrentDraw;            // 当前draw
-	};
 };
 
 

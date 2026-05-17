@@ -50,9 +50,9 @@ namespace Renderer
 			m_MainScissor.right = (LONG)desc.width;
 			m_MainScissor.bottom = (LONG)desc.height;
 		}
-
-
 		m_CreateDesc = desc;
+		m_CreateDesc.backBufferFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		m_CreateDesc.depthBufferFormat = DXGI_FORMAT_D32_FLOAT;
 
 		BuildRootSignature();
 		BuildPSOs();
@@ -117,7 +117,8 @@ namespace Renderer
 		// 4. 历史帧信息（TAA / Motion Vector）
 	}
 
-	void ForwardRenderer::Render(GraphicsContext& context, const RenderFrameDesc& frame, DrawPass pass, BatchType batchType = kDefault)
+	void ForwardRenderer::Render(GraphicsContext& context, const RenderFrameDesc& frame, DrawPass pass,
+		BatchType batchType)
 	{
 		ASSERT(m_Initialized);
 		auto DepthBuffer = this->GetForwardBuffer().DepthBuffer;
@@ -168,7 +169,7 @@ namespace Renderer
 		// 7. Tonemap / Bloom / TAA
 		//
 		auto CurrentPass = this->DefaultSorter.GetCurrentPass();
-		uint32_t PassCounts[kNumPasses]{ this->DefaultSorter.GetPassCounts() };
+		const uint32_t* PassCounts = this->DefaultSorter.GetPassCounts();
 		auto CurrentDraw = this->DefaultSorter.GetCurrentDraw();
 		auto Sortkeys = this->DefaultSorter.GetSortkeys();
 		auto SortObjects = this->DefaultSorter.GetSortObjects();
@@ -215,7 +216,7 @@ namespace Renderer
 				// 根实参绑定和PSO绑定
 				{
 					context.SetConstantBuffer(kMeshConstants, object.meshCBV);
-					context.SetConstantBuffer(kMaterialConstants, object.materialCBV);
+					context.SetConstantBuffer(kMaterialConstants, material.MaterialCBV);
 					this->BindMaterial(context, material);
 
 					context.SetPipelineState(this->GetPSO(desc)); // !?
@@ -254,8 +255,8 @@ namespace Renderer
 
 	void ForwardRenderer::BuildDescriptorHeaps()
 	{
-		s_TextureHeap.Create(L"Deferred Texture Descriptors", D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4096);
-		s_SamplerHeap.Create(L"Deferred Sampler Descriptors", D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 2048);
+		s_TextureHeap.Create(L"Forward Texture Descriptors", D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4096);
+		s_SamplerHeap.Create(L"Forward Sampler Descriptors", D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 2048);
 
 		// 预留一块“全局通用贴图”描述符区域
 		m_CommonTextures = s_TextureHeap.Alloc(1);
@@ -316,6 +317,7 @@ namespace Renderer
 		const uint32_t width = m_CreateDesc.width;
 		const uint32_t height = m_CreateDesc.height;
 
+		m_ForwardBuffer = std::make_shared<ForwardBuffer>();
 		m_ForwardBuffer->SceneColorBuffer[0] = BufferManager::CreateColorBuffer(L"Scene Color Buffer", width, height, m_CreateDesc.backBufferFormat);
 		m_ForwardBuffer->DepthBuffer = BufferManager::CreateDepthBuffer(L"Scene Depth Buffer", width, height, m_CreateDesc.depthBufferFormat);
 

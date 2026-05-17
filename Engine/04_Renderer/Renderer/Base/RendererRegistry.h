@@ -34,7 +34,7 @@ namespace Renderer
 
 		static RendererRegistry& Instance(); // 单例模式获取实例
 
-		void RegisterRenderer(std::wstring& name, Creator creator); // 
+		void RegisterRenderer(const std::wstring& name, Creator creator); // 
 		RendererPtr CreateRenderer(std::wstring& name) const; // 
 
 	private:

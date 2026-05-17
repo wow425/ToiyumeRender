@@ -27,5 +27,5 @@ find_package(DirectX-Headers CONFIG REQUIRED)
 # 添加子目录
 # ==========================================
 add_subdirectory(Engine)
-add_subdirectory(Demos/DefaultApp)
+add_subdirectory(Demos/ForwardApp)
 add_subdirectory(Demos/DeferredApp)

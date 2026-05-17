@@ -45,7 +45,7 @@ public:
 	void EnableMomentum(bool enable) { m_Momentum = enable; }
 
 	// 强制传送 (Teleport)：直接覆写当前的偏航角 (Heading/Yaw)、俯仰角 (Pitch) 和世界坐标。
-	void SetHeadingPitchAndPosition(float heading, float pitch, const Vector3& position);
+	void SetHeadingPitchAndPosition(float heading, float pitch, const Math::Vector3& position);
 
 private:
 

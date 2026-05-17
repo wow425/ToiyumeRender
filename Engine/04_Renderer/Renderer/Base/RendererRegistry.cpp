@@ -8,7 +8,7 @@ namespace Renderer
 		return s_Instance;
 	}
 
-	void RendererRegistry::RegisterRenderer(std::wstring& name, Creator creator)
+	void RendererRegistry::RegisterRenderer(const std::wstring& name, Creator creator)
 	{
 		m_Creators[name] = std::move(creator);
 	}

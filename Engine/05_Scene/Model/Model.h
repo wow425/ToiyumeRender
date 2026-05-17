@@ -39,7 +39,6 @@ namespace Renderer
 		uint16_t materialSlotIdx;   // Material slot index; material owns CBV/textures.  材质槽索引
 
 		uint16_t srvTable;      // Offset into SRV descriptor heap for textures。    纹理SRV堆上偏移
-		uint16_t samplerTable;  // Offset into sampler descriptor heap for samplers。采样器堆上偏移
 
 		uint16_t vertexFlags;   // Geometry-only vertex attributes, from VertexLayoutFlags.
 		uint16_t numDraws = 1;  // Number of draw groups。TODO:目前不分组，未来再拓展

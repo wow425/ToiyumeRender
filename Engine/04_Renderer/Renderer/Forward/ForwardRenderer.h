@@ -18,6 +18,8 @@
 
 #include "05_Scene/Camera/Camera.h"
 #include "02_RHI/Resource/GpuBuffer.h"
+#include "02_RHI/Resource/ColorBuffer.h"
+#include "02_RHI/Resource/DepthBuffer.h"
 #include "02_RHI/Descriptor/DescriptorHeap.h"
 #include "02_RHI/Command/CommandContext.h"
 #include "02_RHI/Resource/Heap/UploadBuffer.h"
@@ -76,7 +78,6 @@ namespace Renderer
 				| RendererFeature::PostProcess;
 		}
 
-		uint8_t GetPSO(uint16_t vertexFlags) override;
 		const GraphicsPSO& GetPSO(const PipelineDesc& desc) override;
 		void BindRenderState(GraphicsContext& context) override;
 		void BindMaterial(GraphicsContext& context, const Material& material) override;

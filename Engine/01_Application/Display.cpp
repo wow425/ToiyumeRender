@@ -23,7 +23,7 @@ namespace GameCore { extern HWND g_hWnd; }
 
 #define SWAP_CHAIN_BUFFER_COUNT 3
 
-DXGI_FORMAT SwapChainFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+DXGI_FORMAT SwapChainFormat = DXGI_FORMAT_R16G16B16A16_FLOAT; // 交换链规格
 
 using namespace Math;
 using namespace Graphics;

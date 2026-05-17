@@ -85,7 +85,7 @@ namespace Renderer
 				m_SortKeys.push_back(key.value);
 				m_PassCounts[kOpaque]++;
 			}
-			SortObject object = { &mesh, &material, meshCBV, materialCBV, bufferPtr };
+			SortObject object = { &mesh, &material, meshCBV, bufferPtr };
 			m_SortObjects.push_back(object);
 		}
 	}
