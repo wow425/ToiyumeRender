@@ -2,7 +2,7 @@
 # 编译可执行文件
 # ==========================================
 # 使用 WIN32 标志隐藏 Windows 黑框控制台
-add_executable(TooiyumeApp WIN32 Tooiyume.cpp)
+add_executable(TooiyumeApp WIN32 Tooiyume.cpp )
 
 # 链接引擎库
 target_link_libraries(TooiyumeApp PRIVATE TooiyumeEngine)

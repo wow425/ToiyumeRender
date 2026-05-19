@@ -43,6 +43,7 @@ namespace GameCore
 			float DeltaTime = Graphics::GetFrameTime();				// 获取每帧时间
 			GameInput::Update(DeltaTime);
 			game.Update(DeltaTime);									// 每帧数据更新
+
 		}
 
 

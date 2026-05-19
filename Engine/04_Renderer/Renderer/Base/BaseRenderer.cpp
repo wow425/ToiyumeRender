@@ -14,7 +14,14 @@ namespace Renderer
 		DefaultSorter.Sort();
 	}
 
-
+	void MeshSorter::Reset()
+	{
+		m_SortObjects.clear();
+		m_SortKeys.clear();
+		std::memset(m_PassCounts, 0, sizeof(m_PassCounts));
+		m_CurrentPass = kZPass;
+		m_CurrentDraw = 0;
+	}
 
 	void MeshSorter::Sort()
 	{

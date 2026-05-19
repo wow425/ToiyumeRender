@@ -284,6 +284,13 @@ DX12 渲染器学习与改造
 </p> 
 </details>
 
+<details>
+<summary><b>2026-05-19: </b></summary>
+<p>修复掉帧问题，因为ModelSort()调用了GatherRenderables()，而GatherRenderables()是收集可绘制项打包进MeshSorter向量中，每帧末没有清理MeshSorter，导致MeshSorter不断累加<p>
+在每帧末清空MeshSorter即可<p>
+</p> 
+</details>
+
 <!-- 月总结 -->
 <h4 id="2026-05-月总结">📝 2026-05 月总结</h4>
 <p>完成渲染器框架搭建</p>

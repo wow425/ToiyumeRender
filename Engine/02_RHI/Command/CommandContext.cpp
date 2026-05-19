@@ -81,6 +81,7 @@ ComputeContext& ComputeContext::Begin(const std::wstring& ID, bool Async)
 	return NewContext;
 }
 
+// 提交屏障，选择是否命令队列等待，重置命令列表，绑定根签名，堆
 uint64_t CommandContext::Flush(bool WaitForCompletion)
 {
 	// 提交屏障数组
@@ -129,7 +130,7 @@ uint64_t CommandContext::Finish(bool WaitForCompletion)
 	ASSERT(m_CurrentAllocator != nullptr);
 
 	CommandQueue& Queue = g_CommandManager.GetQueue(m_Type);
-	// 执行命令列表，发出signal
+	// 执行命令列表
 	uint64_t FenceValue = Queue.ExecuteCommandList(m_CommandList);
 	Queue.DiscardAllocator(FenceValue, m_CurrentAllocator);
 	m_CurrentAllocator = nullptr;

@@ -51,11 +51,11 @@ namespace Renderer
 	};
 
 
-	class ForwardRenderer final : public BaseRenderer
+	class ForwardRenderer  final : public BaseRenderer
 	{
 	public:
 
-		std::wstring GetName() const override { return L"ForwardRenderer"; }
+		std::wstring GetName() const override { return L"ForwardRenderer "; }
 
 		bool Initialize(const RendererCreateDesc& desc) override;
 		void Shutdown() override;

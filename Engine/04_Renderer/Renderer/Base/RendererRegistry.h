@@ -11,7 +11,7 @@ namespace Renderer
 	// 反射式自动注册
 	// 通过使用RendererAutoRegister自动注册renderer创建规则并存放在注册表中，使用CreateRenderer创建并获取renderer
 	// 延迟实例化，创建对象规则creator再生成对象RendererPtr，注册系统。
-	// DeferredRenderer 类型
+	// ForwardRenderer  类型
 	//	↓
 	//	RendererAutoRegister 自动注册
 	//	↓

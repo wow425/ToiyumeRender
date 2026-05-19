@@ -1,5 +1,5 @@
 #include "05_Scene/Model/ModelLoader.h"
-#include "04_Renderer/Renderer/Forward/forwardRenderer.h"
+#include "04_Renderer/Renderer/Forward/ForwardRenderer.h"
 #include "03_AssetSystem/Importers/glTF.h"
 #include "03_AssetSystem/Importers/Texture/TextureConvert.h"
 #include "03_AssetSystem/Importers/Mesh/MeshConvert.h"

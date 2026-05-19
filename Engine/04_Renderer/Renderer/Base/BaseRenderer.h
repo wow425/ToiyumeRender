@@ -143,6 +143,7 @@ namespace Renderer
 		const std::vector<SortObject> GetSortObjects(void) { return m_SortObjects; }
 
 		void Sort();
+		void Reset();
 
 		void AddMesh(const Mesh& mesh, const Material& material, float distance,
 			D3D12_GPU_VIRTUAL_ADDRESS meshCBV,

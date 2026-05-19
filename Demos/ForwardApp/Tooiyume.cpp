@@ -48,12 +48,14 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
 	return GameCore::WinRun<Tooiyume>(L"Tooiyume", hInst, cmd);
 }
 
-Renderer::ForwardRenderer ForwardRenderer;
+Renderer::ForwardRenderer  ForwardRenderer;
 
 std::wstring saber_emiya = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Saber/saber_emiya.glb";
 std::wstring toneriko = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/toneriko/toneriko1.gltf";
 std::wstring saberCaster3NoArmor = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/saberCaster/saberCaster3NoArmor.gltf";
 std::wstring ChosenSword = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/saberCaster/ChosenSword.gltf";
+
+std::wstring KyomachiyaA = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Kyomachiya/KyomachiyaA.gltf";
 
 
 
@@ -92,6 +94,13 @@ void Tooiyume::Update(float deltaT)
 	{
 		Models[0].Update(gfxContext, deltaT);
 		Models[1].Update(gfxContext, deltaT);
+
+		// 模型排序
+		{
+			ForwardRenderer.ModelSort(Models[0]);
+			ForwardRenderer.ModelSort(Models[1]);
+
+		}
 	}
 
 
@@ -102,19 +111,16 @@ void Tooiyume::Update(float deltaT)
 
 void Tooiyume::RenderScene(void)
 {
-	GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene ForwardRenderer");
+	GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene ForwardRenderer ");
 
 	Renderer::RenderFrameDesc renderFrame;
 	renderFrame.camera = &m_Camera;
 
-	// 模型排序
-	{
-		ForwardRenderer.ModelSort(Models[0]);
-		ForwardRenderer.ModelSort(Models[1]);
-	}
+
+
 	ForwardRenderer.Render(gfxContext, renderFrame, Renderer::DrawPass::kOpaque);
 
-
+	ForwardRenderer.EndFrame(gfxContext, renderFrame);
 
 	gfxContext.Finish();
 }
@@ -125,6 +131,7 @@ void Tooiyume::Cleanup(void)
 {
 	Models[0] = nullptr;
 	Models[1] = nullptr;
+	Models[2] = nullptr;
 
 	ForwardRenderer.Shutdown();
 

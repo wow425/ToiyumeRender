@@ -24,7 +24,7 @@ using namespace Renderer;
 
 namespace Renderer
 {
-	RendererAutoRegister<ForwardRenderer> s_RegisterForwardRenderer(L"ForwardRenderer");
+	RendererAutoRegister<ForwardRenderer> s_RegisterForwardRenderer(L"ForwardRenderer ");
 	DescriptorHeap s_TextureHeap;  // texture堆。存放CBV/SRV/UAV描述符堆
 	DescriptorHeap s_SamplerHeap;  // sampler堆
 }
@@ -104,6 +104,8 @@ namespace Renderer
 	void ForwardRenderer::BeginFrame(const RenderFrameDesc& frame)
 	{
 		(void)frame;
+
+
 	}
 
 	void ForwardRenderer::Update(const RenderFrameDesc& frame)
@@ -153,7 +155,7 @@ namespace Renderer
 			context.SetDynamicConstantBufferView(kCommonCBV, sizeof(GlobalConstants), &globals);
 		}
 
-		context.PIXBeginEvent(L"ForwardRenderer");
+		context.PIXBeginEvent(L"ForwardRenderer ");
 		// 1.ShadowPass
 		{
 			context.PIXSetEvent(L"ShadowPass");
@@ -246,6 +248,7 @@ namespace Renderer
 	{
 		(void)frameContext;
 		(void)frame;
+		DefaultSorter.Reset();
 	}
 
 	void ForwardRenderer::BuildDescriptorHeaps()
@@ -277,7 +280,7 @@ namespace Renderer
 		m_RootSig[kMaterialSamplers].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 0, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 材质采样器
 		m_RootSig[kCommonSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 10, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 全局通用SRV
 		m_RootSig[kCommonCBV].InitAsConstantBuffer(1);                                                                        // 全局通用CBV
-		m_RootSig.Finalize(L"ForwardRenderer RootSig", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		m_RootSig.Finalize(L"ForwardRenderer  RootSig", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 	}
 
 	void ForwardRenderer::BuildPSOs()
@@ -288,7 +291,7 @@ namespace Renderer
 		DXGI_FORMAT colorFormat = m_CreateDesc.backBufferFormat;
 		DXGI_FORMAT depthFormat = m_CreateDesc.depthBufferFormat;
 
-		GraphicsPSO defaultPSO(L"ForwardRenderer: Default PSO");
+		GraphicsPSO defaultPSO(L"ForwardRenderer : Default PSO");
 		defaultPSO.SetRootSignature(m_RootSig);                                           // 根签名
 		defaultPSO.SetRasterizerState(RasterizerDefault);                                 // 光栅状态
 		defaultPSO.SetBlendState(BlendDisable);                                           // 混合模式     默认关闭

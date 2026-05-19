@@ -117,11 +117,12 @@ public:
 	static void DestroyAllContexts(void);
 
 	static CommandContext& Begin(const std::wstring ID = L"");
-	// 刷新存在的命令但保持上下文活跃 ?
+
+	// 提交屏障，选择是否命令队列等待，重置命令列表，绑定根签名，堆
 	uint64_t Flush(bool WaitForCompletion = false);
-	// 刷新存在的命令和释放当前上下文
+
 	uint64_t Finish(bool WaitForCompletion = false);
-	// 准备渲染通过预留命令列表和命令分配器 ?
+	// 创建CommandAllocator跟CommandList
 	void Initialize(void);
 
 	// 获取
