@@ -1,5 +1,5 @@
 
-/* TODO:uint8_t GetPSO(uint16_t psoFlags);
+/* :uint8_t GetPSO(uint16_t psoFlags);
 *  miniengine的pso绑定设计成一个全局方法，读取model的mesh数据时，根据解析出来的参数值应用对应的输入布局和shader来生成pso，并pso绑定mesh，绘制时直接调用
 问题是这方法写在renderer模块里，还跟renderer的cpp文件里的数据有联系，想要设计成抽象renderer类与具体实现renderer类，这方法得分离开来，
 留在抽象类里缺乏数据没法实现，又因为是通用方法，放在具体类里又不合适
@@ -21,13 +21,23 @@
 
 
 class GraphicsContext;
-class ModelInstance;
 class DescriptorHeap;
 struct GlobalConstants;
 
+// 前向声明
 namespace Scene
 {
-	class Camera;
+	namespace Camera
+	{
+		class Camera;
+	}
+
+	namespace Model
+	{
+		class ModelInstance;
+		struct Mesh;
+	}
+
 }
 
 namespace Renderer
@@ -35,10 +45,6 @@ namespace Renderer
 	// 全局堆
 	extern DescriptorHeap s_TextureHeap;  // texture堆。存放CBV/SRV/UAV描述符堆
 	extern DescriptorHeap s_SamplerHeap;  // sampler堆
-
-
-	// class Meshsorter;
-	struct Mesh;
 
 	enum BatchType { kDefault, kShadows };
 	enum DrawPass { kZPass, kOpaque, kTransparent, kNumPasses };

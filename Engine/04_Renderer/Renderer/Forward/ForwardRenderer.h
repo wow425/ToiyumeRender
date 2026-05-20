@@ -60,7 +60,7 @@ namespace Renderer::Forward
 		void OnResize(uint32_t width, uint32_t height) override;
 
 		void BeginFrame(const RenderFrameDesc& frame) override;
-		void Update(const RenderFrameDesc& frame) override;
+		void Update(const RenderFrameDesc& frame, GraphicsContext& gfxContext) override;
 
 		void Render(GraphicsContext& context, const RenderFrameDesc& frame, DrawPass pass, BatchType batchType = kDefault) override;
 		void EndFrame(GraphicsContext& context, const RenderFrameDesc& frame) override;

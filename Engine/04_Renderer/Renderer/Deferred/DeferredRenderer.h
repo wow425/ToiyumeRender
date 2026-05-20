@@ -29,7 +29,7 @@
 
 #include <cstdint>
 #include <vector>
-
+#include <array>
 #include <d3d12.h>
 
 class GraphicsPSO;
@@ -38,10 +38,16 @@ class DescriptorHeap;
 struct GlobalConstants;
 struct Mesh; // Model
 
+// GBuffer Pass: Bind GBuffers + Depth
+// Lighting Pass： Read GBuffers Write SceneColor
+// TAA Pass: Read Velocity + SceneColor
+
+
+
 
 namespace Renderer::Deferred
 {
-	using Config = Renderer::Forward::Config;
+
 
 	// Render Pipeline Semantic
 	enum class GBufferSlot : uint8_t
@@ -56,7 +62,7 @@ namespace Renderer::Deferred
 
 	struct DeferredBuffer
 	{
-		std::vector<std::shared_ptr<ColorBuffer>> GBuffers[(uint32_t)GBufferSlot::GBuffer_Count];
+		std::array<std::shared_ptr<ColorBuffer>, (uint32_t)GBufferSlot::GBuffer_Count> GBuffers;
 
 		std::shared_ptr<ColorBuffer> SceneColorBuffer;
 		std::shared_ptr<DepthBuffer> SceneDepthBuffer;

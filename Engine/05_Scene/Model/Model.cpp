@@ -16,7 +16,7 @@ void Scene::Model::Model::Destroy()
 }
 
 // 把模型中的每个 Mesh 打包成一条“可渲染项”，提交给 MeshSorter，由后者统一排序并在之后阶段发出 DrawCall。
-void Scene::Model::Model::GatherRenderables(Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const
+void Scene::Model::Model::GatherRenderables(::Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const
 {
 	// 获取当前Mesh指针
 	const uint8_t* pMesh = m_MeshData.get();

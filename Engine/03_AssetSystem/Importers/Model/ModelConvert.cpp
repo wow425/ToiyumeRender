@@ -17,6 +17,7 @@ using namespace Math;
 using namespace Renderer;
 using namespace Graphics;
 using namespace Scene::Model;
+using namespace Scene::Material;
 
 static inline Vector3 SafeNormalize(Vector3 x)
 {
@@ -161,7 +162,7 @@ static uint32_t WalkGraph(
 	std::vector<Scene::Model::GraphNode>& sceneGraph,
 	BoundingSphere& modelBSphere,
 	AxisAlignedBox& modelBBox,
-	std::vector<Renderer::Mesh*>& meshList,
+	std::vector<Scene::Model::Mesh*>& meshList,
 	std::vector<byte>& bufferMemory,
 	const std::vector<glTF::Node*>& siblings,
 	uint32_t curPos,

@@ -33,8 +33,8 @@ public:
 
 private:
 	// Camera
-	Scene::Camera  m_Camera;
-	unique_ptr<CameraController> m_CameraController;
+	Scene::Camera::Camera  m_Camera;
+	unique_ptr<Scene::Camera::CameraController> m_CameraController;
 
 	// 模型
 	Scene::Model::ModelInstance Models[10];
@@ -77,7 +77,7 @@ void Tooiyume::Startup(void)
 	// Camera设置
 	m_Camera.SetEyeAtUp(Vector3(0.0f, 0.0f, 5.0f), Vector3(0.0f, 0.0f, -5.0f), Vector3(kYUnitVector));
 	m_Camera.SetZRange(1.0f, 10000.0f);
-	m_CameraController.reset(new FlyingFPSCamera(m_Camera, Vector3(kYUnitVector)));
+	m_CameraController.reset(new Scene::Camera::FlyingFPSCamera(m_Camera, Vector3(kYUnitVector)));
 }
 
 
@@ -116,7 +116,7 @@ void Tooiyume::RenderScene(void)
 	GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene ForwardRenderer ");
 
 	Renderer::RenderFrameDesc renderFrame;
-	renderFrame.camera = &m_Camera;
+	renderFrame.Camera = &m_Camera;
 
 
 

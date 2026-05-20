@@ -13,8 +13,10 @@
 #include "03_AssetSystem/Importers/Texture/TextureManager.h"
 #include "04_Renderer/Features/Lighting/LightingSystem.h"
 #include "05_Scene/Model/Model.h"
-#include "06_Content/Shaders/01_Default/DefaultVS.h"
-#include "06_Content/Shaders/01_Default/DefaultPS.h"
+
+
+#include "StaticMeshVS.h"
+#include "GBufferPS.h"
 
 #pragma warning(disable:4319) // 关闭警告：零扩展警告?
 
@@ -54,7 +56,7 @@ namespace Renderer::Deferred
 
 
 		BuildRootSignature();
-		BuildPSOs();
+		BuildPSOs(); // 停留于此
 		BuildDescriptorHeaps();
 		TextureManager::Initialize(L"");
 		CreateDeferredBufferTargets();
@@ -109,8 +111,6 @@ namespace Renderer::Deferred
 
 	void DeferredRenderer::Update(const RenderFrameDesc& frame, GraphicsContext& gfxContext)
 	{
-		GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Update");
-
 		// 模型
 		{
 			for (auto* model : frame.Models)
@@ -137,12 +137,16 @@ namespace Renderer::Deferred
 	{
 
 
-		// 前置准备
+		// Buffer重置
 		{
-			context.TransitionResource(*DepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-			context.TransitionResource(*SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
-			context.ClearDepth(*DepthBuffer);
-			context.ClearColor(*SceneColorBuffer);
+			for (auto& GBuffer : m_DeferredBuffer->GBuffers)
+			{
+				context.TransitionResource(*GBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			}
+			context.TransitionResource(*m_DeferredBuffer->SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+			context.TransitionResource(*m_DeferredBuffer->SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
+			context.ClearDepth(*m_DeferredBuffer->SceneDepthBuffer);
+			context.ClearColor(*m_DeferredBuffer->SceneColorBuffer);
 
 			context.SetViewportAndScissor(this->GetMainViewport(), this->GetMainScissor()); // 设置视口和裁剪矩形
 		}
@@ -150,14 +154,13 @@ namespace Renderer::Deferred
 		{
 			this->UpdateGlobalDescriptors();
 			this->BindRenderState(context);
-			context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 			// Set common textures
 			context.SetDescriptorTable(kCommonSRVs, m_CommonTextures);
 			// Set common shader constants
 			GlobalConstants globals;
-			globals.ViewProjMatrix = Camera->GetViewProjMatrix();
-			globals.CameraPos = Camera->GetPosition();
+			globals.ViewProjMatrix = frame.Camera->GetViewProjMatrix();
+			globals.CameraPos = frame.Camera->GetPosition();
 			context.SetDynamicConstantBufferView(kCommonCBV, sizeof(GlobalConstants), &globals);
 		}
 
@@ -166,9 +169,75 @@ namespace Renderer::Deferred
 		{
 			context.PIXSetEvent(L"ShadowPass");
 		}
+		// 2. GBufferPass
+		{
+			context.PIXSetEvent(L"GBufferPass");
+
+			auto CurrentPass = this->DefaultSorter.GetCurrentPass();
+			const uint32_t* PassCounts = this->DefaultSorter.GetPassCounts();
+			auto CurrentDraw = this->DefaultSorter.GetCurrentDraw();
+			auto Sortkeys = this->DefaultSorter.GetSortkeys();
+			auto SortObjects = this->DefaultSorter.GetSortObjects();
+			for (; CurrentPass <= pass; CurrentPass = (DrawPass)(CurrentPass + 1))
+			{
+				const uint32_t passCount = PassCounts[CurrentPass];
+				if (passCount == 0)
+					continue;
+
+
+				context.SetViewportAndScissor(this->GetMainViewport(), this->GetMainScissor());
+				context.FlushResourceBarriers();
+
+				const uint32_t lastDraw = CurrentDraw + passCount;
+
+				while (CurrentDraw < lastDraw)
+				{
+					Renderer::MeshSorter::SortKey key;
+					key.value = Sortkeys[CurrentDraw];
+					const Renderer::MeshSorter::SortObject& object = SortObjects[key.objectIdx];
+					const Scene::Model::Mesh& mesh = *object.mesh;
+					const Scene::Material::Material& material = *object.material;
+					const PipelineDesc& desc = Renderer::PipelineStateCache::GetPipelineDesc(static_cast<uint16_t>(key.psoIdx));
+					// 根实参绑定和PSO绑定
+					{
+						context.SetConstantBuffer(kMeshConstants, object.meshCBV);
+						context.SetConstantBuffer(kMaterialConstants, material.MaterialCBV);
+						this->BindMaterial(context, material);
+
+						context.SetPipelineState(this->GetPSO(desc)); // !?
+					}
+
+
+					if (CurrentPass == kZPass)
+					{
+						context.SetVertexBuffer(0, { object.bufferPtr + mesh.vbDepthOffset, mesh.vbDepthSize, mesh.vbDepthStride });
+					}
+					else
+					{
+						context.SetVertexBuffer(0, { object.bufferPtr + mesh.vbOffset, mesh.vbSize, mesh.vbStride });
+					}
+					context.SetIndexBuffer({ object.bufferPtr + mesh.ibOffset, mesh.ibSize, (DXGI_FORMAT)mesh.ibFormat });
+
+					for (uint32_t i = 0; i < mesh.numDraws; ++i)
+					{
+						context.DrawIndexed(mesh.draw[i].primCount, mesh.draw[i].startIndex, mesh.draw[i].baseVertex);
+					}
+					++CurrentDraw;
+				}
+			}
+
+		}
+		// 3. SSAOPass
+		{
+			context.PIXSetEvent(L"SSAOPass");
+
+		}
+		// 4. DeferredLightingPass
+		{
+			context.PIXSetEvent(L"DeferredLightingPass");
+		}
 		// 这里是渲染调度入口。
 		// 你后续把具体 Pass 拆出来后，按这个顺序接：
-		// 1. ShadowPass
 		// 2. GBufferPass
 		// 3. SSAOPass
 		// 4. DeferredLightingPass
@@ -176,58 +245,6 @@ namespace Renderer::Deferred
 		// 6. SkyPass
 		// 7. Tonemap / Bloom / TAA
 		//
-		auto CurrentPass = this->DefaultSorter.GetCurrentPass();
-		const uint32_t* PassCounts = this->DefaultSorter.GetPassCounts();
-		auto CurrentDraw = this->DefaultSorter.GetCurrentDraw();
-		auto Sortkeys = this->DefaultSorter.GetSortkeys();
-		auto SortObjects = this->DefaultSorter.GetSortObjects();
-		for (; CurrentPass <= pass; CurrentPass = (DrawPass)(CurrentPass + 1))
-		{
-			const uint32_t passCount = PassCounts[CurrentPass];
-			if (passCount == 0)
-				continue;
-
-
-			context.SetViewportAndScissor(this->GetMainViewport(), this->GetMainScissor());
-			context.FlushResourceBarriers();
-
-			const uint32_t lastDraw = CurrentDraw + passCount;
-
-			while (CurrentDraw < lastDraw)
-			{
-				Renderer::MeshSorter::SortKey key;
-				key.value = Sortkeys[CurrentDraw];
-				const Renderer::MeshSorter::SortObject& object = SortObjects[key.objectIdx];
-				const Scene::Model::Mesh& mesh = *object.mesh;
-				const Scene::Material::Material& material = *object.material;
-				const PipelineDesc& desc = Renderer::PipelineStateCache::GetPipelineDesc(static_cast<uint16_t>(key.psoIdx));
-				// 根实参绑定和PSO绑定
-				{
-					context.SetConstantBuffer(kMeshConstants, object.meshCBV);
-					context.SetConstantBuffer(kMaterialConstants, material.MaterialCBV);
-					this->BindMaterial(context, material);
-
-					context.SetPipelineState(this->GetPSO(desc)); // !?
-				}
-
-
-				if (CurrentPass == kZPass)
-				{
-					context.SetVertexBuffer(0, { object.bufferPtr + mesh.vbDepthOffset, mesh.vbDepthSize, mesh.vbDepthStride });
-				}
-				else
-				{
-					context.SetVertexBuffer(0, { object.bufferPtr + mesh.vbOffset, mesh.vbSize, mesh.vbStride });
-				}
-				context.SetIndexBuffer({ object.bufferPtr + mesh.ibOffset, mesh.ibSize, (DXGI_FORMAT)mesh.ibFormat });
-
-				for (uint32_t i = 0; i < mesh.numDraws; ++i)
-				{
-					context.DrawIndexed(mesh.draw[i].primCount, mesh.draw[i].startIndex, mesh.draw[i].baseVertex);
-				}
-				++CurrentDraw;
-			}
-		}
 	}
 
 	void DeferredRenderer::EndFrame(::GraphicsContext& frameContext, const RenderFrameDesc& frame)
@@ -281,7 +298,22 @@ namespace Renderer::Deferred
 		// “基础 PSO 模板”
 		ASSERT(m_PSOCache.empty());
 
+		DXGI_FORMAT depthFormat = SceneDepthBufferFormat;
 
+		GraphicsPSO GBufferPSO(L"DeferredRenderer : GBuffer  PSO");
+		GBufferPSO.SetRootSignature(m_RootSig);                                           // 根签名
+		GBufferPSO.SetRasterizerState(RasterizerDefault);                                 // 光栅状态
+		GBufferPSO.SetBlendState(BlendDisable);                                           // 混合模式     默认关闭
+		GBufferPSO.SetDepthStencilState(DepthStateReadWrite);                              // 深度模板状态 DepthStateDisabled  DepthStateReadWrite
+		GBufferPSO.SetInputLayout(0, nullptr);                                            // 输入布局
+		GBufferPSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);      // 图元拓扑
+		GBufferPSO.SetRenderTargetFormats((uint32_t)GBufferSlot::GBuffer_Count, GBufferFormats, depthFormat);                 // GBuffer MRT
+		GBufferPSO.SetVertexShader(StaticMeshVS_cso, sizeof(StaticMeshVS_cso));
+		GBufferPSO.SetPixelShader(GBufferPS_cso, sizeof(GBufferPS_cso));
+		m_DefaultPSO = GBufferPSO;
+		//GBufferPSO.Finalize();
+
+		//m_PSOCache.push_back(GBufferPSO);
 	}
 
 	// 现代renderer是自己持有资源，buffermanager负责管理资源
@@ -294,13 +326,29 @@ namespace Renderer::Deferred
 
 		m_DeferredBuffer = std::make_shared<DeferredBuffer>();
 
+		m_DeferredBuffer->GBuffers[(uint32_t)GBufferSlot::GBuffer_BaseColor] =
+			BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_BaseColor]);
+
+		m_DeferredBuffer->GBuffers[(uint32_t)GBufferSlot::GBuffer_Normal] =
+			BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_Normal]);
+
+		m_DeferredBuffer->GBuffers[(uint32_t)GBufferSlot::GBuffer_Material] =
+			BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_Material]);
+
+		m_DeferredBuffer->GBuffers[(uint32_t)GBufferSlot::GBuffer_Emission] =
+			BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_Emission]);
+
+
+		m_DeferredBuffer->SceneColorBuffer = BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, SceneColorBufferFormat);
+		m_DeferredBuffer->SceneDepthBuffer = BufferManager::CreateDepthBuffer(L"Deferred SceneColorBuffer", width, height, SceneDepthBufferFormat);
+		m_DeferredBuffer->VelocityBuffer = BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, VelocityBufferFormat);
 
 
 	}
 
 	void DeferredRenderer::DestroyDeferredBufferTargets()
 	{
-
+		BufferManager::DestroyAll();
 	}
 
 	void DeferredRenderer::UpdateGlobalDescriptors()
@@ -335,14 +383,10 @@ namespace Renderer::Deferred
 			vertexLayout.push_back({ "TANGENT",  0, DXGI_FORMAT_R10G10B10A2_UNORM,  0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
 		if (vertexFlags & kVertex_UV0)
 			vertexLayout.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT,       0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
-		else
-			vertexLayout.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT,       0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
 		if (vertexFlags & kVertex_UV1)
 			vertexLayout.push_back({ "TEXCOORD", 1, DXGI_FORMAT_R16G16_FLOAT,       0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
 
 		ColorPSO.SetInputLayout((uint32_t)vertexLayout.size(), vertexLayout.data());
-		ColorPSO.SetVertexShader(g_pDefaultVS, sizeof(g_pDefaultVS));
-		ColorPSO.SetPixelShader(g_pDefaultPS, sizeof(g_pDefaultPS));
 
 		D3D12_RASTERIZER_DESC rasterizer = RasterizerDefault;
 		if ((desc.MaterialFlags & Scene::Material::kMaterial_DoubleSided) != 0)
@@ -373,12 +417,14 @@ namespace Renderer::Deferred
 		return (uint8_t)m_PSOCache.size() - 1;
 	}
 
-
+	// 根签名，资源堆，sampler堆,图元
 	void DeferredRenderer::BindRenderState(GraphicsContext& context)
 	{
 		context.SetRootSignature(m_RootSig);
 		context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, s_TextureHeap.GetHeapPointer());
 		context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, s_SamplerHeap.GetHeapPointer());
+
+		context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	}
 
 	void DeferredRenderer::BindMaterial(GraphicsContext& context, const Scene::Material::Material& material)

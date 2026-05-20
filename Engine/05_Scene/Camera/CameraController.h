@@ -1,13 +1,11 @@
 #pragma once
 
 #include "01_Application/GameCore.h"
+#include "05_Scene/Camera/Camera.h"
 #include "00_Core/Math/VectorMath.h"
 
 
-namespace Scene
-{
-	class Camera;
-}
+
 
 namespace Scene::Camera
 {
@@ -34,9 +32,9 @@ namespace Scene::Camera
 	public:
 		// worldUp 定义了世界的绝对上方 (通常是 +Y 轴，即 0, 1, 0)。
 		// 这是为了防止摄像机在偏航 (Yaw) 旋转时发生侧倾 (Roll)，保证地平线始终水平。
-		FlyingFPSCamera(Scene::Camera::Camera&, Math::Vector3 worldUp);
+		FlyingFPSCamera(Camera& camera, ::Math::Vector3 worldUp);
 
-		virtual void Update(float dt) override;
+		virtual void Update(float deltaTime) override;
 
 		void SlowMovement(bool enable) { m_FineMovement = enable; }
 		void SlowRotation(bool enable) { m_FineRotation = enable; }

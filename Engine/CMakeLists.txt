@@ -14,6 +14,39 @@ file(GLOB_RECURSE ENGINE_SOURCES
 add_library(TooiyumeEngine STATIC ${ENGINE_SOURCES})
 
 # ==========================================
+# Shader 编译
+# ==========================================
+compile_shader(
+    StaticMeshVS
+    Shader/02_Deferred/StaticMeshVS.hlsl
+    MainVS
+    vs_6_6
+)
+
+compile_shader(
+    GBufferPS
+    Shader/02_Deferred/GBufferPS.hlsl
+    MainPS
+    ps_6_6
+)
+# ==========================================
+# 链接Shader
+# ==========================================
+add_dependencies(TooiyumeEngine
+    StaticMeshVS_Shader
+    GBufferPS_Shader
+)
+
+target_include_directories(TooiyumeEngine PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    "${CMAKE_BINARY_DIR}/ShaderCache"
+)
+
+target_include_directories(TooiyumeEngine PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_BINARY_DIR}/ShaderCache
+)
+# ==========================================
 # PCH (Precompiled Header)
 # ==========================================
 target_precompile_headers(TooiyumeEngine PRIVATE
@@ -52,3 +85,4 @@ target_link_libraries(TooiyumeEngine PUBLIC
     dxgi
     dxguid
 )
+

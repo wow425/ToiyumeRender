@@ -105,7 +105,6 @@ void Tooiyume::RenderScene(void)
 	GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene DeferredRenderer ");
 
 	Renderer::RenderFrameDesc desc;
-	Renderer::RenderFrameDesc desc;
 	desc.Camera = &m_Camera;
 	desc.delatT = 0;
 	desc.Models.reserve(10);

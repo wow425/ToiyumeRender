@@ -291,6 +291,13 @@ DX12 渲染器学习与改造
 </p> 
 </details>
 
+<details>
+<summary><b>2026-05-20: </b></summary>
+<p>大致完成GBuffer Pass。<p>
+<p>完成cmake调用dxc编译shader配置，采用预先编译shader，使用头文件而非运行时编译<p>
+</p> 
+</details>
+
 <!-- 月总结 -->
 <h4 id="2026-05-月总结">📝 2026-05 月总结</h4>
 <p>完成渲染器框架搭建</p>

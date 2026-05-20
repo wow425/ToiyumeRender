@@ -5,7 +5,7 @@
 
 using namespace Math;
 
-namespace Scene
+namespace Scene::Camera
 {
 	// 构建相机基向量
 	void BaseCamera::SetLookDirection(Vector3 forward, Vector3 up)
@@ -145,4 +145,4 @@ namespace Scene
 		SetCameraToWorldMatrix(cameraToWorld);
 	}
 
-} // namespace Scene
+} // namespace Scene::Camera

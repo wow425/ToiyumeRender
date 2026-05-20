@@ -13,8 +13,8 @@
 #include "03_AssetSystem/Importers/Texture/TextureManager.h"
 #include "04_Renderer/Features/Lighting/LightingSystem.h"
 #include "05_Scene/Model/Model.h"
-#include "06_Content/Shaders/01_Default/DefaultVS.h"
-#include "06_Content/Shaders/01_Default/DefaultPS.h"
+#include "Shader/01_Default/DefaultVS.h"
+#include "Shader/01_Default/DefaultPS.h"
 
 #pragma warning(disable:4319) // 关闭警告：零扩展警告?
 
@@ -108,7 +108,7 @@ namespace Renderer::Forward
 
 	}
 
-	void ForwardRenderer::Update(const RenderFrameDesc& frame)
+	void ForwardRenderer::Update(const RenderFrameDesc& frame, GraphicsContext& gfxContext)
 	{
 		(void)frame;
 
@@ -125,7 +125,7 @@ namespace Renderer::Forward
 		ASSERT(m_Initialized);
 		auto DepthBuffer = this->GetForwardBuffer().DepthBuffer;
 		auto SceneColorBuffer = this->GetForwardBuffer().SceneColorBuffer[0];
-		auto Camera = frame.camera;
+		auto Camera = frame.Camera;
 		ASSERT(DepthBuffer != nullptr);
 		ASSERT(SceneColorBuffer != nullptr);
 		ASSERT(Camera != nullptr);

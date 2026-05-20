@@ -10,7 +10,7 @@ using namespace Math;
 using namespace GameCore;
 using namespace Scene::Camera;
 
-Scene::Camera::FlyingFPSCamera(Scene::Camera::Camera& camera, ::Math::Vector3 worldUp) : CameraController(camera)
+Scene::Camera::FlyingFPSCamera::FlyingFPSCamera(Camera& camera, ::Math::Vector3 worldUp) : CameraController(camera)
 {
 	m_WorldUp = Normalize(worldUp); // Y
 	m_WorldNorth = Normalize(Cross(Vector3(kXUnitVector), m_WorldUp)); // +Z
@@ -125,7 +125,7 @@ void FlyingFPSCamera::SetHeadingPitchAndPosition(float heading, float pitch, con
 	m_CurrentPitch = XMMin(XM_PIDIV2, m_CurrentPitch);
 	m_CurrentPitch = XMMax(-XM_PIDIV2, m_CurrentPitch);
 
-	Vector3 look = Scene::BuildLookDirection(m_WorldEast, m_WorldUp, m_WorldNorth, m_CurrentHeading, m_CurrentPitch);
+	Vector3 look = Scene::Camera::BuildLookDirection(m_WorldEast, m_WorldUp, m_WorldNorth, m_CurrentHeading, m_CurrentPitch);
 
 	m_TargetCamera.SetEyeAtUp(position, position + look, m_WorldUp);
 	m_TargetCamera.Update();

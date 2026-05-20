@@ -13,6 +13,11 @@
 
 #include <cstdint>
 
+namespace Renderer
+{
+	class MeshSorter;
+}
+
 
 namespace Scene::Model
 {
@@ -71,7 +76,7 @@ namespace Scene::Model
 	public:
 		~Model() { Destroy(); }
 
-		void GatherRenderables(Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const;
+		void GatherRenderables(::Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const;
 
 		Math::BoundingSphere m_BoundingSphere; // Object-space bounding sphere
 		Math::AxisAlignedBox m_BoundingBox;
@@ -108,7 +113,7 @@ namespace Scene::Model
 		bool IsNull(void) const { return m_Model == nullptr; }
 
 		void Update(GraphicsContext& gfxContext, float deltaTime);
-		void GatherRenderables(Renderer::MeshSorter& sorter) const;
+		void GatherRenderables(::Renderer::MeshSorter& sorter) const;
 
 		void Resize(float newRadius);
 		Math::Vector3 GetCenter() const;

@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.20)
 project(TooiyumeRender VERSION 0.1.0 LANGUAGES CXX C)
 
 # ==========================================
+# Shader编译
+# ==========================================
+include(${CMAKE_SOURCE_DIR}/Engine/20_cmake/ShaderCompiler.cmake)
+
+# ==========================================
 # 全局编译设置：C++20 与 UTF-8
 # ==========================================
 set(CMAKE_CXX_STANDARD 20)
