@@ -8,8 +8,9 @@
 
 using namespace Math;
 using namespace GameCore;
+using namespace Scene::Camera;
 
-FlyingFPSCamera::FlyingFPSCamera(Scene::Camera& camera, Vector3 worldUp) : CameraController(camera)
+Scene::Camera::FlyingFPSCamera(Scene::Camera::Camera& camera, ::Math::Vector3 worldUp) : CameraController(camera)
 {
 	m_WorldUp = Normalize(worldUp); // Y
 	m_WorldNorth = Normalize(Cross(Vector3(kXUnitVector), m_WorldUp)); // +Z
@@ -40,7 +41,7 @@ FlyingFPSCamera::FlyingFPSCamera(Scene::Camera& camera, Vector3 worldUp) : Camer
 
 
 
-void FlyingFPSCamera::Update(float deltaTime)
+void Scene::Camera::FlyingFPSCamera::Update(float deltaTime)
 {
 	(deltaTime);
 
@@ -99,7 +100,7 @@ void FlyingFPSCamera::Update(float deltaTime)
 	else if (m_CurrentHeading <= -XM_PI)
 		m_CurrentHeading += XM_2PI;
 
-	Vector3 look = Scene::BuildLookDirection(m_WorldEast, m_WorldUp, m_WorldNorth, m_CurrentHeading, m_CurrentPitch);
+	Vector3 look = Scene::Camera::BuildLookDirection(m_WorldEast, m_WorldUp, m_WorldNorth, m_CurrentHeading, m_CurrentPitch);
 
 	// FPS 飞行相机：沿当前朝向移动
 	Vector3 right = Normalize(Cross(look, m_WorldUp));

@@ -7,7 +7,7 @@
 using namespace Math;
 using namespace Renderer;
 
-void Model::Destroy()
+void Scene::Model::Model::Destroy()
 {
 	m_DataBuffer.Destroy();
 	m_MaterialConstants.Destroy();
@@ -16,15 +16,15 @@ void Model::Destroy()
 }
 
 // 把模型中的每个 Mesh 打包成一条“可渲染项”，提交给 MeshSorter，由后者统一排序并在之后阶段发出 DrawCall。
-void Model::GatherRenderables(MeshSorter& sorter, const GpuBuffer& meshConstants) const
+void Scene::Model::Model::GatherRenderables(Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const
 {
 	// 获取当前Mesh指针
 	const uint8_t* pMesh = m_MeshData.get();
 
 	for (uint32_t i = 0; i < m_NumMeshes; ++i)
 	{
-		const Renderer::Mesh& mesh = *(const Renderer::Mesh*)pMesh;
-		const Renderer::Material& material = m_Materials[mesh.materialSlotIdx]; // 取出解耦的材质实例
+		const Scene::Model::Mesh& mesh = *(const Scene::Model::Mesh*)pMesh;
+		const Scene::Material::Material& material = m_Materials[mesh.materialSlotIdx]; // 取出解耦的材质实例
 		float distance = 0.0f; // 用于排序（透明排序 / front-to-back）暂时不用管，阉割掉
 		// 提交到渲染队列，等待后续Drawcall录制。 目前阉割掉优化排序
 
@@ -39,12 +39,12 @@ void Model::GatherRenderables(MeshSorter& sorter, const GpuBuffer& meshConstants
 			m_DataBuffer.GetGpuVirtualAddress());
 
 		// 偏移到下一个Mesh
-		pMesh += sizeof(Renderer::Mesh) + (mesh.numDraws - 1) * sizeof(Renderer::Mesh::Draw);
+		pMesh += sizeof(Scene::Model::Mesh) + (mesh.numDraws - 1) * sizeof(Scene::Model::Mesh::Draw);
 	}
 }
 
 // 剔除，排序，打包添加到MeshSorter中
-void ModelInstance::GatherRenderables(MeshSorter& sorter) const
+void Scene::Model::ModelInstance::GatherRenderables(::Renderer::MeshSorter& sorter) const
 {
 	if (m_Model != nullptr)
 	{
@@ -53,9 +53,9 @@ void ModelInstance::GatherRenderables(MeshSorter& sorter) const
 	}
 }
 
-ModelInstance::ModelInstance() : m_Locator(kIdentity) {}
+Scene::Model::ModelInstance::ModelInstance() : m_Locator(kIdentity) {}
 
-ModelInstance::ModelInstance(std::shared_ptr<const Model> sourceModel)
+Scene::Model::ModelInstance::ModelInstance(std::shared_ptr<const Model> sourceModel)
 	: m_Model(sourceModel), m_Locator(kIdentity)
 {
 	// 断言确保MeshConstants为256字节规格。按位与255等于256取余。对于 2 的幂次N，x & (N - 1) 等价于 x % N
@@ -74,12 +74,12 @@ ModelInstance::ModelInstance(std::shared_ptr<const Model> sourceModel)
 	}
 }
 
-ModelInstance::ModelInstance(const ModelInstance& modelInstance)
+Scene::Model::ModelInstance::ModelInstance(const ModelInstance& modelInstance)
 	: ModelInstance(modelInstance.m_Model)
 {
 }
 
-ModelInstance& ModelInstance::operator= (std::shared_ptr<const Model> sourceModel)
+Scene::Model::ModelInstance& Scene::Model::ModelInstance::operator= (std::shared_ptr<const Model> sourceModel)
 {
 	m_Model = sourceModel;
 	m_Locator = UniformTransform(kIdentity);
@@ -103,9 +103,10 @@ ModelInstance& ModelInstance::operator= (std::shared_ptr<const Model> sourceMode
 	return *this;
 }
 
-void ModelInstance::Update(GraphicsContext& gfxContext, float deltaTime)
+void Scene::Model::ModelInstance::Update(GraphicsContext& gfxContext, float deltaTime)
 {
 	if (m_Model == nullptr) return;
+	if (!m_IsDirty) return;
 
 	static const size_t kMaxStackDepth = 32;
 	size_t stackIdx = 0;
@@ -166,18 +167,21 @@ void ModelInstance::Update(GraphicsContext& gfxContext, float deltaTime)
 	// 每帧更新，直接拷贝整个缓冲区。对于大场景或频繁更新的情况，后续可优化为部分更新（CopyBufferRegion）或双缓冲/环形缓冲。
 	gfxContext.GetCommandList()->CopyBufferRegion(m_MeshConstantsGPU.GetResource(), 0, m_MeshConstantsCPU.GetResource(), 0, m_MeshConstantsCPU.GetBufferSize());
 	gfxContext.TransitionResource(m_MeshConstantsGPU, D3D12_RESOURCE_STATE_GENERIC_READ);
+
 }
 
 
-void ModelInstance::Resize(float newRadius)
+void Scene::Model::ModelInstance::Resize(float newRadius)
 {
 	if (m_Model == nullptr)
 		return;
 
 	m_Locator.SetScale(newRadius / m_Model->m_BoundingSphere.GetRadius());
+
+	m_IsDirty = true;
 }
 
-Vector3 ModelInstance::GetCenter() const
+Vector3 Scene::Model::ModelInstance::GetCenter() const
 {
 	if (m_Model == nullptr)
 		return Vector3(kOrigin);
@@ -185,7 +189,7 @@ Vector3 ModelInstance::GetCenter() const
 	return m_Locator * m_Model->m_BoundingSphere.GetCenter();
 }
 
-Scalar ModelInstance::GetRadius() const
+Scalar Scene::Model::ModelInstance::GetRadius() const
 {
 	if (m_Model == nullptr)
 		return Scalar(kZero);
@@ -195,7 +199,7 @@ Scalar ModelInstance::GetRadius() const
 }
 
 
-Math::OrientedBox ModelInstance::GetBoundingBox() const
+Math::OrientedBox Scene::Model::ModelInstance::GetBoundingBox() const
 {
 	if (m_Model == nullptr)
 		return AxisAlignedBox(Vector3(kZero), Vector3(kZero));

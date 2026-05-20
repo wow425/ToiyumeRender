@@ -8,7 +8,7 @@
 #include "00_Core/Math/VectorMath.h"
 #include "00_Core/Math/Frustum.h"
 
-namespace Scene
+namespace Scene::Camera
 {
 	class BaseCamera
 	{

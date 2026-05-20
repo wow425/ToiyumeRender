@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <d3d12.h>
 
-namespace Renderer
+namespace Scene::Material
 {
 	// 仅描述材质的逻辑/物理属性
 	enum MaterialFlags : uint32_t
@@ -30,9 +30,9 @@ namespace Renderer
 		D3D12_GPU_VIRTUAL_ADDRESS MaterialCBV = 0; // PBR材质数据
 
 		// 供渲染策略层在分类 Mesh 时调用
-		inline bool IsAlphaBlend() const { return (Flags & Renderer::kMaterial_AlphaBlend) != 0; }
-		inline bool IsAlphaTest() const { return (Flags & Renderer::kMaterial_AlphaTest) != 0; }
-		inline bool IsDoubleSided() const { return (Flags & Renderer::kMaterial_DoubleSided) != 0; }
+		inline bool IsAlphaBlend() const { return (Flags & Scene::Material::kMaterial_AlphaBlend) != 0; }
+		inline bool IsAlphaTest() const { return (Flags & Scene::Material::kMaterial_AlphaTest) != 0; }
+		inline bool IsDoubleSided() const { return (Flags & Scene::Material::kMaterial_DoubleSided) != 0; }
 	};
 
 	// Unaligned mirror of MaterialConstants

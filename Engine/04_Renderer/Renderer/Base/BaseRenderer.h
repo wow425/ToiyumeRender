@@ -22,6 +22,7 @@
 
 class GraphicsContext;
 class ModelInstance;
+class DescriptorHeap;
 struct GlobalConstants;
 
 namespace Scene
@@ -31,6 +32,11 @@ namespace Scene
 
 namespace Renderer
 {
+	// 全局堆
+	extern DescriptorHeap s_TextureHeap;  // texture堆。存放CBV/SRV/UAV描述符堆
+	extern DescriptorHeap s_SamplerHeap;  // sampler堆
+
+
 	// class Meshsorter;
 	struct Mesh;
 
@@ -55,16 +61,14 @@ namespace Renderer
 	{
 		uint32_t width = 0;
 		uint32_t height = 0;
-		DXGI_FORMAT backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-		DXGI_FORMAT depthBufferFormat = DXGI_FORMAT_D32_FLOAT;
-
 	};
 
 	struct RenderFrameDesc
 	{
 		// const Scene* scene = nullptr;
-		const Scene::Camera* camera = nullptr;
-
+		const Scene::Camera::Camera* Camera = nullptr;
+		std::vector<Scene::Model::ModelInstance*> Models;
+		float delatT = 0;
 	};
 
 	enum class RendererFeature : uint32_t
@@ -120,8 +124,8 @@ namespace Renderer
 
 		struct SortObject
 		{
-			const Mesh* mesh;
-			const Material* material;
+			const Scene::Model::Mesh* mesh;
+			const Scene::Material::Material* material;
 			D3D12_GPU_VIRTUAL_ADDRESS meshCBV;
 			D3D12_GPU_VIRTUAL_ADDRESS bufferPtr;
 		};
@@ -145,7 +149,7 @@ namespace Renderer
 		void Sort();
 		void Reset();
 
-		void AddMesh(const Mesh& mesh, const Material& material, float distance,
+		void AddMesh(const Scene::Model::Mesh& mesh, const Scene::Material::Material& material, float distance,
 			D3D12_GPU_VIRTUAL_ADDRESS meshCBV,
 			D3D12_GPU_VIRTUAL_ADDRESS materialCBV,
 			D3D12_GPU_VIRTUAL_ADDRESS bufferPtr);
@@ -170,7 +174,7 @@ namespace Renderer
 		virtual void Shutdown() = 0;
 		virtual void OnResize(uint32_t width, uint32_t height) = 0;
 		virtual void BeginFrame(const RenderFrameDesc& frame) {}
-		virtual void Update(const RenderFrameDesc& frame) = 0;
+		virtual void Update(const RenderFrameDesc& frame, GraphicsContext& gfxContext) = 0;
 		virtual void Render(GraphicsContext& context, const RenderFrameDesc& frame, DrawPass pass,
 			BatchType batchType = kDefault) = 0;
 		virtual void EndFrame(GraphicsContext& context, const RenderFrameDesc& frame) {}
@@ -181,14 +185,14 @@ namespace Renderer
 		// 让具体 renderer 解析为真实 GraphicsPSO 并绑定。
 		virtual const GraphicsPSO& GetPSO(const PipelineDesc& desc) = 0;
 		virtual void BindRenderState(GraphicsContext& context) = 0;
-		virtual void BindMaterial(GraphicsContext& context, const Material& material) = 0;
+		virtual void BindMaterial(GraphicsContext& context, const Scene::Material::Material& material) = 0;
 
 		bool IsInitialized() const noexcept { return m_Initialized; }
 
 		D3D12_VIEWPORT GetMainViewport(void) { return m_MainViewport; }
 		D3D12_RECT GetMainScissor(void) { return m_MainScissor; }
 
-		void ModelSort(const ModelInstance& model);
+		void ModelSort(const Scene::Model::ModelInstance& model);
 
 	protected:
 		RendererCreateDesc m_CreateDesc{};

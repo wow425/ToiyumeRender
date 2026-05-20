@@ -1,15 +1,24 @@
 #include "00_Core/PCH.h"
 #include "BaseRenderer.h"
+#include "02_RHI/Descriptor/DescriptorHeap.h"
 #include "04_Renderer/Material/Material.h"
 #include "04_Renderer/Pipeline/PipelineDesc.h"
 #include "04_Renderer/Pipeline/PipelineStateCache.h"
 #include "05_Scene/Model/Model.h"
 
+namespace Renderer
+{
+	DescriptorHeap s_TextureHeap;  // texture堆。存放CBV/SRV/UAV描述符堆
+	DescriptorHeap s_SamplerHeap;  // sampler堆
+}
+
+
 
 namespace Renderer
 {
-	void  BaseRenderer::ModelSort(const ModelInstance& model)
+	void  BaseRenderer::ModelSort(const Scene::Model::ModelInstance& model)
 	{
+
 		model.GatherRenderables(DefaultSorter);
 		DefaultSorter.Sort();
 	}
@@ -30,7 +39,7 @@ namespace Renderer
 	}
 
 	// 根据网格和材质信息生成排序key，并分类到不同的渲染pass中
-	void MeshSorter::AddMesh(const Mesh& mesh, const Material& material, float distance,
+	void MeshSorter::AddMesh(const Scene::Model::Mesh& mesh, const Scene::Material::Material& material, float distance,
 		D3D12_GPU_VIRTUAL_ADDRESS meshCBV,
 		D3D12_GPU_VIRTUAL_ADDRESS materialCBV,
 		D3D12_GPU_VIRTUAL_ADDRESS bufferPtr)

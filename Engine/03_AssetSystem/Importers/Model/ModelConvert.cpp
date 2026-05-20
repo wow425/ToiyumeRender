@@ -16,6 +16,7 @@ using namespace DirectX;
 using namespace Math;
 using namespace Renderer;
 using namespace Graphics;
+using namespace Scene::Model;
 
 static inline Vector3 SafeNormalize(Vector3 x)
 {
@@ -23,8 +24,8 @@ static inline Vector3 SafeNormalize(Vector3 x)
 	return lenSq < 1e-10f ? Vector3(kXUnitVector) : x * RecipSqrt(lenSq);
 }
 
-void Renderer::CompileMesh(
-	std::vector<Mesh*>& meshList,
+void Scene::Model::CompileMesh(
+	std::vector<Scene::Model::Mesh*>& meshList,
 	std::vector<byte>& bufferMemory,
 	glTF::Mesh& srcMesh,
 	uint32_t matrixIdx,
@@ -81,7 +82,7 @@ void Renderer::CompileMesh(
 	for (auto& iter : renderMeshes)
 	{
 		size_t numDraws = iter.second.size();
-		Mesh* mesh = (Mesh*)malloc(sizeof(Mesh) + sizeof(Mesh::Draw) * (numDraws - 1));
+		Mesh* mesh = (Scene::Model::Mesh*)malloc(sizeof(Scene::Model::Mesh) + sizeof(Scene::Model::Mesh::Draw) * (numDraws - 1));
 		size_t vbSize = 0;
 		size_t vbDepthSize = 0;
 		size_t ibSize = 0;
@@ -122,7 +123,7 @@ void Renderer::CompileMesh(
 		uint32_t curIndexOffset = 0;
 		for (auto& draw : iter.second)
 		{
-			Mesh::Draw& d = mesh->draw[drawIdx++];
+			Scene::Model::Mesh::Draw& d = mesh->draw[drawIdx++];
 			d.primCount = draw->primCount;
 			d.baseVertex = curVertOffset;
 			d.startIndex = curIndexOffset;
@@ -157,7 +158,7 @@ void Renderer::CompileMesh(
 
 
 static uint32_t WalkGraph(
-	std::vector<GraphNode>& sceneGraph,
+	std::vector<Scene::Model::GraphNode>& sceneGraph,
 	BoundingSphere& modelBSphere,
 	AxisAlignedBox& modelBBox,
 	std::vector<Renderer::Mesh*>& meshList,
@@ -382,7 +383,7 @@ void BuildMaterials(ModelData& model, const glTF::Asset& asset)
 
 
 
-bool Renderer::BuildModel(ModelData& model, const glTF::Asset& asset, int sceneIdx)
+bool Scene::Model::BuildModel(ModelData& model, const glTF::Asset& asset, int sceneIdx)
 {
 	BuildMaterials(model, asset);
 
@@ -403,7 +404,7 @@ bool Renderer::BuildModel(ModelData& model, const glTF::Asset& asset, int sceneI
 	return true;
 }
 
-bool Renderer::SaveModel(const std::wstring& filePath, const ModelData& data)
+bool Scene::Model::SaveModel(const std::wstring& filePath, const ModelData& data)
 {
 	std::ofstream outFile(filePath, std::ios::out | std::ios::binary);
 	if (!outFile)
@@ -437,9 +438,9 @@ bool Renderer::SaveModel(const std::wstring& filePath, const ModelData& data)
 
 	outFile.write((char*)&header, sizeof(FileHeader));
 	outFile.write((char*)data.m_GeometryData.data(), header.geometrySize);
-	outFile.write((char*)data.m_SceneGraph.data(), header.numNodes * sizeof(GraphNode));
-	for (const Mesh* mesh : data.m_Meshes)
-		outFile.write((char*)mesh, sizeof(Mesh) + (mesh->numDraws - 1) * sizeof(Mesh::Draw));
+	outFile.write((char*)data.m_SceneGraph.data(), header.numNodes * sizeof(Scene::Model::GraphNode));
+	for (const Scene::Model::Mesh* mesh : data.m_Meshes)
+		outFile.write((char*)mesh, sizeof(Scene::Model::Mesh) + (mesh->numDraws - 1) * sizeof(Scene::Model::Mesh::Draw));
 	outFile.write((char*)data.m_MaterialConstants.data(), header.numMaterials * sizeof(MaterialConstantData));
 	outFile.write((char*)data.m_MaterialTextures.data(), header.numMaterials * sizeof(MaterialTextureData));
 	for (uint32_t i = 0; i < header.numTextures; ++i)

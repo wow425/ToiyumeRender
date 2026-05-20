@@ -32,21 +32,21 @@ D3D12_CPU_DESCRIPTOR_HANDLE GetSampler(uint32_t addressModes)
 	return samplerDesc.CreateDescriptor();
 }
 
-static uint32_t ConvertToRenderMaterialFlags(const MaterialConstantData& material)
+static uint32_t ConvertToRenderMaterialFlags(const Scene::Material::MaterialConstantData& material)
 {
-	uint32_t flags = Renderer::kMaterial_None;
+	uint32_t flags = Scene::Material::kMaterial_None;
 	if ((material.flags & (1u << 7)) != 0)
-		flags |= Renderer::kMaterial_AlphaBlend;
+		flags |= Scene::Material::kMaterial_AlphaBlend;
 	if ((material.flags & (1u << 6)) != 0)
-		flags |= Renderer::kMaterial_AlphaTest;
+		flags |= Scene::Material::kMaterial_AlphaTest;
 	if ((material.flags & (1u << 5)) != 0)
-		flags |= Renderer::kMaterial_DoubleSided;
+		flags |= Scene::Material::kMaterial_DoubleSided;
 	return flags;
 }
 
-void LoadMaterials(Model& model,
-	const std::vector<MaterialTextureData>& materialTextures,   // 材质纹理数据
-	const std::vector<MaterialConstantData>& materialConstants, // 材质参数数据
+void LoadMaterials(Scene::Model::Model& model,
+	const std::vector<Scene::Model::MaterialTextureData>& materialTextures,   // 材质纹理数据
+	const std::vector<Scene::Material::MaterialConstantData>& materialConstants, // 材质参数数据
 	const std::vector<std::wstring>& textureNames,              // 文件名
 	const std::vector<uint8_t>& textureOptions,
 	const std::wstring& basePath)                               // 路径
@@ -76,7 +76,7 @@ void LoadMaterials(Model& model,
 	// 遍历为每个网格赋予纹理（按照PBR标准划分5个纹理槽位，无则使用default填充)
 	for (uint32_t matIdx = 0; matIdx < numMaterials; ++matIdx)
 	{
-		const MaterialTextureData& srcMat = materialTextures[matIdx];
+		const Scene::Model::MaterialTextureData& srcMat = materialTextures[matIdx];
 
 		// 分配纹理描述符表（Texture Descriptor Table）。每个材质一个表，每个表包含5个纹理槽位（BaseColor, Emissive, Normal, Metallic, Roughness）
 		// 并将纹理描述符从源（模型纹理或默认纹理）复制到新分配的表中
@@ -156,7 +156,7 @@ void LoadMaterials(Model& model,
 
 
 // 外部调用接口：加载模型文件并处理缓存逻辑（没啃，暂留，后续啃）
-std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool forceRebuild)
+std::shared_ptr<Scene::Model::Model> Scene::Model::LoadModel(const std::wstring& filePath, bool forceRebuild)
 {
 	// 1. 路径处理阶段
 	const std::wstring miniFileName = Utility::RemoveExtension(filePath) + L".ty";
@@ -255,11 +255,11 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
 	std::wstring basePath = Utility::GetBasePath(filePath);
 
 	// 5. 内存分配与数据灌入 (Memory Allocation & Loading)
-	std::shared_ptr<Model> model(new Model);
+	std::shared_ptr<Scene::Model::Model> model(new Scene::Model::Model);
 
 	// 加载场景图层级树 (Scene Graph) - 主要用于骨骼动画和物件挂载。
 	model->m_NumNodes = header.numNodes;
-	model->m_SceneGraph.reset(new GraphNode[header.numNodes]);
+	model->m_SceneGraph.reset(new Scene::Model::GraphNode[header.numNodes]);
 
 	// CPU 侧保留一份 Mesh 元数据（如 Submesh 的边界、材质索引）。
 	model->m_NumMeshes = header.numMeshes;
@@ -279,7 +279,7 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
 	inFile.read((char*)model->m_SceneGraph.get(), header.numNodes * sizeof(GraphNode));
 	inFile.read((char*)model->m_MeshData.get(), header.meshDataSize);
 
-	std::vector<MaterialConstantData> materialConstantData(header.numMaterials);
+	std::vector<Scene::Material::MaterialConstantData> materialConstantData(header.numMaterials);
 	// 【DX12 核心：材质常量上传】(Material Constant Buffer / マテリアル定数バッファ)
 	if (header.numMaterials > 0)
 	{
@@ -289,8 +289,8 @@ std::shared_ptr<Model> Renderer::LoadModel(const std::wstring& filePath, bool fo
 
 		for (uint32_t i = 0; i < header.numMaterials; ++i)
 		{
-			inFile.read((char*)&materialConstantData[i], sizeof(MaterialConstantData));
-			std::memcpy(materialCBV, &materialConstantData[i], sizeof(MaterialConstantData));
+			inFile.read((char*)&materialConstantData[i], sizeof(Scene::Material::MaterialConstantData));
+			std::memcpy(materialCBV, &materialConstantData[i], sizeof(Scene::Material::MaterialConstantData));
 			materialCBV++; // 指针偏移，写入下一个材质参数
 		}
 		materialConstants.Unmap();

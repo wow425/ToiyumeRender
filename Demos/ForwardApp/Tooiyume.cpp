@@ -37,7 +37,7 @@ private:
 	unique_ptr<CameraController> m_CameraController;
 
 	// 模型
-	ModelInstance Models[10];
+	Scene::Model::ModelInstance Models[10];
 };
 
 // 启动!
@@ -48,7 +48,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
 	return GameCore::WinRun<Tooiyume>(L"Tooiyume", hInst, cmd);
 }
 
-Renderer::ForwardRenderer  ForwardRenderer;
+Renderer::Forward::ForwardRenderer  ForwardRenderer;
 
 std::wstring saber_emiya = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Saber/saber_emiya.glb";
 std::wstring toneriko = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/toneriko/toneriko1.gltf";
@@ -70,8 +70,8 @@ void Tooiyume::Startup(void)
 	// 模型加载
 	std::wstring gltfFileName;
 	bool forceRebuild = true;
-	Models[0] = Renderer::LoadModel(saberCaster3NoArmor, forceRebuild);
-	Models[1] = Renderer::LoadModel(ChosenSword, forceRebuild);
+	Models[0] = Scene::Model::LoadModel(saberCaster3NoArmor, forceRebuild);
+	Models[1] = Scene::Model::LoadModel(ChosenSword, forceRebuild);
 
 
 	// Camera设置
@@ -89,19 +89,21 @@ void Tooiyume::Update(float deltaT)
 	// 镜头常量数据更新
 	m_CameraController->Update(deltaT);
 
-
-	// 模型常量数据更新
+	// 模型
 	{
-		Models[0].Update(gfxContext, deltaT);
-		Models[1].Update(gfxContext, deltaT);
-
-		// 模型排序
+		if (Models[0].IsDirty())
 		{
+			Models[0].Update(gfxContext, deltaT);
 			ForwardRenderer.ModelSort(Models[0]);
+		}
+		if (Models[1].IsDirty())
+		{
+			Models[1].Update(gfxContext, deltaT);
 			ForwardRenderer.ModelSort(Models[1]);
-
 		}
 	}
+
+
 
 
 	// 资源回收，标记为recycled
@@ -122,6 +124,9 @@ void Tooiyume::RenderScene(void)
 
 	ForwardRenderer.EndFrame(gfxContext, renderFrame);
 
+
+	Models[0].ClearDirty();
+	Models[1].ClearDirty();
 	gfxContext.Finish();
 }
 

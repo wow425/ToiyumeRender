@@ -14,7 +14,7 @@
 #include <cstdint>
 
 
-namespace Renderer
+namespace Scene::Model
 {
 	class MeshSorter;
 
@@ -51,77 +51,86 @@ namespace Renderer
 		};
 		Draw draw[1];           // Actually 1 or more draws
 	};
+
+	// 优化手段：变换节点构建场景图。
+	struct GraphNode
+	{
+		Math::Matrix4 xform; // 变换矩阵（translation X rotation X scale）
+		Math::Quaternion rotation;
+		Math::XMFLOAT3 scale;
+
+		uint32_t matrixIdx : 28;
+		uint32_t hasSibling : 1;
+		uint32_t hasChildren : 1;
+		uint32_t staleMatrix : 1;
+		uint32_t skeletonRoot : 1;
+	};
+
+	class Model
+	{
+	public:
+		~Model() { Destroy(); }
+
+		void GatherRenderables(Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const;
+
+		Math::BoundingSphere m_BoundingSphere; // Object-space bounding sphere
+		Math::AxisAlignedBox m_BoundingBox;
+
+		ByteAddressBuffer m_DataBuffer;         // 网格数据
+		ByteAddressBuffer m_MaterialConstants;  // 材质CB
+		uint32_t m_NumNodes;                    // 节点总数，配合场景图
+		uint32_t m_NumMeshes;                   // 网格总数
+		std::unique_ptr<uint8_t[]> m_MeshData;  // 
+		std::unique_ptr<GraphNode[]> m_SceneGraph; // 场景图
+		std::vector<TextureRef> textures;       // 纹理索引
+
+		std::vector<Scene::Material::Material> m_Materials;  // 模型需在加载时一并构建逻辑材质实例数组，供渲染时查询。
+
+	protected:
+		void Destroy();
+	};
+
+	class ModelInstance
+	{
+	public:
+		ModelInstance();
+		ModelInstance(std::shared_ptr<const Model> sourceModel);
+		ModelInstance(const ModelInstance& modelInstance);
+
+		~ModelInstance()
+		{
+			m_MeshConstantsCPU.Destroy();
+			m_MeshConstantsGPU.Destroy();
+		}
+
+		ModelInstance& operator=(std::shared_ptr<const Model> sourceModel);
+
+		bool IsNull(void) const { return m_Model == nullptr; }
+
+		void Update(GraphicsContext& gfxContext, float deltaTime);
+		void GatherRenderables(Renderer::MeshSorter& sorter) const;
+
+		void Resize(float newRadius);
+		Math::Vector3 GetCenter() const;
+		Math::Scalar GetRadius() const;
+		Math::BoundingSphere GetBoundingSphere() const;
+		Math::OrientedBox GetBoundingBox() const;
+
+		bool IsDirty() const { return m_IsDirty; }
+		void MarkDirty() { m_IsDirty = true; }
+		void ClearDirty() { m_IsDirty = false; }
+
+
+	private:
+		std::shared_ptr<const Model> m_Model;
+		UploadBuffer m_MeshConstantsCPU;
+		ByteAddressBuffer m_MeshConstantsGPU;
+		std::unique_ptr<Math::AffineTransform[]> m_BoundingSphereTransforms;
+		Math::UniformTransform m_Locator;
+
+		bool m_IsDirty = true;
+
+	};
+
 }
 
-// 优化手段：变换节点构建场景图。
-struct GraphNode
-{
-	Math::Matrix4 xform; // 变换矩阵（translation X rotation X scale）
-	Math::Quaternion rotation;
-	Math::XMFLOAT3 scale;
-
-	uint32_t matrixIdx : 28;
-	uint32_t hasSibling : 1;
-	uint32_t hasChildren : 1;
-	uint32_t staleMatrix : 1;
-	uint32_t skeletonRoot : 1;
-};
-
-class Model
-{
-public:
-	~Model() { Destroy(); }
-
-	void GatherRenderables(Renderer::MeshSorter& sorter, const GpuBuffer& meshConstants) const;
-
-	Math::BoundingSphere m_BoundingSphere; // Object-space bounding sphere
-	Math::AxisAlignedBox m_BoundingBox;
-
-	ByteAddressBuffer m_DataBuffer;         // 网格数据
-	ByteAddressBuffer m_MaterialConstants;  // 材质CB
-	uint32_t m_NumNodes;                    // 节点总数，配合场景图
-	uint32_t m_NumMeshes;                   // 网格总数
-	std::unique_ptr<uint8_t[]> m_MeshData;  // 
-	std::unique_ptr<GraphNode[]> m_SceneGraph; // 场景图
-	std::vector<TextureRef> textures;       // 纹理索引
-
-	std::vector<Renderer::Material> m_Materials;  // 模型需在加载时一并构建逻辑材质实例数组，供渲染时查询。
-
-protected:
-	void Destroy();
-};
-
-class ModelInstance
-{
-public:
-	ModelInstance();
-	ModelInstance(std::shared_ptr<const Model> sourceModel);
-	ModelInstance(const ModelInstance& modelInstance);
-
-	~ModelInstance()
-	{
-		m_MeshConstantsCPU.Destroy();
-		m_MeshConstantsGPU.Destroy();
-	}
-
-	ModelInstance& operator=(std::shared_ptr<const Model> sourceModel);
-
-	bool IsNull(void) const { return m_Model == nullptr; }
-
-	void Update(GraphicsContext& gfxContext, float deltaTime);
-	void GatherRenderables(Renderer::MeshSorter& sorter) const;
-
-	void Resize(float newRadius);
-	Math::Vector3 GetCenter() const;
-	Math::Scalar GetRadius() const;
-	Math::BoundingSphere GetBoundingSphere() const;
-	Math::OrientedBox GetBoundingBox() const;
-
-private:
-	std::shared_ptr<const Model> m_Model;
-	UploadBuffer m_MeshConstantsCPU;
-	ByteAddressBuffer m_MeshConstantsGPU;
-	std::unique_ptr<Math::AffineTransform[]> m_BoundingSphereTransforms;
-	Math::UniformTransform m_Locator;
-
-};

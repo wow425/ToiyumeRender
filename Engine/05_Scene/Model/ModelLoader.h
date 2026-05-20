@@ -11,7 +11,7 @@ namespace glTF { class Asset; struct Mesh; }
 
 #define CURRENT_MINI_FILE_VERSION 2
 
-namespace Renderer
+namespace Scene::Model
 {
 	// Used at load time to construct descriptor tables
 	struct MaterialTextureData
@@ -28,9 +28,9 @@ namespace Renderer
 		Math::AxisAlignedBox m_BoundingBox;
 		std::vector<::byte> m_GeometryData; // 几何数据
 		std::vector<MaterialTextureData> m_MaterialTextures; // 材质纹理描述
-		std::vector<MaterialConstantData> m_MaterialConstants; // 材质常量数据
+		std::vector<Scene::Material::MaterialConstantData> m_MaterialConstants; // 材质常量数据
 		std::vector<Mesh*> m_Meshes;
-		std::vector<GraphNode> m_SceneGraph;
+		std::vector<Scene::Model::GraphNode> m_SceneGraph;
 		std::vector<std::string> m_TextureNames;
 		std::vector<uint8_t> m_TextureOptions;
 	};
@@ -52,7 +52,7 @@ namespace Renderer
 	};
 
 	void CompileMesh(
-		std::vector<Mesh*>& meshList,
+		std::vector<Scene::Model::Mesh*>& meshList,
 		std::vector < ::byte >& bufferMemory,
 		glTF::Mesh& srcMesh,
 		uint32_t matrixIdx,
@@ -64,5 +64,5 @@ namespace Renderer
 	bool BuildModel(ModelData& model, const glTF::Asset& asset, int sceneIdx = -1);
 	bool SaveModel(const std::wstring& filePath, const ModelData& model);
 
-	std::shared_ptr<Model> LoadModel(const std::wstring& filePath, bool forceRebuild = false);
+	std::shared_ptr<Scene::Model::Model> LoadModel(const std::wstring& filePath, bool forceRebuild = false);
 }

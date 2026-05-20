@@ -22,16 +22,17 @@ using namespace Math;
 using namespace Graphics;
 using namespace Renderer;
 
-namespace Renderer
+namespace Renderer::Forward
 {
 	RendererAutoRegister<ForwardRenderer> s_RegisterForwardRenderer(L"ForwardRenderer ");
-	DescriptorHeap s_TextureHeap;  // texture堆。存放CBV/SRV/UAV描述符堆
-	DescriptorHeap s_SamplerHeap;  // sampler堆
 }
 
 
-namespace Renderer
+
+namespace Renderer::Forward
 {
+	using Config = Renderer::Forward::Config;
+
 	bool ForwardRenderer::Initialize(const RendererCreateDesc& desc)
 	{
 		if (m_Initialized)	return true;
@@ -51,8 +52,7 @@ namespace Renderer
 			m_MainScissor.bottom = (LONG)desc.height;
 		}
 		m_CreateDesc = desc;
-		m_CreateDesc.backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-		m_CreateDesc.depthBufferFormat = DXGI_FORMAT_D32_FLOAT;
+
 
 		BuildRootSignature();
 		BuildPSOs();
@@ -212,8 +212,8 @@ namespace Renderer
 				Renderer::MeshSorter::SortKey key;
 				key.value = Sortkeys[CurrentDraw];
 				const Renderer::MeshSorter::SortObject& object = SortObjects[key.objectIdx];
-				const Mesh& mesh = *object.mesh;
-				const Material& material = *object.material;
+				const Scene::Model::Mesh& mesh = *object.mesh;
+				const Scene::Material::Material& material = *object.material;
 				const PipelineDesc& desc = Renderer::PipelineStateCache::GetPipelineDesc(static_cast<uint16_t>(key.psoIdx));
 				// 根实参绑定和PSO绑定
 				{
@@ -288,8 +288,8 @@ namespace Renderer
 		// “基础 PSO 模板”
 		ASSERT(m_PSOCache.empty());
 
-		DXGI_FORMAT colorFormat = m_CreateDesc.backBufferFormat;
-		DXGI_FORMAT depthFormat = m_CreateDesc.depthBufferFormat;
+		DXGI_FORMAT colorFormat = Config::backBufferFormat;
+		DXGI_FORMAT depthFormat = Config::depthBufferFormat;
 
 		GraphicsPSO defaultPSO(L"ForwardRenderer : Default PSO");
 		defaultPSO.SetRootSignature(m_RootSig);                                           // 根签名
@@ -316,8 +316,8 @@ namespace Renderer
 		const uint32_t height = m_CreateDesc.height;
 
 		m_ForwardBuffer = std::make_shared<ForwardBuffer>();
-		m_ForwardBuffer->SceneColorBuffer[0] = BufferManager::CreateColorBuffer(L"Scene Color Buffer", width, height, m_CreateDesc.backBufferFormat);
-		m_ForwardBuffer->DepthBuffer = BufferManager::CreateDepthBuffer(L"Scene Depth Buffer", width, height, m_CreateDesc.depthBufferFormat);
+		m_ForwardBuffer->SceneColorBuffer[0] = BufferManager::CreateColorBuffer(L"Scene Color Buffer", width, height, Config::backBufferFormat);
+		m_ForwardBuffer->DepthBuffer = BufferManager::CreateDepthBuffer(L"Scene Depth Buffer", width, height, Config::depthBufferFormat);
 
 
 	}
@@ -370,7 +370,7 @@ namespace Renderer
 		ColorPSO.SetPixelShader(g_pDefaultPS, sizeof(g_pDefaultPS));
 
 		D3D12_RASTERIZER_DESC rasterizer = RasterizerDefault;
-		if ((desc.MaterialFlags & kMaterial_DoubleSided) != 0)
+		if ((desc.MaterialFlags & Scene::Material::kMaterial_DoubleSided) != 0)
 			rasterizer.CullMode = D3D12_CULL_MODE_NONE;
 		ColorPSO.SetRasterizerState(rasterizer);
 
@@ -379,7 +379,7 @@ namespace Renderer
 			ColorPSO.SetBlendState(BlendNoColorWrite);
 			ColorPSO.SetDepthStencilState(DepthStateReadWrite);
 		}
-		else if ((desc.MaterialFlags & kMaterial_AlphaBlend) != 0)
+		else if ((desc.MaterialFlags & Scene::Material::kMaterial_AlphaBlend) != 0)
 		{
 			ColorPSO.SetBlendState(BlendPreMultiplied);
 			ColorPSO.SetDepthStencilState(DepthStateReadOnly);
@@ -406,7 +406,7 @@ namespace Renderer
 		context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, s_SamplerHeap.GetHeapPointer());
 	}
 
-	void ForwardRenderer::BindMaterial(GraphicsContext& context, const Material& material)
+	void ForwardRenderer::BindMaterial(GraphicsContext& context, const Scene::Material::Material& material)
 	{
 		context.SetDescriptorTable(kMaterialSRVs, s_TextureHeap[material.SRVTable]);
 		context.SetDescriptorTable(kMaterialSamplers, s_SamplerHeap[material.SamplerTable]);

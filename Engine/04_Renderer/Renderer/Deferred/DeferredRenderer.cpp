@@ -22,15 +22,13 @@ using namespace Math;
 using namespace Graphics;
 using namespace Renderer;
 
-namespace Renderer
+namespace Renderer::Deferred
 {
 	RendererAutoRegister<DeferredRenderer> s_RegisterForwardRenderer(L"DeferredRenderer");
-	DescriptorHeap s_TextureHeap;  // texture堆。存放CBV/SRV/UAV描述符堆
-	DescriptorHeap s_SamplerHeap;  // sampler堆
 }
 
 
-namespace Renderer
+namespace Renderer::Deferred
 {
 	bool DeferredRenderer::Initialize(const RendererCreateDesc& desc)
 	{
@@ -49,16 +47,17 @@ namespace Renderer
 			m_MainScissor.top = 0;
 			m_MainScissor.right = (LONG)desc.width;
 			m_MainScissor.bottom = (LONG)desc.height;
+
+			m_CreateDesc = desc;
 		}
-		m_CreateDesc = desc;
-		m_CreateDesc.backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-		m_CreateDesc.depthBufferFormat = DXGI_FORMAT_D32_FLOAT;
+
+
 
 		BuildRootSignature();
 		BuildPSOs();
 		BuildDescriptorHeaps();
 		TextureManager::Initialize(L"");
-		CreateForwardBufferTargets();
+		CreateDeferredBufferTargets();
 		LightingSystem::InitializeResources();
 		LightingSystem::CreateLights();
 
@@ -79,7 +78,7 @@ namespace Renderer
 		if (!m_Initialized)
 			return;
 
-		DestroyForwardBufferTargets();
+		DestroyDeferredBufferTargets();
 
 		m_PSOCache.clear();
 		s_TextureHeap.Destroy();
@@ -97,8 +96,8 @@ namespace Renderer
 
 		if (!m_Initialized) return;
 
-		DestroyForwardBufferTargets();
-		CreateForwardBufferTargets();
+		DestroyDeferredBufferTargets();
+		CreateDeferredBufferTargets();
 	}
 
 	void DeferredRenderer::BeginFrame(const RenderFrameDesc& frame)
@@ -108,27 +107,34 @@ namespace Renderer
 
 	}
 
-	void DeferredRenderer::Update(const RenderFrameDesc& frame)
+	void DeferredRenderer::Update(const RenderFrameDesc& frame, GraphicsContext& gfxContext)
 	{
-		(void)frame;
+		GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Update");
+
+		// 模型
+		{
+			for (auto* model : frame.Models)
+			{
+				if (model->IsDirty())
+				{
+					model->Update(gfxContext, frame.delatT);
+					this->ModelSort(*model);
+				}
+			}
+		}
 
 		// 这里放每帧更新：
 		// 1. 相机常量 m_CameraController管理分离
 		// 2. 灯光常量
 		// 3. 材质/对象常量
 		// 4. 历史帧信息（TAA / Motion Vector）
+
+
 	}
 
 	void DeferredRenderer::Render(GraphicsContext& context, const RenderFrameDesc& frame, DrawPass pass,
 		BatchType batchType)
 	{
-		ASSERT(m_Initialized);
-		auto DepthBuffer = this->GetDeferredBuffer().DepthBuffer;
-		auto SceneColorBuffer = this->GetDeferredBuffer().SceneColorBuffer[0];
-		auto Camera = frame.camera;
-		ASSERT(DepthBuffer != nullptr);
-		ASSERT(SceneColorBuffer != nullptr);
-		ASSERT(Camera != nullptr);
 
 
 		// 前置准备
@@ -181,26 +187,6 @@ namespace Renderer
 			if (passCount == 0)
 				continue;
 
-			if (batchType == kDefault)
-			{
-				switch (CurrentPass)
-				{
-				case kZPass:
-					context.TransitionResource(*DepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-					context.SetDepthStencilTarget(DepthBuffer->GetDSV());
-					break;
-				case kOpaque:
-					context.TransitionResource(*DepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-					context.TransitionResource(*SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
-					context.SetRenderTarget(SceneColorBuffer->GetRTV(), DepthBuffer->GetDSV());
-					break;
-				case kTransparent:
-					context.TransitionResource(*DepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ);
-					context.TransitionResource(*SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
-					context.SetRenderTarget(SceneColorBuffer->GetRTV(), DepthBuffer->GetDSV_DepthReadOnly());
-					break;
-				}
-			}
 
 			context.SetViewportAndScissor(this->GetMainViewport(), this->GetMainScissor());
 			context.FlushResourceBarriers();
@@ -212,8 +198,8 @@ namespace Renderer
 				Renderer::MeshSorter::SortKey key;
 				key.value = Sortkeys[CurrentDraw];
 				const Renderer::MeshSorter::SortObject& object = SortObjects[key.objectIdx];
-				const Mesh& mesh = *object.mesh;
-				const Material& material = *object.material;
+				const Scene::Model::Mesh& mesh = *object.mesh;
+				const Scene::Material::Material& material = *object.material;
 				const PipelineDesc& desc = Renderer::PipelineStateCache::GetPipelineDesc(static_cast<uint16_t>(key.psoIdx));
 				// 根实参绑定和PSO绑定
 				{
@@ -249,6 +235,13 @@ namespace Renderer
 		(void)frameContext;
 		(void)frame;
 		DefaultSorter.Reset();
+		// 模型
+		{
+			for (auto& model : frame.Models)
+			{
+				model->ClearDirty();
+			}
+		}
 	}
 
 	void DeferredRenderer::BuildDescriptorHeaps()
@@ -288,27 +281,11 @@ namespace Renderer
 		// “基础 PSO 模板”
 		ASSERT(m_PSOCache.empty());
 
-		DXGI_FORMAT colorFormat = m_CreateDesc.backBufferFormat;
-		DXGI_FORMAT depthFormat = m_CreateDesc.depthBufferFormat;
 
-		GraphicsPSO defaultPSO(L"DeferredRenderer: Default PSO");
-		defaultPSO.SetRootSignature(m_RootSig);                                           // 根签名
-		defaultPSO.SetRasterizerState(RasterizerDefault);                                 // 光栅状态
-		defaultPSO.SetBlendState(BlendDisable);                                           // 混合模式     默认关闭
-		defaultPSO.SetDepthStencilState(DepthStateReadWrite);                              // 深度模板状态 DepthStateDisabled  DepthStateReadWrite
-		defaultPSO.SetInputLayout(0, nullptr);                                            // 输入布局
-		defaultPSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);      // 图元拓扑
-		defaultPSO.SetRenderTargetFormats(1, &colorFormat, depthFormat);                  // RTV绑定
-		defaultPSO.SetVertexShader(g_pDefaultVS, sizeof(g_pDefaultVS));                   // VS绑定
-		defaultPSO.SetPixelShader(g_pDefaultPS, sizeof(g_pDefaultPS));                    // PS绑定
-		m_DefaultPSO = defaultPSO;
-		//defaultPSO.Finalize();
-
-		//m_PSOCache.push_back(defaultPSO);
 	}
 
 	// 现代renderer是自己持有资源，buffermanager负责管理资源
-	void DeferredRenderer::CreateForwardBufferTargets()
+	void DeferredRenderer::CreateDeferredBufferTargets()
 	{
 		if (m_CreateDesc.width == 0 || m_CreateDesc.height == 0) return;
 
@@ -316,16 +293,14 @@ namespace Renderer
 		const uint32_t height = m_CreateDesc.height;
 
 		m_DeferredBuffer = std::make_shared<DeferredBuffer>();
-		m_DeferredBuffer->SceneColorBuffer[0] = BufferManager::CreateColorBuffer(L"Scene Color Buffer", width, height, m_CreateDesc.backBufferFormat);
-		m_DeferredBuffer->DepthBuffer = BufferManager::CreateDepthBuffer(L"Scene Depth Buffer", width, height, m_CreateDesc.depthBufferFormat);
+
 
 
 	}
 
-	void DeferredRenderer::DestroyForwardBufferTargets()
+	void DeferredRenderer::DestroyDeferredBufferTargets()
 	{
-		m_DeferredBuffer->SceneColorBuffer[0]->Destroy();
-		m_DeferredBuffer->DepthBuffer->Destroy();
+
 	}
 
 	void DeferredRenderer::UpdateGlobalDescriptors()
@@ -370,7 +345,7 @@ namespace Renderer
 		ColorPSO.SetPixelShader(g_pDefaultPS, sizeof(g_pDefaultPS));
 
 		D3D12_RASTERIZER_DESC rasterizer = RasterizerDefault;
-		if ((desc.MaterialFlags & kMaterial_DoubleSided) != 0)
+		if ((desc.MaterialFlags & Scene::Material::kMaterial_DoubleSided) != 0)
 			rasterizer.CullMode = D3D12_CULL_MODE_NONE;
 		ColorPSO.SetRasterizerState(rasterizer);
 
@@ -379,7 +354,7 @@ namespace Renderer
 			ColorPSO.SetBlendState(BlendNoColorWrite);
 			ColorPSO.SetDepthStencilState(DepthStateReadWrite);
 		}
-		else if ((desc.MaterialFlags & kMaterial_AlphaBlend) != 0)
+		else if ((desc.MaterialFlags & Scene::Material::kMaterial_AlphaBlend) != 0)
 		{
 			ColorPSO.SetBlendState(BlendPreMultiplied);
 			ColorPSO.SetDepthStencilState(DepthStateReadOnly);
@@ -406,7 +381,7 @@ namespace Renderer
 		context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, s_SamplerHeap.GetHeapPointer());
 	}
 
-	void DeferredRenderer::BindMaterial(GraphicsContext& context, const Material& material)
+	void DeferredRenderer::BindMaterial(GraphicsContext& context, const Scene::Material::Material& material)
 	{
 		context.SetDescriptorTable(kMaterialSRVs, s_TextureHeap[material.SRVTable]);
 		context.SetDescriptorTable(kMaterialSamplers, s_SamplerHeap[material.SamplerTable]);
@@ -414,4 +389,4 @@ namespace Renderer
 
 
 
-} // namespace Renderer
+} // namespace Renderer::Deferred

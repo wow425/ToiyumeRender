@@ -15,7 +15,7 @@
 
 
 #include "04_Renderer/Renderer/Base/BaseRenderer.h"
-
+#include "04_Renderer/Renderer/RendererConfig.h"
 #include "05_Scene/Camera/Camera.h"
 #include "02_RHI/Resource/GpuBuffer.h"
 #include "02_RHI/Resource/ColorBuffer.h"
@@ -39,10 +39,9 @@ struct GlobalConstants;
 struct Mesh; // Model
 
 
-namespace Renderer
+namespace Renderer::Forward
 {
-	extern DescriptorHeap s_TextureHeap;  // texture堆。存放CBV/SRV/UAV描述符堆
-	extern DescriptorHeap s_SamplerHeap;  // sampler堆
+	using Config = Renderer::Forward::Config;
 
 	struct ForwardBuffer
 	{
@@ -54,7 +53,6 @@ namespace Renderer
 	class ForwardRenderer  final : public BaseRenderer
 	{
 	public:
-
 		std::wstring GetName() const override { return L"ForwardRenderer "; }
 
 		bool Initialize(const RendererCreateDesc& desc) override;
@@ -80,7 +78,7 @@ namespace Renderer
 
 		const GraphicsPSO& GetPSO(const PipelineDesc& desc) override;
 		void BindRenderState(GraphicsContext& context) override;
-		void BindMaterial(GraphicsContext& context, const Material& material) override;
+		void BindMaterial(GraphicsContext& context, const Scene::Material::Material& material) override;
 
 
 	private:
@@ -104,4 +102,4 @@ namespace Renderer
 	};
 
 
-} // namespace Renderer
+} // namespace Renderer::Forward
