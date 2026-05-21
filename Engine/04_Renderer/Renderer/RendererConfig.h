@@ -8,13 +8,13 @@ namespace Renderer::Deferred
 	static constexpr DXGI_FORMAT GBufferFormats[] =
 	{
 		DXGI_FORMAT_R8G8B8A8_UNORM,		// BaseColor
-		DXGI_FORMAT_R16G16B16A16_FLOAT, // Normal
+		DXGI_FORMAT_R16G16_FLOAT,		// Normal
 		DXGI_FORMAT_R16G16B16A16_FLOAT,	// Material
 		DXGI_FORMAT_R8G8B8A8_UNORM,		// Emission
 
 	};
 
-	static constexpr DXGI_FORMAT SceneColorBufferFormat = DXGI_FORMAT_R11G11B10_FLOAT;
+	static constexpr DXGI_FORMAT SceneColorBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 	static constexpr DXGI_FORMAT SceneDepthBufferFormat = DXGI_FORMAT_D32_FLOAT;
 	static constexpr DXGI_FORMAT VelocityBufferFormat = DXGI_FORMAT_R16G16_FLOAT;
 

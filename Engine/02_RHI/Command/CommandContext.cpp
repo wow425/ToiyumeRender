@@ -651,12 +651,3 @@ void CommandContext::PIXSetMarker(const wchar_t* label)
 #endif
 }
 
-// 根据生命周期自动end
-void CommandContext::PIXSetEvent(const wchar_t* label)
-{
-#ifdef RELEASE
-	(void)label;
-#else
-	PIXScopedEvent(m_CommandList, 0, label);
-#endif
-}

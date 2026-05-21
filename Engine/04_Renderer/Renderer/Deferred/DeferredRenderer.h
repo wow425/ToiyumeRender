@@ -54,7 +54,7 @@ namespace Renderer::Deferred
 	{
 		GBuffer_BaseColor, // RGB放Basecolor，A放AO
 		GBuffer_Normal,    // 法线编码用Octahedral Encoding
-		GBuffer_Material,  // R为Metallic，G为Roughness，B为Specular 或 Anisotropy， A为Shading Model / Material ID
+		GBuffer_Material,  // R为Metallic，G为Roughness，B为Specular， A为Shading Model / Material ID
 		GBuffer_Emission,  // R为Emissive， G为Subsurface Mask， B为Custom Data， A为ClearCoat   ??
 
 		GBuffer_Count
@@ -62,14 +62,25 @@ namespace Renderer::Deferred
 
 	struct DeferredBuffer
 	{
-		std::array<std::shared_ptr<ColorBuffer>, (uint32_t)GBufferSlot::GBuffer_Count> GBuffers;
+		std::shared_ptr<ColorBuffer> GBuffers[(uint32_t)GBufferSlot::GBuffer_Count];
 
 		std::shared_ptr<ColorBuffer> SceneColorBuffer;
 		std::shared_ptr<DepthBuffer> SceneDepthBuffer;
 		std::shared_ptr<ColorBuffer> VelocityBuffer;
 	};
 
+	enum class LightingSlot : uint8_t
+	{
+		GBuffer_BaseColor, // RGB放Basecolor，A放AO
+		GBuffer_Normal,    // 法线编码用Octahedral Encoding
+		GBuffer_Material,  // R为Metallic，G为Roughness，B为Specular， A为Shading Model / Material ID
+		GBuffer_Emission,  // R为Emissive， G为Subsurface Mask， B为Custom Data， A为ClearCoat   ??
+		Depth,
+		Light, // 光照常量
+		Camera, // Camera常量
 
+		Count
+	};
 	class DeferredRenderer final : public BaseRenderer
 	{
 	public:
@@ -86,7 +97,7 @@ namespace Renderer::Deferred
 		void EndFrame(GraphicsContext& context, const RenderFrameDesc& frame) override;
 
 
-		DeferredBuffer GetDeferredBuffer(void) { return *m_DeferredBuffer; }
+		DeferredBuffer GetDeferredBuffer(void) { return *m_GBuffers; }
 		RendererFeature GetFeatures() const override
 		{
 			return RendererFeature::Deferred
@@ -96,9 +107,13 @@ namespace Renderer::Deferred
 				| RendererFeature::PostProcess;
 		}
 
+
 		const GraphicsPSO& GetPSO(const PipelineDesc& desc) override;
 		void BindRenderState(GraphicsContext& context) override;
 		void BindMaterial(GraphicsContext& context, const Scene::Material::Material& material) override;
+
+
+
 
 	private:
 		void BuildRootSignature();
@@ -111,12 +126,21 @@ namespace Renderer::Deferred
 		void UpdateGlobalDescriptors();
 		uint8_t GetPSOIndex(const PipelineDesc& desc);
 
+		// Lighting Pass
+		void BuildLightingSignature();
+		void BuildLightingPSO();
+
 	private:
 		std::vector<GraphicsPSO> m_PSOCache;
-		RootSignature m_RootSig;
+		RootSignature m_GBufferRootSig;
+		RootSignature m_LightingRootSig;
+		GraphicsPSO   m_LightingPSO;
 
 		DescriptorHandle m_CommonTextures; // 通用纹理的描述符句柄 (如阴影贴图、SSAO 结果等全局共享的贴图)。
-		std::shared_ptr<DeferredBuffer> m_DeferredBuffer;
+
+		std::shared_ptr<DeferredBuffer> m_GBuffers;
+		D3D12_CPU_DESCRIPTOR_HANDLE m_CPUGBuffers[((uint32_t)GBufferSlot::GBuffer_Count)];
+		D3D12_GPU_DESCRIPTOR_HANDLE m_GBufferSRV;
 	};
 
 

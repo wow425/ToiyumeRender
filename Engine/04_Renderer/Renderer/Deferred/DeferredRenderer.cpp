@@ -17,6 +17,8 @@
 
 #include "StaticMeshVS.h"
 #include "GBufferPS.h"
+#include "FullScreenVS.h"
+#include "LightingPS.h"
 
 #pragma warning(disable:4319) // 关闭警告：零扩展警告?
 
@@ -52,23 +54,29 @@ namespace Renderer::Deferred
 
 			m_CreateDesc = desc;
 		}
+		// GBuffer Pass
+		{
+			BuildRootSignature();
+			BuildPSOs(); // 停留于此
+			BuildDescriptorHeaps();
+			TextureManager::Initialize(L"");
+			CreateDeferredBufferTargets();
+		}
+		// Lighting Pass
+		{
+			BuildLightingSignature();
+			BuildLightingPSO();
 
-
-
-		BuildRootSignature();
-		BuildPSOs(); // 停留于此
-		BuildDescriptorHeaps();
-		TextureManager::Initialize(L"");
-		CreateDeferredBufferTargets();
-		LightingSystem::InitializeResources();
-		LightingSystem::CreateLights();
+			Scene::LightingSystem::InitializeResources();
+			Scene::LightingSystem::CreateLights();
+		}
 
 		uint32_t DestCount = 1;
 		uint32_t SourceCounts[] = { 1 };
 
 		D3D12_CPU_DESCRIPTOR_HANDLE SourceTextures[] =
 		{
-			LightingSystem::m_LightGPUBuffer.GetSRV(),
+			Scene::LightingSystem::m_LightGPUBuffer.GetSRV(),
 		};
 
 		m_Initialized = true;
@@ -132,46 +140,84 @@ namespace Renderer::Deferred
 
 	}
 
-	void DeferredRenderer::Render(GraphicsContext& context, const RenderFrameDesc& frame, DrawPass pass,
-		BatchType batchType)
+
+
+	void DeferredRenderer::Render(GraphicsContext& context, const RenderFrameDesc& frame, DrawPass pass, BatchType batchType)
 	{
+		/*
+			Depth PrePass
+			↓
+			Geometry Pass(GBuffer)
+			↓
+			SSAO / GTAO
+			↓
+			Shadow Pass
+			↓
+			Deferred Lighting
+			↓
+			IBL / Sky
+			↓
+			Transparent Forward Pass
+			↓
+			PostProcess
+Bloom
+DOF
+Fog
+SSR
+ColorGrading
+Chromatic
+Vignette
+			↓
+			TAA
+			↓
+			Tonemap
+			↓
+			Present
+		*
+		*
+		*/
 
 
-		// Buffer重置
-		{
-			for (auto& GBuffer : m_DeferredBuffer->GBuffers)
-			{
-				context.TransitionResource(*GBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
-			}
-			context.TransitionResource(*m_DeferredBuffer->SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-			context.TransitionResource(*m_DeferredBuffer->SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
-			context.ClearDepth(*m_DeferredBuffer->SceneDepthBuffer);
-			context.ClearColor(*m_DeferredBuffer->SceneColorBuffer);
-
-			context.SetViewportAndScissor(this->GetMainViewport(), this->GetMainScissor()); // 设置视口和裁剪矩形
-		}
 		// 全局绑定
 		{
-			this->UpdateGlobalDescriptors();
+			// this->UpdateGlobalDescriptors();
+			// Set common textures
+			// context.SetDescriptorTable(kCommonSRVs, m_CommonTextures);
+			// Set common shader constants
+		}
+
+
+
+		context.PIXBeginEvent(L"DeferredRenderer");
+
+		// 1. GBufferPass
+		{
 			this->BindRenderState(context);
 
-			// Set common textures
-			context.SetDescriptorTable(kCommonSRVs, m_CommonTextures);
-			// Set common shader constants
+			// Buffer处理
+			{
+				for (auto& GBuffer : m_GBuffers->GBuffers)
+				{
+					context.TransitionResource(*GBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
+					context.ClearColor(*GBuffer);
+				}
+				context.TransitionResource(*m_GBuffers->SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+				context.TransitionResource(*m_GBuffers->SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
+				context.ClearColor(*m_GBuffers->SceneColorBuffer);
+				context.ClearDepth(*m_GBuffers->SceneDepthBuffer);
+
+				context.SetViewportAndScissor(this->GetMainViewport(), this->GetMainScissor()); // 设置视口和裁剪矩形
+				context.SetRenderTargets((uint32_t)GBufferSlot::GBuffer_Count, m_CPUGBuffers, m_GBuffers->SceneDepthBuffer->GetDSV());
+
+				context.FlushResourceBarriers();
+			}
+
 			GlobalConstants globals;
 			globals.ViewProjMatrix = frame.Camera->GetViewProjMatrix();
 			globals.CameraPos = frame.Camera->GetPosition();
-			context.SetDynamicConstantBufferView(kCommonCBV, sizeof(GlobalConstants), &globals);
-		}
+			context.SetDynamicConstantBufferView(kCommonCBV, sizeof(globals), &globals);
 
-		context.PIXBeginEvent(L"DeferredRenderer");
-		// 1.ShadowPass
-		{
-			context.PIXSetEvent(L"ShadowPass");
-		}
-		// 2. GBufferPass
-		{
-			context.PIXSetEvent(L"GBufferPass");
+			context.PIXBeginEvent(L"GBufferPass");
 
 			auto CurrentPass = this->DefaultSorter.GetCurrentPass();
 			const uint32_t* PassCounts = this->DefaultSorter.GetPassCounts();
@@ -181,12 +227,7 @@ namespace Renderer::Deferred
 			for (; CurrentPass <= pass; CurrentPass = (DrawPass)(CurrentPass + 1))
 			{
 				const uint32_t passCount = PassCounts[CurrentPass];
-				if (passCount == 0)
-					continue;
-
-
-				context.SetViewportAndScissor(this->GetMainViewport(), this->GetMainScissor());
-				context.FlushResourceBarriers();
+				if (passCount == 0) continue;
 
 				const uint32_t lastDraw = CurrentDraw + passCount;
 
@@ -201,21 +242,12 @@ namespace Renderer::Deferred
 					// 根实参绑定和PSO绑定
 					{
 						context.SetConstantBuffer(kMeshConstants, object.meshCBV);
-						context.SetConstantBuffer(kMaterialConstants, material.MaterialCBV);
 						this->BindMaterial(context, material);
 
-						context.SetPipelineState(this->GetPSO(desc)); // !?
+						context.SetPipelineState(this->GetPSO(desc)); // 绑定PSO！！！
 					}
 
-
-					if (CurrentPass == kZPass)
-					{
-						context.SetVertexBuffer(0, { object.bufferPtr + mesh.vbDepthOffset, mesh.vbDepthSize, mesh.vbDepthStride });
-					}
-					else
-					{
-						context.SetVertexBuffer(0, { object.bufferPtr + mesh.vbOffset, mesh.vbSize, mesh.vbStride });
-					}
+					context.SetVertexBuffer(0, { object.bufferPtr + mesh.vbOffset, mesh.vbSize, mesh.vbStride });
 					context.SetIndexBuffer({ object.bufferPtr + mesh.ibOffset, mesh.ibSize, (DXGI_FORMAT)mesh.ibFormat });
 
 					for (uint32_t i = 0; i < mesh.numDraws; ++i)
@@ -225,33 +257,98 @@ namespace Renderer::Deferred
 					++CurrentDraw;
 				}
 			}
+			context.PIXEndEvent();
+			context.FlushResourceBarriers();
+		} // 2. GBufferPass
 
-		}
 		// 3. SSAOPass
 		{
-			context.PIXSetEvent(L"SSAOPass");
+			context.PIXBeginEvent(L"SSAOPass");
+			context.PIXEndEvent();
 
-		}
-		// 4. DeferredLightingPass
+		} // 3. SSAOPass
+
+		// 4.ShadowPass
 		{
-			context.PIXSetEvent(L"DeferredLightingPass");
-		}
-		// 这里是渲染调度入口。
-		// 你后续把具体 Pass 拆出来后，按这个顺序接：
-		// 2. GBufferPass
-		// 3. SSAOPass
-		// 4. DeferredLightingPass
-		// 5. TransparentForwardPass
-		// 6. SkyPass
-		// 7. Tonemap / Bloom / TAA
-		//
+			context.PIXBeginEvent(L"ShadowPass");
+			context.PIXEndEvent();
+		} // 4.ShadowPass
+
+		// 5. DeferredLightingPass
+		{
+			context.PIXBeginEvent(L"DeferredLightingPass");
+
+			context.SetRootSignature(m_LightingRootSig);
+			context.SetPipelineState(m_LightingPSO);
+			context.ClearColor(*m_GBuffers->SceneColorBuffer);
+
+			// 1. 资源处理
+			{
+				for (auto& GBuffer : m_GBuffers->GBuffers)
+				{
+					context.TransitionResource(*GBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+				}
+				// Depth
+				context.TransitionResource(*m_GBuffers->SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+				// Lighting Output
+				context.TransitionResource(*m_GBuffers->SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+				context.FlushResourceBarriers();
+
+				context.SetDynamicDescriptor((uint32_t)LightingSlot::GBuffer_BaseColor, 0, m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_BaseColor]->GetSRV());
+				context.SetDynamicDescriptor((uint32_t)LightingSlot::GBuffer_Normal, 0, m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_Normal]->GetSRV());
+				context.SetDynamicDescriptor((uint32_t)LightingSlot::GBuffer_Material, 0, m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_Material]->GetSRV());
+				context.SetDynamicDescriptor((uint32_t)LightingSlot::GBuffer_Emission, 0, m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_Emission]->GetSRV());
+				context.SetDynamicDescriptor((uint32_t)LightingSlot::Depth, 0, m_GBuffers->SceneDepthBuffer->GetDepthSRV());
+				context.SetConstantBuffer((uint32_t)LightingSlot::Light, Scene::LightingSystem::m_LightGPUBuffer.GetGpuVirtualAddress());
+				context.SetRenderTarget(m_GBuffers->SceneColorBuffer->GetRTV());
+
+			}
+
+			// 3. 绘制全屏几何体
+			context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			context.Draw(3, 0);
+
+			context.PIXEndEvent();
+		} // 5. DeferredLightingPass
+
+		// 6. IBL / Sky Pass
+		{
+			context.PIXBeginEvent(L"IBLPass");
+			context.PIXEndEvent();
+		}  // 6. IBL / Sky Pass
+
+		// 7. Transparent Forward Pass 
+		{
+			context.PIXBeginEvent(L"Transparent Forward Pass ");
+			context.PIXEndEvent();
+		} // 7. Transparent Forward Pass
+
+		// 8. PostProcess Pass 
+		{
+			context.PIXBeginEvent(L"PostProcess Pass ");
+			context.PIXEndEvent();
+		} // 8. PostProcess Pass 
+
+		// 9. TAA Pass 
+		{
+			context.PIXBeginEvent(L"TAA Pass");
+			context.PIXEndEvent();
+		} // 9. TAA Pass
+
+		// 10. Tonemap Pass 
+		{
+			context.PIXBeginEvent(L"Tonemap Pass");
+			context.PIXEndEvent();
+		} // 10. Tonemap Pass
+		context.PIXEndEvent();
 	}
 
 	void DeferredRenderer::EndFrame(::GraphicsContext& frameContext, const RenderFrameDesc& frame)
 	{
 		(void)frameContext;
 		(void)frame;
-		DefaultSorter.Reset();
 		// 模型
 		{
 			for (auto& model : frame.Models)
@@ -263,8 +360,8 @@ namespace Renderer::Deferred
 
 	void DeferredRenderer::BuildDescriptorHeaps()
 	{
-		s_TextureHeap.Create(L"Forward Texture Descriptors", D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4096);
-		s_SamplerHeap.Create(L"Forward Sampler Descriptors", D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 2048);
+		s_TextureHeap.Create(L"Deferred Texture Descriptors", D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4096);
+		s_SamplerHeap.Create(L"Deferred Sampler Descriptors", D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 2048);
 
 		// 预留一块“全局通用贴图”描述符区域
 		m_CommonTextures = s_TextureHeap.Alloc(1);
@@ -274,23 +371,27 @@ namespace Renderer::Deferred
 	{
 		using namespace Renderer;
 
-		m_RootSig.Reset(kNumRootBindings, 1);
-
 		SamplerDesc DefaultSamplerDesc;
 		DefaultSamplerDesc.MaxAnisotropy = 8;
 
+		SamplerDesc PointSamplerDesc; // Lighting Pass是逐像素的
+		PointSamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+		PointSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		PointSamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		PointSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+
 		// 根签名设置并finalize
-		m_RootSig.Reset(kNumRootBindings, 1); // 初始化分配根参数内存
-		m_RootSig.InitStaticSampler(10, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL); // 静态采样器
+		m_GBufferRootSig.Reset(kNumRootBindings, 1); // 初始化分配根参数内存
+		m_GBufferRootSig.InitStaticSampler(10, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL); // 静态采样器
 		//m_RootSig.InitStaticSampler(11, SamplerShadowDesc, D3D12_SHADER_VISIBILITY_PIXEL);
 		//m_RootSig.InitStaticSampler(12, CubeMapSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
-		m_RootSig[kMeshConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX); // 网格常量        根描述符绑定
-		m_RootSig[kMaterialConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_PIXEL); // 材质常量     根描述符绑定  
-		m_RootSig[kMaterialSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 材质SRV
-		m_RootSig[kMaterialSamplers].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 0, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 材质采样器
-		m_RootSig[kCommonSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 10, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 全局通用SRV
-		m_RootSig[kCommonCBV].InitAsConstantBuffer(1);                                                                        // 全局通用CBV
-		m_RootSig.Finalize(L"DeferredRenderer RootSig", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		m_GBufferRootSig[kMeshConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX); // 网格常量        
+		m_GBufferRootSig[kMaterialConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_PIXEL); // 材质常量     
+		m_GBufferRootSig[kMaterialSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 材质SRV
+		m_GBufferRootSig[kMaterialSamplers].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 0, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 材质采样器
+		m_GBufferRootSig[kCommonSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 10, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 全局通用SRV
+		m_GBufferRootSig[kCommonCBV].InitAsConstantBuffer(1);                                                                        // 全局通用CBV
+		m_GBufferRootSig.Finalize(L"DeferredRenderer GBuffer Pass RootSig", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 	}
 
 	void DeferredRenderer::BuildPSOs()
@@ -300,8 +401,8 @@ namespace Renderer::Deferred
 
 		DXGI_FORMAT depthFormat = SceneDepthBufferFormat;
 
-		GraphicsPSO GBufferPSO(L"DeferredRenderer : GBuffer  PSO");
-		GBufferPSO.SetRootSignature(m_RootSig);                                           // 根签名
+		GraphicsPSO GBufferPSO(L"DeferredRenderer : GBuffer PSO");
+		GBufferPSO.SetRootSignature(m_GBufferRootSig);                                           // 根签名
 		GBufferPSO.SetRasterizerState(RasterizerDefault);                                 // 光栅状态
 		GBufferPSO.SetBlendState(BlendDisable);                                           // 混合模式     默认关闭
 		GBufferPSO.SetDepthStencilState(DepthStateReadWrite);                              // 深度模板状态 DepthStateDisabled  DepthStateReadWrite
@@ -324,24 +425,29 @@ namespace Renderer::Deferred
 		const uint32_t width = m_CreateDesc.width;
 		const uint32_t height = m_CreateDesc.height;
 
-		m_DeferredBuffer = std::make_shared<DeferredBuffer>();
+		m_GBuffers = std::make_shared<DeferredBuffer>();
+		int i = 0;
 
-		m_DeferredBuffer->GBuffers[(uint32_t)GBufferSlot::GBuffer_BaseColor] =
-			BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_BaseColor]);
+		m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_BaseColor] =
+			BufferManager::CreateColorBuffer(L"GBuffer_BaseColor", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_BaseColor]);
 
-		m_DeferredBuffer->GBuffers[(uint32_t)GBufferSlot::GBuffer_Normal] =
-			BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_Normal]);
+		m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_Normal] =
+			BufferManager::CreateColorBuffer(L"GBuffer_Normal", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_Normal]);
 
-		m_DeferredBuffer->GBuffers[(uint32_t)GBufferSlot::GBuffer_Material] =
-			BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_Material]);
+		m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_Material] =
+			BufferManager::CreateColorBuffer(L"GBuffer_Material", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_Material]);
 
-		m_DeferredBuffer->GBuffers[(uint32_t)GBufferSlot::GBuffer_Emission] =
-			BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_Emission]);
+		m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_Emission] =
+			BufferManager::CreateColorBuffer(L"GBuffer_Emission", width, height, GBufferFormats[(uint32_t)GBufferSlot::GBuffer_Emission]);
 
+		for (auto& buffer : m_GBuffers->GBuffers)
+		{
+			m_CPUGBuffers[i++] = buffer->GetRTV();
+		}
 
-		m_DeferredBuffer->SceneColorBuffer = BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, SceneColorBufferFormat);
-		m_DeferredBuffer->SceneDepthBuffer = BufferManager::CreateDepthBuffer(L"Deferred SceneColorBuffer", width, height, SceneDepthBufferFormat);
-		m_DeferredBuffer->VelocityBuffer = BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, VelocityBufferFormat);
+		m_GBuffers->SceneColorBuffer = BufferManager::CreateColorBuffer(L"Deferred SceneColorBuffer", width, height, SceneColorBufferFormat);
+		m_GBuffers->SceneDepthBuffer = BufferManager::CreateDepthBuffer(L"Deferred SceneDepthBuffer", width, height, SceneDepthBufferFormat);
+		m_GBuffers->VelocityBuffer = BufferManager::CreateColorBuffer(L"Deferred VelocityBuffer", width, height, VelocityBufferFormat);
 
 
 	}
@@ -368,10 +474,10 @@ namespace Renderer::Deferred
 
 	uint8_t DeferredRenderer::GetPSOIndex(const PipelineDesc& desc)
 	{
-		GraphicsPSO ColorPSO = m_DefaultPSO;
+		GraphicsPSO GBufferPSO = m_DefaultPSO;
 
 		const uint32_t vertexFlags = desc.VertexFlags;
-		uint32_t Requirements = kVertex_Position | kVertex_Normal;
+		uint32_t Requirements = kVertex_Position | kVertex_Normal | kVertex_Tangent;
 		ASSERT((vertexFlags & Requirements) == Requirements);
 
 		std::vector<D3D12_INPUT_ELEMENT_DESC> vertexLayout;
@@ -386,33 +492,33 @@ namespace Renderer::Deferred
 		if (vertexFlags & kVertex_UV1)
 			vertexLayout.push_back({ "TEXCOORD", 1, DXGI_FORMAT_R16G16_FLOAT,       0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
 
-		ColorPSO.SetInputLayout((uint32_t)vertexLayout.size(), vertexLayout.data());
+		GBufferPSO.SetInputLayout((uint32_t)vertexLayout.size(), vertexLayout.data());
 
 		D3D12_RASTERIZER_DESC rasterizer = RasterizerDefault;
 		if ((desc.MaterialFlags & Scene::Material::kMaterial_DoubleSided) != 0)
 			rasterizer.CullMode = D3D12_CULL_MODE_NONE;
-		ColorPSO.SetRasterizerState(rasterizer);
+		GBufferPSO.SetRasterizerState(rasterizer);
 
 		if (desc.PassType == RenderPassType::Depth || desc.PassType == RenderPassType::Shadow)
 		{
-			ColorPSO.SetBlendState(BlendNoColorWrite);
-			ColorPSO.SetDepthStencilState(DepthStateReadWrite);
+			GBufferPSO.SetBlendState(BlendNoColorWrite);
+			GBufferPSO.SetDepthStencilState(DepthStateReadWrite);
 		}
 		else if ((desc.MaterialFlags & Scene::Material::kMaterial_AlphaBlend) != 0)
 		{
-			ColorPSO.SetBlendState(BlendPreMultiplied);
-			ColorPSO.SetDepthStencilState(DepthStateReadOnly);
+			GBufferPSO.SetBlendState(BlendPreMultiplied);
+			GBufferPSO.SetDepthStencilState(DepthStateReadOnly);
 		}
 
-		ColorPSO.Finalize();
+		GBufferPSO.Finalize();
 
 		for (uint32_t i = 0; i < m_PSOCache.size(); ++i)
 		{
-			if (ColorPSO.GetPipelineStateObject() == m_PSOCache[i].GetPipelineStateObject())
+			if (GBufferPSO.GetPipelineStateObject() == m_PSOCache[i].GetPipelineStateObject())
 				return (uint8_t)i;
 		}
 
-		m_PSOCache.push_back(ColorPSO);
+		m_PSOCache.push_back(GBufferPSO);
 		ASSERT(m_PSOCache.size() <= 256, "Ran out of room for unique PSOs");
 		return (uint8_t)m_PSOCache.size() - 1;
 	}
@@ -420,7 +526,7 @@ namespace Renderer::Deferred
 	// 根签名，资源堆，sampler堆,图元
 	void DeferredRenderer::BindRenderState(GraphicsContext& context)
 	{
-		context.SetRootSignature(m_RootSig);
+		context.SetRootSignature(m_GBufferRootSig);
 		context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, s_TextureHeap.GetHeapPointer());
 		context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, s_SamplerHeap.GetHeapPointer());
 
@@ -429,10 +535,64 @@ namespace Renderer::Deferred
 
 	void DeferredRenderer::BindMaterial(GraphicsContext& context, const Scene::Material::Material& material)
 	{
+		context.SetConstantBuffer(kMaterialConstants, material.MaterialCBV);
 		context.SetDescriptorTable(kMaterialSRVs, s_TextureHeap[material.SRVTable]);
 		context.SetDescriptorTable(kMaterialSamplers, s_SamplerHeap[material.SamplerTable]);
 	}
 
 
+	void DeferredRenderer::BuildLightingPSO()
+	{
+		m_LightingPSO = m_DefaultPSO;
 
+
+
+		m_LightingPSO.SetName(L"DeferredRenderer : Lighting PSO");
+		m_LightingPSO.SetVertexShader(FullScreenVS_cso, sizeof(FullScreenVS_cso));
+		m_LightingPSO.SetPixelShader(LightingPS_cso, sizeof(LightingPS_cso));
+		m_LightingPSO.SetRenderTargetFormat(SceneColorBufferFormat, SceneDepthBufferFormat);
+		m_LightingPSO.SetDepthStencilState(Graphics::DepthStateDisabled);
+		m_LightingPSO.SetRasterizerState(RasterizerFullScreen);
+		m_LightingPSO.SetRootSignature(m_LightingRootSig);
+
+
+
+		m_LightingPSO.Finalize();
+	}
+
+	void DeferredRenderer::BuildLightingSignature()
+	{
+		// GBuffer作为SRV，光照跟camera作为常量
+		using namespace Renderer;
+
+		SamplerDesc PointSamplerDesc; // Lighting Pass是逐像素的
+		PointSamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+		PointSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		PointSamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		PointSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+
+		// 根签名设置并finalize
+		m_LightingRootSig.Reset((uint32_t)LightingSlot::Count, 0);
+		// 直接Texture.Load()，不用sampler
+		// m_LightingRootSig.InitStaticSampler(0, PointSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL); // 点采样器s0
+		m_LightingRootSig[(uint32_t)LightingSlot::GBuffer_BaseColor].InitAsDescriptorRange(
+			D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)LightingSlot::GBuffer_BaseColor, 1, D3D12_SHADER_VISIBILITY_PIXEL); // t0
+
+		m_LightingRootSig[(uint32_t)LightingSlot::GBuffer_Normal].InitAsDescriptorRange(
+			D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)LightingSlot::GBuffer_Normal, 1, D3D12_SHADER_VISIBILITY_PIXEL); // t1
+
+		m_LightingRootSig[(uint32_t)LightingSlot::GBuffer_Material].InitAsDescriptorRange(
+			D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)LightingSlot::GBuffer_Material, 1, D3D12_SHADER_VISIBILITY_PIXEL); // t2
+
+		m_LightingRootSig[(uint32_t)LightingSlot::GBuffer_Emission].InitAsDescriptorRange(
+			D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)LightingSlot::GBuffer_Emission, 1, D3D12_SHADER_VISIBILITY_PIXEL); // t3
+
+		m_LightingRootSig[(uint32_t)LightingSlot::Depth].InitAsDescriptorRange(
+			D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)LightingSlot::Depth, 1, D3D12_SHADER_VISIBILITY_PIXEL); // t4
+
+		m_LightingRootSig[(uint32_t)LightingSlot::Light].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_PIXEL); // b0
+		m_LightingRootSig[(uint32_t)LightingSlot::Camera].InitAsConstantBuffer(1, D3D12_SHADER_VISIBILITY_PIXEL); // b1
+
+		m_LightingRootSig.Finalize(L"DeferredRenderer Lighting Pass RootSig", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	}
 } // namespace Renderer::Deferred

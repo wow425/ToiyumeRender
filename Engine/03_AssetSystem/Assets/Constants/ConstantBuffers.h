@@ -64,3 +64,4 @@ struct alignas(256) GlobalConstants
 	Math::Vector3 SunDirection;
 	Math::Vector3 SunIntensity;
 };
+

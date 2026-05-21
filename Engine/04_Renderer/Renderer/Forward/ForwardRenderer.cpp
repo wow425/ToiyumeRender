@@ -59,15 +59,15 @@ namespace Renderer::Forward
 		BuildDescriptorHeaps();
 		TextureManager::Initialize(L"");
 		CreateForwardBufferTargets();
-		LightingSystem::InitializeResources();
-		LightingSystem::CreateLights();
+		Scene::LightingSystem::InitializeResources();
+		Scene::LightingSystem::CreateLights();
 
 		uint32_t DestCount = 1;
 		uint32_t SourceCounts[] = { 1 };
 
 		D3D12_CPU_DESCRIPTOR_HANDLE SourceTextures[] =
 		{
-			LightingSystem::m_LightGPUBuffer.GetSRV(),
+			Scene::LightingSystem::m_LightGPUBuffer.GetSRV(),
 		};
 
 		m_Initialized = true;
@@ -158,7 +158,7 @@ namespace Renderer::Forward
 		context.PIXBeginEvent(L"ForwardRenderer ");
 		// 1.ShadowPass
 		{
-			context.PIXSetEvent(L"ShadowPass");
+			context.PIXBeginEvent(L"ShadowPass");
 		}
 		// 这里是渲染调度入口。
 		// 你后续把具体 Pass 拆出来后，按这个顺序接：

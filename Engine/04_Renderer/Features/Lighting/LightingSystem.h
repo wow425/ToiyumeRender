@@ -3,7 +3,6 @@
 
 
 
-
 #pragma once
 
 #include <cstdint>
@@ -15,28 +14,28 @@ namespace Math
 {
 	class Vector3;
 	class Matrix4;
-	class Camera;
+
 }
 
-// 必须与HLSL中LightData结构体保持一致
-struct LightData
+namespace Scene
 {
-	float pos[3]; // 灯位置
-	float radiusSq; // 影响范围的平方
+	namespace Camera
+	{
+		class Camera;
+	}
+}
 
-	float color[3]; // 灯颜色
-	uint32_t type; // 灯类型
-
-	float coneDir[3]; // 灯方向
-	float coneAngles[2]; // Spot Light角度参数
-
-};
-
-
-
-
-namespace LightingSystem
+namespace Scene::LightingSystem
 {
+	// 必须与HLSL中LightData结构体保持一致
+	struct LightData
+	{
+		DirectX::XMFLOAT3 DirectionalLightDir;		// 光方向
+		float DirectionalLightIntensity;	// 光强度
+
+		DirectX::XMFLOAT3 DirectionalLightColor[3];		// 光颜色
+		float _pad;
+	};
 
 	enum { MaxLights = 1 };
 
@@ -56,8 +55,5 @@ namespace LightingSystem
 
 	extern LightData m_LightCPUBuffer[MaxLights]; // 管理CPU侧灯光数据
 	extern StructuredBuffer m_LightGPUBuffer; // 管理GPU Light Buffer
-
-
-
 
 };

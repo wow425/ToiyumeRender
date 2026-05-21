@@ -167,7 +167,6 @@ public:
 	// 调试用
 	void InsertTimeStamp(ID3D12QueryHeap* pQueryHeap, uint32_t QueryIdx);
 	void ResolveTimeStamps(ID3D12Resource* pReadbackHeap, ID3D12QueryHeap* pQueryHeap, uint32_t NumQueries);
-	void PIXSetEvent(const wchar_t* label);
 	void PIXBeginEvent(const wchar_t* label);
 	void PIXEndEvent(void);
 	void PIXSetMarker(const wchar_t* label);

@@ -20,14 +20,28 @@ compile_shader(
     StaticMeshVS
     Shader/02_Deferred/StaticMeshVS.hlsl
     MainVS
-    vs_6_6
+    vs_6_4
 )
 
 compile_shader(
     GBufferPS
     Shader/02_Deferred/GBufferPS.hlsl
     MainPS
-    ps_6_6
+    ps_6_4
+)
+
+compile_shader(
+    FullScreenVS
+    Shader/02_Deferred/FullScreenVS.hlsl
+    MainVS
+    vs_6_4
+)
+
+compile_shader(
+    LightingPS
+    Shader/02_Deferred/LightingPS.hlsl
+    MainPS
+    ps_6_4
 )
 # ==========================================
 # 链接Shader
@@ -35,6 +49,8 @@ compile_shader(
 add_dependencies(TooiyumeEngine
     StaticMeshVS_Shader
     GBufferPS_Shader
+   FullScreenVS_Shader
+   LightingPS_Shader
 )
 
 target_include_directories(TooiyumeEngine PUBLIC

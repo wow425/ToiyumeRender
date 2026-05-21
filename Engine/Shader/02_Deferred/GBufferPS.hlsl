@@ -51,12 +51,12 @@ struct GBufferOutput
 };
 
 // ============================================
-// Octahedral Encoding ??????
+// Octahedral Encoding 八面体编码技术
 // ============================================
 
-float2 OctEncode(float3 n)
+float2 EncodeOctNormal(float3 n)
 {
-    n /= (abs(n.x) + abs(n.y) + abs(n.z));
+    n /= abs(n.x) + abs(n.y) + abs(n.z);
 
     float2 enc = n.xy;
 
@@ -132,15 +132,16 @@ GBufferOutput MainPS(VSOutput input)
     // Normal
     // ============================================
     float3 normalWS = GetNormalWS(input);
-    float2 encodedNormal = OctEncode(normalWS);
+    float2 encodedNormal = EncodeOctNormal(normalWS);
 
     // ============================================
     // GBuffer Write
     // ============================================
-    output.BaseColor = float4(basecolor.rgb, ao);    // RT0。RGB = BaseColor。 A   = AO
+    output.BaseColor = float4(basecolor.rgb, ao); // RT0。RGB = BaseColor。 A   = AO
+    // 读取法线贴图->构建 TBN->得到最终 normalWS-> 写入 GBuffer
     output.Normal = float4(encodedNormal, 0.0, 0.0); // RT1。 RG = Oct Normal ？？
-    output.Material = float4(metallic, roughness, 0.5, 0.0); // RT2。B = Specular / Reserved。A = Material ID
-    output.Emission = float4(emissive, 0.0);                 // RT3
+    output.Material = float4(metallic, roughness, 0.5, 0.0); // RT2。B = Specular。A = Material ID
+    output.Emission = float4(emissive, 0.0); // RT3
 
     return output;
 }

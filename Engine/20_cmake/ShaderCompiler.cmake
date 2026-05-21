@@ -23,7 +23,7 @@ find_program(DXC_EXECUTABLE
 #     StaticMeshVS
 #     Shader/Deferred/StaticMeshVS.hlsl
 #     MainVS
-#     vs_6_6
+#     vs_6_4
 # )
 # ==========================================
 
