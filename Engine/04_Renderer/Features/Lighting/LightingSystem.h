@@ -28,13 +28,23 @@ namespace Scene
 namespace Scene::LightingSystem
 {
 	// 必须与HLSL中LightData结构体保持一致
-	struct LightData
+	struct alignas(16) LightData
 	{
-		DirectX::XMFLOAT3 DirectionalLightDir;		// 光方向
-		float DirectionalLightIntensity;	// 光强度
+		// xyz = Direction
+		// w   = Intensity
+		DirectX::XMFLOAT4 DirectionIntensity;
 
-		DirectX::XMFLOAT3 DirectionalLightColor[3];		// 光颜色
-		float _pad;
+		// rgb = Directional Color
+		// a   = unused
+		DirectX::XMFLOAT4 DirectionalColor;
+
+		// xyz = Point Light Position
+		// w   = Range
+		DirectX::XMFLOAT4 PointLightPositionRange;
+
+		// rgb = Point Light Color
+		// a   = Point Light Intensity
+		DirectX::XMFLOAT4 PointLightColorIntensity;
 	};
 
 	enum { MaxLights = 1 };

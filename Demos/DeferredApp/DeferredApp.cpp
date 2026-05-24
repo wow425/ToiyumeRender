@@ -76,7 +76,7 @@ void Tooiyume::Startup(void)
 
 	// Camera设置
 	m_Camera.SetEyeAtUp(Vector3(0.0f, 0.0f, 5.0f), Vector3(0.0f, 0.0f, -5.0f), Vector3(kYUnitVector));
-	m_Camera.SetZRange(1.0f, 10000.0f);
+	m_Camera.SetZRange(0.1f, 100.0f);
 	m_CameraController.reset(new Scene::Camera::FlyingFPSCamera(m_Camera, Vector3(kYUnitVector)));
 }
 

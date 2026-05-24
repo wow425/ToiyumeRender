@@ -10,6 +10,14 @@
 
 namespace Scene::Camera
 {
+	struct CameraData
+	{
+		Math::Vector4 CameraPos;
+		Math::Matrix4 InvViewProj;
+	};
+	
+	
+	
 	class BaseCamera
 	{
 	public:
@@ -39,6 +47,7 @@ namespace Scene::Camera
 		const Math::Matrix4& GetViewMatrix() const { return m_ViewMatrix; }           // 获取视图矩阵 (World -> View)
 		const Math::Matrix4& GetProjMatrix() const { return m_ProjMatrix; }           // 获取投影矩阵 (View -> Clip)
 		const Math::Matrix4& GetViewProjMatrix() const { return m_ViewProjMatrix; }   // 获取视图投影矩阵 (World -> Clip)
+		const Math::Matrix4& GetInViewProjMatrix() const { return m_InViewProjMatrix; }   // 获取逆视图投影矩阵 (World -> Clip)
 		const Math::Matrix4& GetReprojectionMatrix() const { return m_ReprojectMatrix; } // 获取重投影矩阵（用于 TAA 或 Motion Blur）
 
 	protected:
@@ -56,6 +65,7 @@ namespace Scene::Camera
 		Math::Matrix4 m_ViewMatrix;
 		Math::Matrix4 m_ProjMatrix;
 		Math::Matrix4 m_ViewProjMatrix;
+		Math::Matrix4 m_InViewProjMatrix;
 		Math::Matrix4 m_PreviousViewProjMatrix;
 		Math::Matrix4 m_ReprojectMatrix;
 	};

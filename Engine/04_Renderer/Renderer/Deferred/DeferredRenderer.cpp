@@ -274,12 +274,11 @@ Vignette
 			context.PIXEndEvent();
 		} // 4.ShadowPass
 
-		// 5. DeferredLightingPass
+		// 5. LightingPass
 		{
 			context.PIXBeginEvent(L"DeferredLightingPass");
 
 			context.SetRootSignature(m_LightingRootSig);
-			context.SetPipelineState(m_LightingPSO);
 			context.ClearColor(*m_GBuffers->SceneColorBuffer);
 
 			// 1. 资源处理
@@ -302,12 +301,17 @@ Vignette
 				context.SetDynamicDescriptor((uint32_t)LightingSlot::GBuffer_Emission, 0, m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_Emission]->GetSRV());
 				context.SetDynamicDescriptor((uint32_t)LightingSlot::Depth, 0, m_GBuffers->SceneDepthBuffer->GetDepthSRV());
 				context.SetConstantBuffer((uint32_t)LightingSlot::Light, Scene::LightingSystem::m_LightGPUBuffer.GetGpuVirtualAddress());
+				Scene::Camera::CameraData CameraCB;
+				CameraCB.CameraPos.SetXYZ(frame.Camera->GetPosition());
+				CameraCB.InvViewProj = frame.Camera->GetInViewProjMatrix();
+				context.SetDynamicConstantBufferView((uint32_t)LightingSlot::Camera, sizeof(CameraCB), &CameraCB);
 				context.SetRenderTarget(m_GBuffers->SceneColorBuffer->GetRTV());
 
 			}
 
 			// 3. 绘制全屏几何体
 			context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			context.SetPipelineState(m_LightingPSO);
 			context.Draw(3, 0);
 
 			context.PIXEndEvent();

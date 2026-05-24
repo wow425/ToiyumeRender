@@ -302,6 +302,14 @@ DX12 渲染器学习与改造
 <summary><b>2026-05-21: </b></summary>
 <p>GBuffer Pass跟Lighting Pass完成，明日开始添加渲染功能了<p>
 
+<details>
+<summary><b>2026-05-22: </b></summary>
+<p>复习PBR理论<p>
+
+<details>
+<summary><b>2026-05-24: </b></summary>
+<p>实现基于局部的镜面反射模型BRDF + 兰伯特Diffuse,采用CookTorrance<p>
+
 </p> 
 </details>
 

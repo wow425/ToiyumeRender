@@ -1,3 +1,6 @@
+#include "../00_Common/DeferredCommon.hlsli"
+
+
 Texture2D<float4> GBuffer_BaseColor : register(t0);
 Texture2D<float2> GBuffer_Normal : register(t1);
 Texture2D<float4> GBuffer_Material : register(t2);
@@ -6,67 +9,116 @@ Texture2D<float> DepthTexture : register(t4);
 
 cbuffer Light : register(b0)
 {
-    float3 DirectionalLightDir;
-    float DirectionalLightIntensity;
-    float3 DirectionalLightColor;
-    float _pad0;
+    // xyz = Direction
+    // w   = Directional Intensity
+    float4 DirectionIntensity;
+
+    // rgb = Directional Color
+    // a   = unused
+    float4 DirectionalColor;
+
+    // xyz = Point Light Position
+    // w   = Point Light Range
+    float4 PointLightPositionRange;
+
+    // rgb = Point Light Color
+    // a   = Point Light Intensity
+    float4 PointLightColorIntensity;
 };
 
-// cbuffer Camera : register(b1)
-//{
-//    float3 CameraPosWS;
-//    float _pad1;
-//};
-
-float3 DecodeOctNormal(float2 enc)
+cbuffer Camera : register(b1)
 {
-    // 1. 从 [0, 1] 映射回 [-1, 1]
-    float2 f = enc * 2.0 - 1.0;
-    
-    // 2. 还原 Z，基于 L1 归一化公式: |x| + |y| + |z| = 1 -> z = 1 - |x| - |y|
-    float3 n = float3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
-    
-    // 3. 如果原本在下半球 (n.z 为负)，通过反转对角线还原 XY
-    float t = saturate(-n.z);
-    n.xy -= sign(n.xy) * t;
-    
-    // 4. 标准的 L2 归一化 (Normalize / 正規化) 变回单位向量
-    return normalize(n);
+    float4 cameraPos;
+    float4x4 InViewProj;
 }
 
 float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
 {
     uint2 pixel = uint2(position.xy);
 
-    float3 baseColor =
-        GBuffer_BaseColor.Load(int3(pixel, 0)).rgb;
+    //-----------------------------------
+    // GBuffer
+    //-----------------------------------
+    float4 baseColorAO = GBuffer_BaseColor.Load(int3(pixel, 0));
+    float3 baseColor = baseColorAO.rgb;
+    float ao = baseColorAO.a;
 
-    float2 encNormal =
-        GBuffer_Normal.Load(int3(pixel, 0));
+    float4 material = GBuffer_Material.Load(int3(pixel, 0));
+    float metallic = material.r;
+    float roughness = material.g;
+    float specular = material.b;
 
-    float4 material =
-        GBuffer_Material.Load(int3(pixel, 0));
+    float3 emission = GBuffer_Emission.Load(int3(pixel, 0)).rgb;
 
-    float3 emission =
-        GBuffer_Emission.Load(int3(pixel, 0)).rgb;
+    float depth = DepthTexture.Load(int3(pixel, 0));
 
-    float depth =
-        DepthTexture.Load(int3(pixel, 0));
-
+    float2 encNormal = GBuffer_Normal.Load(int3(pixel, 0));
     float3 normalWS = DecodeOctNormal(encNormal);
 
-    float3 L = normalize(-DirectionalLightDir);
+    //-----------------------------------
+    // Position Reconstruction
+    //-----------------------------------
+    float2 renderResolution = float2(1920, 1080);
+    float2 uv = (position.xy + 0.5) / renderResolution;
+    float3 positionWS = ReconstructWorldPosition(uv, depth, InViewProj);
 
-    float NdotL = saturate(dot(normalWS, L));
+    float3 V = normalize(cameraPos.xyz - positionWS);
 
-    float3 diffuse =
-        baseColor *
-        DirectionalLightColor *
-        DirectionalLightIntensity *
-        NdotL;
+    //-----------------------------------
+    // Directional Light
+    //-----------------------------------
+    float3 dirL = normalize(-DirectionIntensity.xyz);
+    float3 dirRadiance = DirectionalColor.rgb * DirectionIntensity.w;
 
-    float3 finalColor = diffuse + emission;
+    float3 directionalLighting = EvaluateCookTorranceLight(
+        normalWS,
+        V,
+        dirL,
+        baseColor,
+        metallic,
+        roughness,
+        dirRadiance
+    );
+
+    //-----------------------------------
+    // Point Light
+    //-----------------------------------
+    float3 pointToLight = PointLightPositionRange.xyz - positionWS;
+    float pointDistance = length(pointToLight);
+    float3 pointL = pointToLight / max(pointDistance, 0.0001);
+
+    float pointRange = PointLightPositionRange.w;
+    float pointAttenuation = ComputePointAttenuation(pointDistance, pointRange);
+
+    float3 pointRadiance = PointLightColorIntensity.rgb * PointLightColorIntensity.a * pointAttenuation;
+        
+    float3 pointLighting = EvaluateCookTorranceLight(
+        normalWS,
+        V,
+        pointL,
+        baseColor,
+        metallic,
+        roughness,
+        pointRadiance
+    );
+
+    //-----------------------------------
+    // Ambient
+    //-----------------------------------
+    float3 ambient = baseColor * 0.2 * ao; // 添加IBL后改为0.03
+
+    //-----------------------------------
+    // Final Color
+    //-----------------------------------
+    //float3 finalColor = ambient + directionalLighting + pointLighting + emission;
+    float3 finalColor = ambient +  pointLighting + emission;
+
+    finalColor = finalColor / (finalColor + 1.0); // ToneMapping
+   finalColor = pow(saturate(finalColor), 1.0 / 2.2); // 伽马校正
 
     return float4(finalColor, 1.0);
-    //return float4(normalWS * 0.5 + 0.5, 1.0);
+    //return float4(abs(positionWS) * 0.1, 1);
+    //return float4(positionWS * 0.01, 1);
+    // return float4(normalWS * 0.5 + 0.5, 1);
+    //return float4(depth.xxx, 1);
 }

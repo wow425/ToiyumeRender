@@ -74,7 +74,7 @@ namespace Renderer::Deferred
 		GBuffer_BaseColor, // RGB放Basecolor，A放AO
 		GBuffer_Normal,    // 法线编码用Octahedral Encoding
 		GBuffer_Material,  // R为Metallic，G为Roughness，B为Specular， A为Shading Model / Material ID
-		GBuffer_Emission,  // R为Emissive， G为Subsurface Mask， B为Custom Data， A为ClearCoat   ??
+		GBuffer_Emission,  // R为Emissive， G为Subsurface Mask， B为Custom Data， A为ClearCoat   
 		Depth,
 		Light, // 光照常量
 		Camera, // Camera常量

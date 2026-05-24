@@ -34,16 +34,42 @@ void Scene::LightingSystem::CreateLights(void)
 {
 	for (uint32_t n = 0; n < MaxLights; n++)
 	{
-		m_LightCPUBuffer[n].DirectionalLightDir.x = 0.0f;
-		m_LightCPUBuffer[n].DirectionalLightDir.y = 0.0f;
-		m_LightCPUBuffer[n].DirectionalLightDir.z = -5.0f;
-		m_LightCPUBuffer[n].DirectionalLightIntensity = 1.0f;
-		m_LightCPUBuffer[n].DirectionalLightColor->x = 0.5f;
-		m_LightCPUBuffer[n].DirectionalLightColor->y = 0.5f;
-		m_LightCPUBuffer[n].DirectionalLightColor->z = 0.5f;
-	}
+		//-----------------------------------
+		// Directional Light
+		//-----------------------------------
+		m_LightCPUBuffer[n].DirectionIntensity =
+			DirectX::XMFLOAT4(
+				0.3f,
+				-1.0f,
+				-0.5f,
+				10.0f); // intensity斜向主光
 
-	CommandContext::InitializeBuffer(m_LightGPUBuffer, m_LightCPUBuffer, MaxLights * sizeof(LightData)); // 上传至GPU
+		m_LightCPUBuffer[n].DirectionalColor =
+			DirectX::XMFLOAT4(
+				1.0f,
+				0.95f,
+				0.9f,
+				0.0f);
+		//-----------------------------------
+		// Point Light
+		//-----------------------------------
+		// 放在摄像机前方附近
+		// 保证一定照到模型
+		m_LightCPUBuffer[n].PointLightPositionRange =
+			DirectX::XMFLOAT4(
+				0.0f,
+				2.0f,
+				-2.0f,
+				30.0f); // range
+
+		m_LightCPUBuffer[n].PointLightColorIntensity =
+			DirectX::XMFLOAT4(
+				1.0f,
+				0.8f,
+				0.6f,
+				80.0f); // intensity
+	}
+	CommandContext::InitializeBuffer(m_LightGPUBuffer, m_LightCPUBuffer, MaxLights * sizeof(LightData));
 	m_LightGPUBuffer.CreateDerivedViews();
 }
 

@@ -51,28 +51,8 @@ struct GBufferOutput
 };
 
 // ============================================
-// Octahedral Encoding 八面体编码技术
+// TBN Construction 
 // ============================================
-
-float2 EncodeOctNormal(float3 n)
-{
-    n /= abs(n.x) + abs(n.y) + abs(n.z);
-
-    float2 enc = n.xy;
-
-    if (n.z < 0.0)
-    {
-        enc = (1.0 - abs(enc.yx)) * sign(enc.xy);
-    }
-
-    return enc * 0.5 + 0.5;
-}
-
-
-// ============================================
-// TBN Construction ???????
-// ============================================
-
 float3x3 ComputeTBN(float3 normalWS, float4 tangentWS)
 {
     float3 T = normalize(tangentWS.xyz);
@@ -86,9 +66,8 @@ float3x3 ComputeTBN(float3 normalWS, float4 tangentWS)
 
 
 // ============================================
-// Normal Mapping ????????
+// Normal Mapping 
 // ============================================
-
 float3 GetNormalWS(VSOutput input)
 {
     float3 tangentNormal =
@@ -105,7 +84,6 @@ float3 GetNormalWS(VSOutput input)
         mul(tangentNormal, TBN)
     );
 }
-
 
 [RootSignature(Renderer_RootSig)]
 GBufferOutput MainPS(VSOutput input)
