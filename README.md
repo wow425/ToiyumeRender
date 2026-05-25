@@ -310,6 +310,17 @@ DX12 渲染器学习与改造
 <summary><b>2026-05-24: </b></summary>
 <p>实现基于局部的镜面反射模型BRDF + 兰伯特Diffuse,采用CookTorrance<p>
 
+<details>
+<summary><b>2026-05-25: </b></summary>
+<p>复习PBR光照模型和IBL理论<p>
+<p>PBR Lighting = Direct Lighting + Indirect Lighting <p>
+<p> L0 =  directDiffuse + directSpecular + indirectDiffuse + indirectSpecular;<p>
+<p>Direct Lighting:物体受到点,方向,聚光三类直接光照,与BRDF交互产生的Specular(Cook-Torrance) + Diffuse(兰伯特近似)<p>
+<p>Indirect Lighting:采用IBL技术,物体受到环境贴图上的光照,同样与BRDF交互产生Specular + Diffuse,<p>
+<p>因实时采样积分消耗大,需预计算空间换时间处理.<p>
+<p>IBL Diffuse只和normal有关, 可一次卷积采样即可. 而IBL Specular与roughness/view有关,需要预计算拆成Prefilter + LUT<p>
+
+
 </p> 
 </details>
 
