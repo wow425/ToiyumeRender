@@ -4,7 +4,7 @@
 //
 //
 
-#include "../00_Common/Common.hlsli"
+#include "../02_Deferred/DeferredCommon.hlsli"
 
 cbuffer MeshConstants : register(b0)
 {
@@ -41,7 +41,7 @@ struct VSOutput
 
 
 // 属性语法。[Name(Argument)]。 提供关于xx的额外信息，此为根签名绑定该函数
-[RootSignature(Renderer_RootSig)]
+
 VSOutput MainVS(MeshVertex vsInput)
 {
     VSOutput vsOutput;

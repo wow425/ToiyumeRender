@@ -43,6 +43,22 @@ compile_shader(
     MainPS
     ps_6_4
 )
+
+compile_shader(
+    SkyboxVS
+    Shader/06_Environment/SkyboxVS.hlsl
+    MainVS
+    vs_6_4
+)
+
+compile_shader(
+    SkyboxPS
+    Shader/06_Environment/SkyboxPS.hlsl
+    MainPS
+    ps_6_4
+)
+
+
 # ==========================================
 # 链接Shader
 # ==========================================
@@ -51,6 +67,8 @@ add_dependencies(TooiyumeEngine
     GBufferPS_Shader
    FullScreenVS_Shader
    LightingPS_Shader
+   SkyboxVS_Shader
+   SkyboxPS_Shader
 )
 
 target_include_directories(TooiyumeEngine PUBLIC

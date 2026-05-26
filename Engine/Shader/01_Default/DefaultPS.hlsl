@@ -1,4 +1,4 @@
-#include "../00_Common/Common.hlsli"
+#include "../01_Default/Common.hlsli"
 
 Texture2D<float4> baseColorTexture : register(t0);
 Texture2D<float3> metallicRoughnessTexture : register(t1);

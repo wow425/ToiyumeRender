@@ -24,7 +24,7 @@
 #include "02_RHI/Command/CommandContext.h"
 #include "02_RHI/Resource/Heap/UploadBuffer.h"
 #include "03_AssetSystem/Importers/Texture/TextureManager.h"
-#include "04_Renderer/Features/Lighting/LightingSystem.h"
+#include "05_Scene/Lighting/LightingSystem.h"
 #include "00_Core/Math/VectorMath.h"
 
 #include <cstdint>
@@ -49,7 +49,8 @@ namespace Renderer::Deferred
 {
 
 
-	// Render Pipeline Semantic
+
+	// GBuffer Pass Pipeline Semantic
 	enum class GBufferSlot : uint8_t
 	{
 		GBuffer_BaseColor, // RGB放Basecolor，A放AO
@@ -60,15 +61,7 @@ namespace Renderer::Deferred
 		GBuffer_Count
 	};
 
-	struct DeferredBuffer
-	{
-		std::shared_ptr<ColorBuffer> GBuffers[(uint32_t)GBufferSlot::GBuffer_Count];
-
-		std::shared_ptr<ColorBuffer> SceneColorBuffer;
-		std::shared_ptr<DepthBuffer> SceneDepthBuffer;
-		std::shared_ptr<ColorBuffer> VelocityBuffer;
-	};
-
+	// Lighting Pass Pipeline Semantic
 	enum class LightingSlot : uint8_t
 	{
 		GBuffer_BaseColor, // RGB放Basecolor，A放AO
@@ -81,6 +74,17 @@ namespace Renderer::Deferred
 
 		Count
 	};
+
+
+	struct DeferredBuffer
+	{
+		std::shared_ptr<ColorBuffer> GBuffers[(uint32_t)GBufferSlot::GBuffer_Count];
+
+		std::shared_ptr<ColorBuffer> SceneColorBuffer;
+		std::shared_ptr<DepthBuffer> SceneDepthBuffer;
+		std::shared_ptr<ColorBuffer> VelocityBuffer;
+	};
+
 	class DeferredRenderer final : public BaseRenderer
 	{
 	public:

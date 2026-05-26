@@ -301,14 +301,20 @@ DX12 渲染器学习与改造
 <details>
 <summary><b>2026-05-21: </b></summary>
 <p>GBuffer Pass跟Lighting Pass完成，明日开始添加渲染功能了<p>
+</p> 
+</details>
 
 <details>
 <summary><b>2026-05-22: </b></summary>
 <p>复习PBR理论<p>
+</p> 
+</details>
 
 <details>
 <summary><b>2026-05-24: </b></summary>
 <p>实现基于局部的镜面反射模型BRDF + 兰伯特Diffuse,采用CookTorrance<p>
+</p> 
+</details>
 
 <details>
 <summary><b>2026-05-25: </b></summary>
@@ -319,8 +325,13 @@ DX12 渲染器学习与改造
 <p>Indirect Lighting:采用IBL技术,物体受到环境贴图上的光照,同样与BRDF交互产生Specular + Diffuse,<p>
 <p>因实时采样积分消耗大,需预计算空间换时间处理.<p>
 <p>IBL Diffuse只和normal有关, 可一次卷积采样即可. 而IBL Specular与roughness/view有关,需要预计算拆成Prefilter + LUT<p>
+</p> 
+</details>
 
-
+<details>
+<summary><b>2026-05-26: </b></summary>
+<p>创建EnvironmentLightingManager类，负责IBL跟skybox全流程，从加载到skyboxPass。<p>
+<p>目前仅写完EnvironmentLightingManager类框架<p>
 </p> 
 </details>
 

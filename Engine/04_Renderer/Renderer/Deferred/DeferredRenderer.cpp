@@ -10,8 +10,9 @@
 #include "04_Renderer/Pipeline/PipelineStateCache.h"
 #include "03_AssetSystem/Assets/Constants//ConstantBuffers.h"
 #include "04_Renderer/BufferManager.h"
+#include "04_Renderer/EnvironmentLightingManager.h"
 #include "03_AssetSystem/Importers/Texture/TextureManager.h"
-#include "04_Renderer/Features/Lighting/LightingSystem.h"
+#include "05_Scene/Lighting/LightingSystem.h"
 #include "05_Scene/Model/Model.h"
 
 
@@ -29,6 +30,7 @@ using namespace Renderer;
 namespace Renderer::Deferred
 {
 	RendererAutoRegister<DeferredRenderer> s_RegisterForwardRenderer(L"DeferredRenderer");
+	EnvironmentLightingManager s_EnvironmentLightingManager;
 }
 
 
@@ -68,16 +70,12 @@ namespace Renderer::Deferred
 			BuildLightingPSO();
 
 			Scene::LightingSystem::InitializeResources();
-			Scene::LightingSystem::CreateLights();
+		}
+		// skybox
+		{
+			s_EnvironmentLightingManager.Initialize(SceneColorBufferFormat, SceneDepthBufferFormat);
 		}
 
-		uint32_t DestCount = 1;
-		uint32_t SourceCounts[] = { 1 };
-
-		D3D12_CPU_DESCRIPTOR_HANDLE SourceTextures[] =
-		{
-			Scene::LightingSystem::m_LightGPUBuffer.GetSRV(),
-		};
 
 		m_Initialized = true;
 		return true;
@@ -95,7 +93,7 @@ namespace Renderer::Deferred
 		s_SamplerHeap.Destroy();
 
 		TextureManager::Shutdown();
-
+		s_EnvironmentLightingManager.Shutdown();
 		m_Initialized = false;
 	}
 
@@ -177,17 +175,6 @@ Vignette
 		*
 		*/
 
-
-		// 全局绑定
-		{
-			// this->UpdateGlobalDescriptors();
-			// Set common textures
-			// context.SetDescriptorTable(kCommonSRVs, m_CommonTextures);
-			// Set common shader constants
-		}
-
-
-
 		context.PIXBeginEvent(L"DeferredRenderer");
 
 		// 1. GBufferPass
@@ -258,7 +245,6 @@ Vignette
 				}
 			}
 			context.PIXEndEvent();
-			context.FlushResourceBarriers();
 		} // 2. GBufferPass
 
 		// 3. SSAOPass
@@ -279,14 +265,13 @@ Vignette
 			context.PIXBeginEvent(L"DeferredLightingPass");
 
 			context.SetRootSignature(m_LightingRootSig);
-			context.ClearColor(*m_GBuffers->SceneColorBuffer);
-
-			// 1. 资源处理
+			context.SetPipelineState(m_LightingPSO);
+			context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			// 1. 资源转换, 绑定根实参
 			{
 				for (auto& GBuffer : m_GBuffers->GBuffers)
 				{
 					context.TransitionResource(*GBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-
 				}
 				// Depth
 				context.TransitionResource(*m_GBuffers->SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
@@ -301,27 +286,28 @@ Vignette
 				context.SetDynamicDescriptor((uint32_t)LightingSlot::GBuffer_Emission, 0, m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_Emission]->GetSRV());
 				context.SetDynamicDescriptor((uint32_t)LightingSlot::Depth, 0, m_GBuffers->SceneDepthBuffer->GetDepthSRV());
 				context.SetConstantBuffer((uint32_t)LightingSlot::Light, Scene::LightingSystem::m_LightGPUBuffer.GetGpuVirtualAddress());
+
 				Scene::Camera::CameraData CameraCB;
 				CameraCB.CameraPos.SetXYZ(frame.Camera->GetPosition());
 				CameraCB.InvViewProj = frame.Camera->GetInViewProjMatrix();
 				context.SetDynamicConstantBufferView((uint32_t)LightingSlot::Camera, sizeof(CameraCB), &CameraCB);
-				context.SetRenderTarget(m_GBuffers->SceneColorBuffer->GetRTV());
-
 			}
 
-			// 3. 绘制全屏几何体
-			context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-			context.SetPipelineState(m_LightingPSO);
+			context.SetRenderTarget(m_GBuffers->SceneColorBuffer->GetRTV());
+
 			context.Draw(3, 0);
 
 			context.PIXEndEvent();
 		} // 5. DeferredLightingPass
 
-		// 6. IBL / Sky Pass
+		// 6.  Sky Pass
 		{
-			context.PIXBeginEvent(L"IBLPass");
+			context.PIXBeginEvent(L"SkyPass");
+
+
+
 			context.PIXEndEvent();
-		}  // 6. IBL / Sky Pass
+		}  // 6.  Sky Pass
 
 		// 7. Transparent Forward Pass 
 		{
@@ -387,14 +373,13 @@ Vignette
 		// 根签名设置并finalize
 		m_GBufferRootSig.Reset(kNumRootBindings, 1); // 初始化分配根参数内存
 		m_GBufferRootSig.InitStaticSampler(10, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL); // 静态采样器
-		//m_RootSig.InitStaticSampler(11, SamplerShadowDesc, D3D12_SHADER_VISIBILITY_PIXEL);
-		//m_RootSig.InitStaticSampler(12, CubeMapSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
 		m_GBufferRootSig[kMeshConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX); // 网格常量        
 		m_GBufferRootSig[kMaterialConstants].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_PIXEL); // 材质常量     
 		m_GBufferRootSig[kMaterialSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 材质SRV
 		m_GBufferRootSig[kMaterialSamplers].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 0, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 材质采样器
 		m_GBufferRootSig[kCommonSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 10, 10, D3D12_SHADER_VISIBILITY_PIXEL); // 全局通用SRV
 		m_GBufferRootSig[kCommonCBV].InitAsConstantBuffer(1);                                                                        // 全局通用CBV
+
 		m_GBufferRootSig.Finalize(L"DeferredRenderer GBuffer Pass RootSig", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 	}
 
@@ -558,8 +543,6 @@ Vignette
 		m_LightingPSO.SetDepthStencilState(Graphics::DepthStateDisabled);
 		m_LightingPSO.SetRasterizerState(RasterizerFullScreen);
 		m_LightingPSO.SetRootSignature(m_LightingRootSig);
-
-
 
 		m_LightingPSO.Finalize();
 	}

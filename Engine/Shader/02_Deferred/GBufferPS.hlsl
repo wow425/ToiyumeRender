@@ -1,5 +1,4 @@
-#include "../00_Common/Common.hlsli"
-#include "../00_Common/DeferredCommon.hlsli"
+#include "../02_Deferred/DeferredCommon.hlsli"
 
 Texture2D<float4> baseColorTexture : register(t0);
 Texture2D<float3> metallicRoughnessTexture : register(t1);
@@ -85,7 +84,7 @@ float3 GetNormalWS(VSOutput input)
     );
 }
 
-[RootSignature(Renderer_RootSig)]
+
 GBufferOutput MainPS(VSOutput input)
 {
     GBufferOutput output;

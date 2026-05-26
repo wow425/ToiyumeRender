@@ -134,6 +134,11 @@ void Graphics::InitializeCommonState(void)
 	DepthStateReadWrite.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
 	DepthStateReadWrite.DepthFunc = D3D12_COMPARISON_FUNC_LESS; // 注意：反转z用D3D12_COMPARISON_FUNC_GREATER_EQUAL。 不反转z用D3D12_COMPARISON_FUNC_LESS
 
+	DepthStateReadOnly = DepthStateDisabled;
+	DepthStateReadOnly.DepthEnable = TRUE;
+	DepthStateReadOnly.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	DepthStateReadOnly.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+
 	// --- 5. 基础混合状态 ---
 	D3D12_BLEND_DESC alphaBlend = {};
 	alphaBlend.IndependentBlendEnable = FALSE;

@@ -4,7 +4,7 @@
 //
 //
 
-#include "../00_Common/Common.hlsli"
+#include "../01_Default/Common.hlsli"
 
 cbuffer MeshConstants : register(b0)
 {

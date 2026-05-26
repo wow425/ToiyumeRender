@@ -11,7 +11,7 @@
 #include "03_AssetSystem/Assets/Constants//ConstantBuffers.h"
 #include "04_Renderer/BufferManager.h"
 #include "03_AssetSystem/Importers/Texture/TextureManager.h"
-#include "04_Renderer/Features/Lighting/LightingSystem.h"
+#include "05_Scene/Lighting/LightingSystem.h"
 #include "05_Scene/Model/Model.h"
 #include "Shader/01_Default/DefaultVS.h"
 #include "Shader/01_Default/DefaultPS.h"

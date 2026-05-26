@@ -1,4 +1,4 @@
-#include "../00_Common/DeferredCommon.hlsli"
+#include "../02_Deferred/DeferredCommon.hlsli"
 
 
 Texture2D<float4> GBuffer_BaseColor : register(t0);
@@ -111,10 +111,10 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
     // Final Color
     //-----------------------------------
     //float3 finalColor = ambient + directionalLighting + pointLighting + emission;
-    float3 finalColor = ambient +  pointLighting + emission;
+    float3 finalColor = ambient + pointLighting + emission;
 
     finalColor = finalColor / (finalColor + 1.0); // ToneMapping
-   finalColor = pow(saturate(finalColor), 1.0 / 2.2); // 伽马校正
+    finalColor = pow(saturate(finalColor), 1.0 / 2.2); // 伽马校正
 
     return float4(finalColor, 1.0);
     //return float4(abs(positionWS) * 0.1, 1);

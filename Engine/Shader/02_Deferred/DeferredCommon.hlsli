@@ -1,3 +1,5 @@
+#pragma oncce
+
 #ifndef __DEFERRED_COMMON_HLSLI__
 #define __DEFERRED_COMMON_HLSLI__
 

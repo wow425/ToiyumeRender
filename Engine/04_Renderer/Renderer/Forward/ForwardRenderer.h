@@ -24,7 +24,7 @@
 #include "02_RHI/Command/CommandContext.h"
 #include "02_RHI/Resource/Heap/UploadBuffer.h"
 #include "03_AssetSystem/Importers/Texture/TextureManager.h"
-#include "04_Renderer/Features/Lighting/LightingSystem.h"
+#include "05_Scene/Lighting/LightingSystem.h"
 #include "00_Core/Math/VectorMath.h"
 
 #include <cstdint>
