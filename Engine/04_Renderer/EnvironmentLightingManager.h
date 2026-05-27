@@ -34,46 +34,18 @@ class ByteAddressBuffer;
 namespace Renderer::Deferred
 {
 
-	// 加载HDR图desc
-	struct EnvironmentMapLoadDesc
+	// environmentMap全套纹理
+	struct EnvironmentMapTextureRefs
 	{
-		std::string HDRPath;
-		bool UseExternalHDRTexture = false;
+		TextureRef EnvironmentCubeTextureRef; // HDR -> Cubemap
+
+		TextureRef IrradianceCubeTextureRef;   // Diffuse IBL
+		TextureRef PrefilterCubeTextureRef;    // Specular IBL
+		TextureRef  BRDFLUTTextureRef;          // Specular BRDF LUT
 	};
 
-	// 环境map Desc
-	struct EnvironmentMapBuildDesc
-	{
-		uint32_t CubemapSize = 1024;
-		uint32_t IrradianceSize = 32;
-		uint32_t PrefilterSize = 128;
-		uint32_t BRDFLUTSize = 512;
-
-		// 0 表示自动计算
-		uint32_t MaxPrefilterMipCount = 0;
-	};
-
-	// 环境map资源
-	struct EnvironmentMapResources
-	{
-		std::shared_ptr<Texture>  HDRSource;        // 原始 HDR 2D 图
-		std::shared_ptr<TextureCube> EnvironmentCube; // HDR -> Cubemap
-		std::shared_ptr<TextureCube> IrradianceCube;   // Diffuse IBL
-		std::shared_ptr<TextureCube> PrefilterCube;    // Specular IBL
-		std::shared_ptr<Texture>  BRDFLUT;          // Specular BRDF LUT
-
-		bool IsValid() const
-		{
-			return HDRSource != nullptr
-				&& EnvironmentCube != nullptr
-				&& IrradianceCube != nullptr
-				&& PrefilterCube != nullptr
-				&& BRDFLUT != nullptr;
-		}
-	};
-
-	// 环境map所需根签名和PSO
-	struct EnvironmentMapRootSigAndPSO
+	//  environmentMap全套RootSig和PSO
+	struct EnvironmentMapRootSigAndPSOs
 	{
 		RootSignature m_SkyboxRootSig;
 		GraphicsPSO     m_SkyboxPSO;
@@ -99,43 +71,39 @@ namespace Renderer::Deferred
 
 		void Initialize(DXGI_FORMAT scene, DXGI_FORMAT depth);
 		void Shutdown();
+		// 加载hdr转换为dds, 并创建environmentmap全套textureRef(包含预计算)
+		bool LoadHDR(const std::wstring& HDRPath); // TODO
+		// 绘制skybox
+		void RenderSkyboxPass(GraphicsContext& gfxcontext, const Camera& camera); // TODO
 
-		// 载入 HDR。你可以让它内部读文件，也可以外部先解码再塞进来。
-		bool LoadHDRI(const EnvironmentMapLoadDesc& desc);
-
-		// 根据 HDR 构建完整环境光照资源
-		bool BuildEnvironment(GraphicsContext& ctx, const EnvironmentMapBuildDesc& desc);
-
-		void RenderSkybox(GraphicsContext& gfxcontext, const Camera& camera);
-
-		const EnvironmentMapResources& GetResources() const { return m_Resources; }
+		const EnvironmentMapTextureRefs& GetEnvironmentMapTextureRefs() const { return m_TextureRefs; }
 		bool IsReady() const { return m_Ready; }
 
 	private:
-		EnvironmentMapResources m_Resources;
-		std::shared_ptr<EnvironmentMapRootSigAndPSO> m_RootSigAndPSO;
+		EnvironmentMapTextureRefs m_TextureRefs;
+		std::shared_ptr<EnvironmentMapRootSigAndPSOs> m_RootSigAndPSOs;
 		SamplerDesc m_LinearSamplerDesc;
 
 		bool m_Ready = false;
 	private:
+		// 创建RootSig和PSO
 		void CreateSkyboxPipeline(DXGI_FORMAT scene, DXGI_FORMAT depth);
-		void CreatePrecomputePipelines(DXGI_FORMAT scene, DXGI_FORMAT depth);
-		void CreateSamplerDesc();
+		void CreatePrecomputePipelines(DXGI_FORMAT scene, DXGI_FORMAT depth); // TODO
+		void CreateSamplerDesc(); // 配置线性sampler
 
-		// 你自己的资产系统 / 纹理系统接在这里
-		std::shared_ptr<Texture> LoadHDRTexture2D_Impl(const std::string& path);
-		std::shared_ptr<TextureCube> CreateTextureCube_Impl(uint32_t size, uint32_t mipCount);
-		std::shared_ptr<Texture> CreateTexture2D_Impl(uint32_t width, uint32_t height);
+		// 创建TextureRef(带有SRV的纹理)
+		// HDR Equirectangular → Cubemap → IBL预计算
+		// HDR图本身作为纹理,可用作cubemap,而 diffuse IBL跟Specular IBL需要进行预处理生成纹理
+		void BuildEnvironmentCubemap(GraphicsContext& gfxContext, const Texture& hdrSource, TextureCube& outEnvironmentCube, uint32_t cubemapSize); // TODO
+		// Diffuse IBL
+		void BuildIrradianceCubemap(GraphicsContext& gfxContext, const TextureCube& environmentCube, TextureCube& outIrradianceCube, uint32_t irradianceSize); // TODO
+		// Specular IBL
+		void BuildPrefilterCubemap(GraphicsContext& gfxContext, const TextureCube& environmentCube, TextureCube& outPrefilterCube, uint32_t prefilterSize, uint32_t maxMipCount); // TODO
+		void BuildBRDFLUT(GraphicsContext& gfxContext, Texture& outBRDFLUT, uint32_t lutSize); // TODO
 
+		static uint32_t ComputePrefilterMipCount(uint32_t size); // TODO
 
-		void BuildEnvironmentCubemap(GraphicsContext& gfxContext, const Texture& hdrSource, TextureCube& outEnvironmentCube, uint32_t cubemapSize);
-		void BuildIrradianceCubemap(GraphicsContext& gfxContext, const TextureCube& environmentCube, TextureCube& outIrradianceCube, uint32_t irradianceSize);
-		void BuildPrefilterCubemap(GraphicsContext& gfxContext, const TextureCube& environmentCube, TextureCube& outPrefilterCube, uint32_t prefilterSize, uint32_t maxMipCount);
-		void BuildBRDFLUT(GraphicsContext& gfxContext, Texture& outBRDFLUT, uint32_t lutSize);
-
-		static uint32_t ComputePrefilterMipCount(uint32_t size);
-
-		static void RemoveTranslationFromViewMatrix(float outViewNoTranslation[16], const float inView[16]);
+		static void RemoveTranslationFromViewMatrix(float outViewNoTranslation[16], const float inView[16]); // TODO
 	};
 
 } // Renderer

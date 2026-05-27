@@ -335,6 +335,12 @@ DX12 渲染器学习与改造
 </p> 
 </details>
 
+<details>
+<summary><b>2026-05-27: </b></summary>
+<p>仍在实现EnvironmentLightingManager类, 啃了下TextureConvert类和TextureManager类设计<p>
+</p> 
+</details>
+
 <!-- 月总结 -->
 <h4 id="2026-05-月总结">📝 2026-05 月总结</h4>
 <p>完成渲染器框架搭建</p>

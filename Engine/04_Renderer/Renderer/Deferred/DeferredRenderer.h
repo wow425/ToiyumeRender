@@ -48,8 +48,6 @@ struct Mesh; // Model
 namespace Renderer::Deferred
 {
 
-
-
 	// GBuffer Pass Pipeline Semantic
 	enum class GBufferSlot : uint8_t
 	{

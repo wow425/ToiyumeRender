@@ -12,6 +12,7 @@
 #include "02_RHI/Descriptor/DescriptorHeap.h"
 #include "02_RHI/Command/CommandContext.h"
 #include "03_AssetSystem/Importers/Texture/TextureManager.h"
+#include "03_AssetSystem/Importers/Texture/TextureConvert.h"
 #include "05_Scene/Camera/Camera.h"
 
 #include "SkyboxVS.h"
@@ -21,15 +22,12 @@ namespace Renderer::Deferred
 {
 	void EnvironmentLightingManager::Initialize(DXGI_FORMAT scene, DXGI_FORMAT depth)
 	{
-		// m_Device = device;
 		m_RootSigAndPSO = std::make_shared<EnvironmentMapRootSigAndPSO>();
-		CreateSamplerDesc();
-		CreateSkyboxPipeline(scene, depth);
-		CreatePrecomputePipelines(scene, depth);
-		m_Ready = false;
+		CreateSamplerDesc(); // 配置线性采样器
+		CreateSkyboxPipeline(scene, depth); // 配置skybox的RootSig和PSO
+		CreatePrecomputePipelines(scene, depth); 
 
-		//m_cube.InitializeCubeBuffers();
-		// 绘制立方体不需要，直接全屏三角形，从pixel使用方向向量采样cubemap
+		m_Ready = false;
 	}
 
 	void EnvironmentLightingManager::Shutdown()
@@ -108,54 +106,21 @@ namespace Renderer::Deferred
 		m_LinearSamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
 	}
 
-	std::shared_ptr<Texture> EnvironmentLightingManager::LoadHDRTexture2D_Impl(const std::string& path)
+
+
+	bool EnvironmentLightingManager::LoadHDR(const std::wstring& HDRPath)
 	{
-		// TODO:
-		// 1) 从文件读取 HDR/EXR/HDRI
-		// 2) 解码成浮点像素
-		// 3) 创建 GPU Texture2D
-		// 4) 上传到 GPU
-		//
-		// 如果你的资产系统已经能直接返回 Texture2D，就在这里接入。
-		(void)path;
-		return nullptr;
-	}
+		// 1. 加载环境贴图hdr,生成dds
+		CompileTextureOnDemand(HDRPath, kDefaultBC | kQualityBC);
+		// 2. 使用dds生成cubemap纹理
+		BuildEnvironmentCubemap();
+		// 3. 使用dds预计算生成IBL双纹理
+		BuildIrradianceCubemap();
+		BuildPrefilterCubemap();
+		BuildBRDFLUT();
 
-	std::shared_ptr<TextureCube> EnvironmentLightingManager::CreateTextureCube_Impl(uint32_t size, uint32_t mipCount)
-	{
-		// TODO:
-		// 创建 cubemap 资源
-		// - 6 faces
-		// - 指定 mipCount
-		// - 可作为 RTV/SRV
-		(void)size;
-		(void)mipCount;
-		return nullptr;
-	}
-
-	std::shared_ptr<Texture> EnvironmentLightingManager::CreateTexture2D_Impl(uint32_t width, uint32_t height)
-	{
-		// TODO:
-		// 创建普通 2D texture，例如 BRDF LUT
-		(void)width;
-		(void)height;
-		return nullptr;
-	}
-
-	bool EnvironmentLightingManager::LoadHDRI(const EnvironmentMapLoadDesc& desc)
-	{
-		if (desc.UseExternalHDRTexture)
-		{
-			// TODO:
-			// 如果你有外部 HDR Texture2D，直接赋值给 m_Resources.HDRSource
-			return false;
-		}
-
-		if (desc.HDRPath.empty())
-			return false;
-
-		m_Resources.HDRSource = LoadHDRTexture2D_Impl(desc.HDRPath);
-		return m_Resources.HDRSource != nullptr;
+		m_Ready = true;
+		return m_Ready;
 	}
 
 	uint32_t EnvironmentLightingManager::ComputePrefilterMipCount(uint32_t size)
@@ -167,64 +132,6 @@ namespace Renderer::Deferred
 			++mipCount;
 		}
 		return mipCount;
-	}
-
-	bool EnvironmentLightingManager::BuildEnvironment(GraphicsContext& ctx, const EnvironmentMapBuildDesc& desc)
-	{
-		if (!m_Resources.HDRSource)
-			return false;
-
-		const uint32_t environmentSize = desc.CubemapSize;
-		const uint32_t irradianceSize = desc.IrradianceSize;
-		const uint32_t prefilterSize = desc.PrefilterSize;
-		const uint32_t brdfLUTSize = desc.BRDFLUTSize;
-
-		const uint32_t prefilterMipCount = (desc.MaxPrefilterMipCount != 0)
-			? desc.MaxPrefilterMipCount
-			: ComputePrefilterMipCount(prefilterSize);
-
-		// 1) 创建目标资源
-		m_Resources.EnvironmentCube = CreateTextureCube_Impl(environmentSize, 1);
-		m_Resources.IrradianceCube = CreateTextureCube_Impl(irradianceSize, 1);
-		m_Resources.PrefilterCube = CreateTextureCube_Impl(prefilterSize, prefilterMipCount);
-		m_Resources.BRDFLUT = CreateTexture2D_Impl(brdfLUTSize, brdfLUTSize);
-
-		if (!m_Resources.EnvironmentCube || !m_Resources.IrradianceCube ||
-			!m_Resources.PrefilterCube || !m_Resources.BRDFLUT)
-		{
-			return false;
-		}
-
-		// 2) HDR -> Environment Cubemap
-		BuildEnvironmentCubemap(
-			ctx,
-			*m_Resources.HDRSource,
-			*m_Resources.EnvironmentCube,
-			environmentSize);
-
-		// 3) Environment Cubemap -> Irradiance Cubemap
-		BuildIrradianceCubemap(
-			ctx,
-			*m_Resources.EnvironmentCube,
-			*m_Resources.IrradianceCube,
-			irradianceSize);
-
-		// 4) Environment Cubemap -> Prefilter Cubemap
-		BuildPrefilterCubemap(
-			ctx,
-			*m_Resources.EnvironmentCube,
-			*m_Resources.PrefilterCube,
-			prefilterSize,
-			prefilterMipCount);
-
-		// 5) BRDF LUT
-		BuildBRDFLUT(
-			ctx,
-			*m_Resources.BRDFLUT,
-			brdfLUTSize);
-
-		m_Ready = m_Resources.IsValid();
-		return m_Ready;
 	}
 
 	void EnvironmentLightingManager::BuildEnvironmentCubemap(
@@ -319,7 +226,7 @@ namespace Renderer::Deferred
 		outViewNoTranslation[14] = 0.0f;
 	}
 
-	void EnvironmentLightingManager::RenderSkybox(GraphicsContext& gfxcontext, const Camera& camera)
+	void EnvironmentLightingManager::RenderSkyboxPass(GraphicsContext& gfxcontext, const Camera& camera)
 	{
 		if (!m_Ready || !m_Resources.EnvironmentCube)
 			return;

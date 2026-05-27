@@ -251,3 +251,116 @@ bool ConvertToDDS(const std::wstring& filePath, uint32_t Flags)
 
     return true;
 }
+
+// ==========================================
+// HDR Support
+// ==========================================
+//bool LoadHDRTexture(const std::wstring& file_path,ScratchImage& image,TexMetadata& metadata)
+//{
+//    HRESULT hr = LoadFromHDRFile(file_path.c_str(), &metadata, image);
+//    if (FAILED(hr))
+//    {
+//        Utility::Printf(  L"Failed loading HDR \"%ws\" (%08X).\n", file_path.c_str(),  hr);
+//        return false;
+//    }
+//
+//    return true;
+//}
+//
+//bool ConvertHDRToDDS(
+//    const std::wstring& hdr_path,
+//    const std::wstring& dds_path,
+//    bool compress_bc6h)
+//{
+//    TexMetadata metadata;
+//    ScratchImage image;
+//    // 读取HDR数据
+//    if (!LoadHDRTexture(hdr_path, image, metadata))
+//    {
+//        return false;
+//    }
+//
+//    // Generate Mips
+//    ScratchImage mip_chain;
+//    HRESULT hr = GenerateMipMaps( image.GetImages(),image.GetImageCount(),  image.GetMetadata(),TEX_FILTER_DEFAULT, 0,mip_chain);
+//    if (FAILED(hr))
+//    {
+//        Utility::Printf( L"Failed generating mipmaps \"%ws\" (%08X).\n",  hdr_path.c_str(),hr);
+//        return false;
+//    }
+//
+//    // Compress BC6H
+//    ScratchImage final_image;
+//    if (compress_bc6h)
+//    {
+//        hr = Compress(mip_chain.GetImages(),mip_chain.GetImageCount(),mip_chain.GetMetadata(),
+//            DXGI_FORMAT_BC6H_UF16,
+//            TEX_COMPRESS_DEFAULT,
+//            1.0f,
+//            final_image);
+//
+//        if (FAILED(hr))
+//        {
+//            Utility::Printf( L"Failed compressing HDR \"%ws\" (%08X).\n",hdr_path.c_str(),hr);
+//            return false;
+//        }
+//    }
+//    else final_image = std::move(mip_chain);
+//
+//    // Save DDS
+//    hr = SaveToDDSFile(final_image.GetImages(),final_image.GetImageCount(),final_image.GetMetadata(),
+//        DDS_FLAGS_NONE,
+//        dds_path.c_str());
+//    if (FAILED(hr))
+//    {
+//        Utility::Printf(
+//            L"Failed saving DDS \"%ws\" (%08X).\n",
+//            dds_path.c_str(),
+//            hr);
+//        return false;
+//    }
+//
+//    Utility::Printf(
+//        L"Converted HDR -> DDS: \"%ws\"\n",
+//        dds_path.c_str());
+//
+//    return true;
+//}
+//
+//bool ConvertDDSToCubemap(
+//    const std::wstring& dds_path,
+//    const std::wstring& cubemap_path)
+//{
+//    TexMetadata metadata;
+//    ScratchImage image;
+//
+//    HRESULT hr = LoadFromDDSFile(dds_path.c_str(),DDS_FLAGS_NONE, &metadata,image);
+//    if (FAILED(hr))
+//    {
+//        Utility::Printf(
+//            L"Failed loading DDS \"%ws\" (%08X).\n",
+//            dds_path.c_str(),
+//            hr);
+//
+//        return false;
+//    }
+//
+//    if (metadata.arraySize != 6)
+//    {
+//        Utility::Printf(L"DDS \"%ws\" is not a valid cubemap source.\n", dds_path.c_str());
+//        return false;
+//    }
+//
+//    metadata.miscFlags |= TEX_MISC_TEXTURECUBE; // 标记为cubemap
+//
+//    hr = SaveToDDSFile( image.GetImages(), image.GetImageCount(), metadata,DDS_FLAGS_NONE, cubemap_path.c_str());
+//    if (FAILED(hr))
+//    {
+//        Utility::Printf(L"Failed saving cubemap DDS \"%ws\" (%08X).\n", cubemap_path.c_str(), hr);
+//        return false;
+//    }
+//
+//    Utility::Printf(  L"Converted DDS -> Cubemap: \"%ws\"\n",cubemap_path.c_str());
+//
+//    return true;
+//}
