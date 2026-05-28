@@ -13,36 +13,40 @@
 #include "02_RHI/Command/CommandContext.h"
 #include "03_AssetSystem/Importers/Texture/TextureManager.h"
 #include "03_AssetSystem/Importers/Texture/TextureConvert.h"
+#include "04_Renderer/BufferManager.h"
 #include "05_Scene/Camera/Camera.h"
 
 #include "SkyboxVS.h"
 #include "SkyboxPS.h"
 
-namespace Renderer::Deferred
+namespace Renderer::EnvironmentLighting
 {
 	void EnvironmentLightingManager::Initialize(DXGI_FORMAT scene, DXGI_FORMAT depth)
 	{
-		m_RootSigAndPSO = std::make_shared<EnvironmentMapRootSigAndPSO>();
-		CreateSamplerDesc(); // 配置线性采样器
-		CreateSkyboxPipeline(scene, depth); // 配置skybox的RootSig和PSO
-		CreatePrecomputePipelines(scene, depth); 
+		m_RootSigAndPSOs = std::make_shared<EnvironmentMapRootSigAndPSOs>();
+		// 生成线性采样器
+		CreateSamplerDesc();
 
-		m_Ready = false;
+		InitializeToCubemap();
+		CreateEquirectangularToCubemapPipeline();
+
+		CreateSkyboxPipeline(scene, depth);
+		CreatePrecomputePipelines(scene, depth);
+
 	}
 
 	void EnvironmentLightingManager::Shutdown()
 	{
-		m_Resources = {};
-		m_RootSigAndPSO.reset();
-		m_Ready = false;
+		m_Textures = {};
+		m_RootSigAndPSOs.reset();
 	}
 
 	void EnvironmentLightingManager::CreateSkyboxPipeline(DXGI_FORMAT scene, DXGI_FORMAT depth)
 	{
 		using namespace Renderer;
 
-		auto& skyboxRootSig = m_RootSigAndPSO->m_SkyboxRootSig;
-		auto& skyboxPSO = m_RootSigAndPSO->m_SkyboxPSO;
+		auto& skyboxRootSig = m_RootSigAndPSOs->m_SkyboxRootSig;
+		auto& skyboxPSO = m_RootSigAndPSOs->m_SkyboxPSO;
 
 		// 根签名设置并finalize
 		skyboxRootSig.Reset(2, 1);
@@ -84,7 +88,10 @@ namespace Renderer::Deferred
 		// - BRDF LUT：fullscreen quad 或 compute
 	}
 
+	void EnvironmentLightingManager::SaveDDS()
+	{
 
+	}
 
 	void EnvironmentLightingManager::CreateSamplerDesc()
 	{
@@ -106,39 +113,34 @@ namespace Renderer::Deferred
 		m_LinearSamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
 	}
 
+	void EnvironmentLightingManager::BakeEnvironmentTextures(GraphicsContext& gfxContext)
+	{
 
+		//EquirectangularToCubemapPass(); // CubeMap
 
-	bool EnvironmentLightingManager::LoadHDR(const std::wstring& HDRPath)
+		//IrradianceConvolutionPass(); // Diffuse IBL
+
+		//SpecularPrefilterPass(); // Specular IBL
+
+		//BRDFLUTPass();
+
+		//SaveDDS();
+	}
+
+	void EnvironmentLightingManager::LoadHDR(const std::wstring& HDRPath)
 	{
 		// 1. 加载环境贴图hdr,生成dds
 		CompileTextureOnDemand(HDRPath, kDefaultBC | kQualityBC);
-		// 2. 使用dds生成cubemap纹理
-		BuildEnvironmentCubemap();
-		// 3. 使用dds预计算生成IBL双纹理
-		BuildIrradianceCubemap();
-		BuildPrefilterCubemap();
-		BuildBRDFLUT();
-
-		m_Ready = true;
-		return m_Ready;
-	}
-
-	uint32_t EnvironmentLightingManager::ComputePrefilterMipCount(uint32_t size)
-	{
-		uint32_t mipCount = 1;
-		while (size > 1)
+		m_Textures.HDRTexture = TextureManager::LoadDDSFromFile(HDRPath);
+		if (m_Textures.HDRTexture.IsValid() == false)
 		{
-			size >>= 1;
-			++mipCount;
+			Utility::Printf(L"HDRTexture Load Is Failed");
 		}
-		return mipCount;
 	}
 
-	void EnvironmentLightingManager::BuildEnvironmentCubemap(
-		GraphicsContext& ctx,
-		const Texture& hdrSource,
-		TextureCube& outEnvironmentCube,
-		uint32_t cubemapSize)
+
+
+	void EnvironmentLightingManager::EquirectangularToCubemapPass(GraphicsContext& gfxContext)
 	{
 		// TODO:
 		// 这是 HDR equirectangular -> cubemap 的生成步骤。
@@ -152,34 +154,25 @@ namespace Renderer::Deferred
 		// 2) 将方向向量转成 latlong UV
 		// 3) 采样 HDR 2D 纹理
 		// 4) 输出到 cubemap 对应 face
-		(void)ctx;
-		(void)hdrSource;
-		(void)outEnvironmentCube;
-		(void)cubemapSize;
+
+		/* 跑1趟Pass
+		* 行为: 绑定RootSig,PSO, 根实参,视口矩阵,裁剪矩阵,RT,绘制全屏三角形
+		* 资源RootSig(自创),PSO(自创), 根实参(t0为HDR Map, s0为静态 point Sampler),视口矩阵和裁剪矩阵(传参),RT(自创),VS,PS
+		*
+		*/
+
 	}
 
-	void EnvironmentLightingManager::BuildIrradianceCubemap(
-		GraphicsContext& ctx,
-		const TextureCube& environmentCube,
-		TextureCube& outIrradianceCube,
-		uint32_t irradianceSize)
+	void EnvironmentLightingManager::IrradianceConvolutionPass(GraphicsContext& gfxContext)
 	{
 		// TODO:
 		// 漫反射环境光卷积。
 		// 对每个输出方向做 cosine-weighted hemisphere integration。
 		// 低频，分辨率一般很小。
-		(void)ctx;
-		(void)environmentCube;
-		(void)outIrradianceCube;
-		(void)irradianceSize;
+		(void)gfxContext;
 	}
 
-	void EnvironmentLightingManager::BuildPrefilterCubemap(
-		GraphicsContext& ctx,
-		const TextureCube& environmentCube,
-		TextureCube& outPrefilterCube,
-		uint32_t prefilterSize,
-		uint32_t maxMipCount)
+	void EnvironmentLightingManager::SpecularPrefilterPass(GraphicsContext& gfxContext)
 	{
 		// TODO:
 		// 镜面 IBL 的预滤波环境贴图。
@@ -189,17 +182,10 @@ namespace Renderer::Deferred
 		// 关键：
 		// - GGX importance sampling
 		// - 输出到不同 mip level
-		(void)ctx;
-		(void)environmentCube;
-		(void)outPrefilterCube;
-		(void)prefilterSize;
-		(void)maxMipCount;
+		(void)gfxContext;
 	}
 
-	void EnvironmentLightingManager::BuildBRDFLUT(
-		GraphicsContext& ctx,
-		Texture& outBRDFLUT,
-		uint32_t lutSize)
+	void EnvironmentLightingManager::BRDFLUTPass(GraphicsContext& gfxContext)
 	{
 		// TODO:
 		// 生成 DFG BRDF LUT。
@@ -208,28 +194,14 @@ namespace Renderer::Deferred
 		// 常见做法：
 		// - fullscreen triangle
 		// - 或 compute shader
-		(void)ctx;
-		(void)outBRDFLUT;
-		(void)lutSize;
+		(void)gfxContext;
 	}
 
-	void EnvironmentLightingManager::RemoveTranslationFromViewMatrix(float outViewNoTranslation[16], const float inView[16])
-	{
-		// 这里按你自己的矩阵布局改。
-		for (int i = 0; i < 16; ++i)
-			outViewNoTranslation[i] = inView[i];
 
-		// 常见情况下把平移项清零即可。
-		// 若你的矩阵是列主序/行主序不同，这里索引要调整。
-		outViewNoTranslation[12] = 0.0f;
-		outViewNoTranslation[13] = 0.0f;
-		outViewNoTranslation[14] = 0.0f;
-	}
-
-	void EnvironmentLightingManager::RenderSkyboxPass(GraphicsContext& gfxcontext, const Camera& camera)
+	void EnvironmentLightingManager::SkyboxPass(GraphicsContext& gfxcontext, const Camera& camera)
 	{
-		if (!m_Ready || !m_Resources.EnvironmentCube)
-			return;
+		//if (!m_Ready || m_TextureRefs.EnvironmentCubeTextureRef.IsValid()) return;
+
 
 		// TODO:
 		// 1) 设置深度状态：DepthFunc = LessEqual，DepthWrite = Off
@@ -249,5 +221,14 @@ namespace Renderer::Deferred
 
 	}
 
+	void EnvironmentLightingManager::CreateEquirectangularToCubemapPipeline()
+	{
+
+	}
+
+	void EnvironmentLightingManager::InitializeToCubemap()
+	{
+		m_EnvironmentCubeMap = Graphics::BufferManager::CreateColorBuffer(L"EnvironmentCubeMap RT", )
+	}
 }
 

@@ -1,5 +1,12 @@
 #pragma once
 
+// DX12把resource分为buffer和texture, 被抽象为ID3D12Resource,但内存布局,访问方式,cache 行为,view 类型,shader 读取方式都不同
+// 区分二者靠D3D12_RESOURCE_DESC.Dimension 
+// Buffer为线性连续内存.,有VB,IB,CBV,Structured Buffer,ByteAddressBuffer
+// texture为具有空间维度的数据,有Texture2D,TextureCube,Texture3D,Texture2DArray.
+
+// 
+
 #include "00_Core/PCH.h"
 #include "02_RHI/Resource/GpuResource.h"
 

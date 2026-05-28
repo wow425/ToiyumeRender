@@ -9,6 +9,9 @@
 #include "02_RHI/Pipeline/RootSignature.h"
 #include "02_RHI/Pipeline/SamplerManager.h"
 #include "02_RHI/Pipeline/PipelineState.h"
+#include "03_AssetSystem/Importers/Texture/TextureManager.h"
+
+
 /*
  EnvironmentLightingManager
 ├── LoadHDRI() 加载HDR
@@ -30,36 +33,35 @@ class GraphicsContext;
 class Camera;
 class ByteAddressBuffer;
 
-
-namespace Renderer::Deferred
+namespace Renderer::EnvironmentLighting
 {
 
 	// environmentMap全套纹理
-	struct EnvironmentMapTextureRefs
+	struct EnvironmentMapTextures
 	{
-		TextureRef EnvironmentCubeTextureRef; // HDR -> Cubemap
-
-		TextureRef IrradianceCubeTextureRef;   // Diffuse IBL
-		TextureRef PrefilterCubeTextureRef;    // Specular IBL
-		TextureRef  BRDFLUTTextureRef;          // Specular BRDF LUT
+		TextureRef HDRTexture;				// HDR
+		TextureRef EnvironmentCubeTexture;	//  Cubemap
+		TextureRef IrradianceCubeTexture;	// Diffuse IBL
+		TextureRef PrefilterCubeTexture;		// Specular IBL
+		TextureRef  BRDFLUTTexture;          // Specular BRDF LUT
 	};
 
 	//  environmentMap全套RootSig和PSO
 	struct EnvironmentMapRootSigAndPSOs
 	{
-		RootSignature m_SkyboxRootSig;
-		GraphicsPSO     m_SkyboxPSO;
-
-		RootSignature m_EquirectToCubemapRootSig;
+		RootSignature m_EquirectToCubemapRootSig; // hdr转cubemap
 		GraphicsPSO   m_EquirectToCubemapPSO;
 
-		RootSignature m_IrradianceRootSig;
+		RootSignature m_SkyboxRootSig;		 // skybox绘制
+		GraphicsPSO     m_SkyboxPSO;
+
+		RootSignature m_IrradianceRootSig;		// Diffuse IBL
 		GraphicsPSO     m_IrradiancePSO;
 
-		RootSignature m_PrefilterRootSig;
+		RootSignature m_PrefilterRootSig;		// Specular IBL
 		GraphicsPSO     m_PrefilterPSO;
 
-		RootSignature m_BRDFLUTRootSig;
+		RootSignature m_BRDFLUTRootSig;			// Specular BRDF LUT
 		GraphicsPSO     m_BRDFLUTPSO;
 	};
 
@@ -71,39 +73,39 @@ namespace Renderer::Deferred
 
 		void Initialize(DXGI_FORMAT scene, DXGI_FORMAT depth);
 		void Shutdown();
-		// 加载hdr转换为dds, 并创建environmentmap全套textureRef(包含预计算)
-		bool LoadHDR(const std::wstring& HDRPath); // TODO
-		// 绘制skybox
-		void RenderSkyboxPass(GraphicsContext& gfxcontext, const Camera& camera); // TODO
 
-		const EnvironmentMapTextureRefs& GetEnvironmentMapTextureRefs() const { return m_TextureRefs; }
-		bool IsReady() const { return m_Ready; }
+		void LoadHDR(const std::wstring& HDRPath);						// 加载hdr转换为dds
+		void BakeEnvironmentTextures(GraphicsContext& gfxContext);		// 将hdr纹理烘焙成skybox,IBL纹理
+
+
+		void SkyboxPass(GraphicsContext& gfxcontext, const Camera& camera); // 绘制skybox
+
+
+		const EnvironmentMapTextures& GetEnvironmentMapTextureRefs() const { return m_Textures; }
 
 	private:
-		EnvironmentMapTextureRefs m_TextureRefs;
-		std::shared_ptr<EnvironmentMapRootSigAndPSOs> m_RootSigAndPSOs;
+		EnvironmentMapTextures m_Textures = {};
+		std::shared_ptr<EnvironmentMapRootSigAndPSOs> m_RootSigAndPSOs = nullptr;
 		SamplerDesc m_LinearSamplerDesc;
 
-		bool m_Ready = false;
 	private:
-		// 创建RootSig和PSO
-		void CreateSkyboxPipeline(DXGI_FORMAT scene, DXGI_FORMAT depth);
+		std::shared_ptr<ColorBuffer> m_EnvironmentCubeMap;
+		void InitializeToCubemap();
+		void CreateEquirectangularToCubemapPipeline();
+		void EquirectangularToCubemapPass(GraphicsContext& gfxContext);
+	private:
+		void CreateSkyboxPipeline(DXGI_FORMAT scene, DXGI_FORMAT depth);	// 创建RootSig和PSO
 		void CreatePrecomputePipelines(DXGI_FORMAT scene, DXGI_FORMAT depth); // TODO
 		void CreateSamplerDesc(); // 配置线性sampler
 
-		// 创建TextureRef(带有SRV的纹理)
-		// HDR Equirectangular → Cubemap → IBL预计算
-		// HDR图本身作为纹理,可用作cubemap,而 diffuse IBL跟Specular IBL需要进行预处理生成纹理
-		void BuildEnvironmentCubemap(GraphicsContext& gfxContext, const Texture& hdrSource, TextureCube& outEnvironmentCube, uint32_t cubemapSize); // TODO
-		// Diffuse IBL
-		void BuildIrradianceCubemap(GraphicsContext& gfxContext, const TextureCube& environmentCube, TextureCube& outIrradianceCube, uint32_t irradianceSize); // TODO
-		// Specular IBL
-		void BuildPrefilterCubemap(GraphicsContext& gfxContext, const TextureCube& environmentCube, TextureCube& outPrefilterCube, uint32_t prefilterSize, uint32_t maxMipCount); // TODO
-		void BuildBRDFLUT(GraphicsContext& gfxContext, Texture& outBRDFLUT, uint32_t lutSize); // TODO
 
-		static uint32_t ComputePrefilterMipCount(uint32_t size); // TODO
+		// PreCompute
 
-		static void RemoveTranslationFromViewMatrix(float outViewNoTranslation[16], const float inView[16]); // TODO
+		void IrradianceConvolutionPass(GraphicsContext& gfxContext); // Diffuse IBL
+		void SpecularPrefilterPass(GraphicsContext& gfxContext); // Specular IBL
+		void BRDFLUTPass(GraphicsContext& gfxContext);
+
+		void SaveDDS();
 	};
 
 } // Renderer

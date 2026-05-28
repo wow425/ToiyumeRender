@@ -26,15 +26,20 @@
 using namespace Math;
 using namespace Graphics;
 using namespace Renderer;
+using namespace Renderer::EnvironmentLighting;
 
 namespace Renderer::Deferred
 {
 	RendererAutoRegister<DeferredRenderer> s_RegisterForwardRenderer(L"DeferredRenderer");
+}
+
+namespace Renderer::EnvironmentLighting
+{
 	EnvironmentLightingManager s_EnvironmentLightingManager;
-	constexpr wchar_t HDRtexture[] = L"Assets/Skybox/grasslands_sunset_2k.hdr";
+
+	constexpr wchar_t HDRtexture[] = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Skybox/grasslands_sunset_2k.hdr";
 	//constexpr wchar_t kDiffuseIBL[] = L"Textures/studio_diffuseIBL.dds";
 	//constexpr wchar_t kSpecularIBL[] = L"Textures/studio_specularIBL.dds";
-		
 }
 
 //PBR

@@ -36,24 +36,7 @@ bool ConvertToDDS(
     uint32_t Flags                  // flags ORed together
 );
 
-// ==========================================
-// HDR Support
-// ==========================================
 
-//// 1. Load HDR image
-//bool LoadHDRTexture(
-//    const std::wstring& file_path,
-//    DirectX::ScratchImage& image,
-//    DirectX::TexMetadata& metadata);
-//// 2. Convert HDR -> DDS
-//bool ConvertHDRToDDS(
-//    const std::wstring& hdr_path,
-//    const std::wstring& dds_path,
-//    bool compress_bc6h = true);
-//// 3. Convert DDS -> Cubemap DDS
-//bool ConvertDDSToCubemap(
-//    const std::wstring& dds_path,
-//    const std::wstring& cubemap_path);
    
 
     

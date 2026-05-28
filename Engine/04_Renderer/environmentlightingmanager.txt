@@ -1,0 +1,23 @@
+1.导入HDR文件,解析成DDS     已完成
+2.加载DDS文件,做Environment Preprocessing获取TextureCube纹理,IBL纹理。 实现Bake Pass
+
+第一次的话，GPU转换纹理，生成所需纹理资源，再转换成DDS保存起来。
+实现步骤：做一次EquirectangularToCubemapPass
+
+1.初始化时 bake环境贴图skybox + IBL纹理，生成对应的DDS资源并写入硬盘，后续调用时直接LoadDDS
+2.将HDR的DDS转换成skybox + IBL纹理需要： 第1个pass将HDR的DDS转换成CubeMap纹理，第2个pass使用CubeMap纹理预计算出IBL纹理
+2.1 第1个pass将HDR的DDS转换成CubeMap纹理:
+
+
+
+
+非第一次的话，直接LoadDDS即可。
+
+
+
+
+cpu端: cubemap,IBL纹理. skyboxPass的RootSig和PSO, lightingPass的RootSig(新增根参数以接收IBL纹理)
+pipeline管线上: 包含IBL三张纹理的lighting pass根签名, 包含cubemap纹理和1个linear sampler的skybox pass根签名和pso
+lighting pass需要IBL三张纹理, Skybox pass需要cubemap纹理
+
+如何加载DDS文件以用作cubemap纹理? 使用LoadDDSFromFile

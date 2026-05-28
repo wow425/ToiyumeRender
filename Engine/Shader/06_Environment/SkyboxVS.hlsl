@@ -6,33 +6,19 @@ cbuffer CameraCB : register(b0)
     float4x4 gProj;
 }
 
-struct VSInput
-{
-    float3 Position : POSITION;
-};
-
 struct VSOutput
 {
     float4 PositionH : SV_Position;
-    float3 Direction : TEXCOORD;
+    float2 uv : TEXCOORD0;
 };
 
-VSOutput MainVS(VSInput input)
+VSOutput MainVS(uint vertexID : SV_VertexID)
 {
-    VSOutput output;
+    VSOutput o;
     
-    float4 pos = float4(input.Position, 1.0f);
+    o.uv = float2((vertexID << 1) & 2, vertexID & 2);
+	// [0,1] -> [-1,1] DX12 中的 NDC 规定：X 轴向右为正 $[-1, 1]$，Y 轴向上为正 $[-1, 1]$。（注意：纹理 UV 的 V 轴是向下的）。
+    o.PositionH = float4(o.uv * float2(2, -2) + float2(-1, 1), 0, 1);
     
-    // 去掉view translation ??
-    float4x4 viewNoTranslation = gView;
-    viewNoTranslation[3][0] = 0.0f;
-    viewNoTranslation[3][1] = 0.0f;
-    viewNoTranslation[3][2] = 0.0f;
-    
-    float4 clipPos = mul(mul(pos, viewNoTranslation), gProj);
-    
-    output.PositionH = clipPos.xyzw;
-    output.Direction = input.Position;
-
-    return output;
+    return o;
 }
