@@ -228,7 +228,7 @@ namespace Renderer::EnvironmentLighting
 
 	void EnvironmentLightingManager::InitializeToCubemap()
 	{
-		m_EnvironmentCubeMap = Graphics::BufferManager::CreateColorBuffer(L"EnvironmentCubeMap RT", )
+		//m_EnvironmentCubeMap = Graphics::BufferManager::CreateColorBuffer(L"EnvironmentCubeMap RT", )
 	}
 }
 

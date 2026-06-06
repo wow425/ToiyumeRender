@@ -5,6 +5,12 @@
 // Buff为线性连续内存.,有VB,IB,CBV,Structured Buffer,ByteAddressBuffer
 // texture为具有空间维度的数据,有Texture2D,TextureCube,Texture3D,Texture2DArray.
 
+//ColorBuffer。代表：“GPU 渲染目标”。强调“渲染过程”
+//即：Render Target Texture
+//它强调的是：“这个纹理会被 GPU 写入”
+//而不是：“这个纹理只是被采样”
+
+
 #include "02_RHI/Resource/PixelBuffer.h"
 #include "00_Core/Utility/Color.h"
 #include "02_RHI/Resource/GpuBuffer.h"

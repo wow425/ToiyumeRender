@@ -347,6 +347,12 @@ DX12 渲染器学习与改造
 </p> 
 </details>
 
+<details>
+<summary><b>2026-06-1: </b></summary>
+<p>6月复习,暂停进度<p>
+</p> 
+</details>
+
 
 <!-- 月总结 -->
 <h4 id="2026-05-月总结">📝 2026-05 月总结</h4>
@@ -372,6 +378,13 @@ DX12 渲染器学习与改造
 <b>时间性抗锯齿</b><br>
 Temporal Anti-Aliasing (TAA)<br>
 テンポラルアンチエイリアシング
+</div>
+
+<div align="center">
+<img src="https://github.com/user-attachments/assets/9a25d449-c15a-4476-bc17-f45c3203e095" width="100%" alt="PBR光照模型,无IBR光照,无抗锯齿"/>
+<br>
+<br><br>
+<b>PBR, 无IBL光照, 无抗锯齿</b><br>
 </div>
 
 </td>

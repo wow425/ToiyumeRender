@@ -5,7 +5,10 @@
 // Buffer为线性连续内存.,有VB,IB,CBV,Structured Buffer,ByteAddressBuffer
 // texture为具有空间维度的数据,有Texture2D,TextureCube,Texture3D,Texture2DArray.
 
-// 
+// Texture代表“静态纹理资源” 强调“数据”
+//	从文件加载
+//	不作为 Render Target
+//	不参与 GPU 渲染输出
 
 #include "00_Core/PCH.h"
 #include "02_RHI/Resource/GpuResource.h"
