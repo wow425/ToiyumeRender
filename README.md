@@ -381,7 +381,7 @@ Temporal Anti-Aliasing (TAA)<br>
 </div>
 
 <div align="center">
-<img src="https://github.com/user-attachments/assets/9a25d449-c15a-4476-bc17-f45c3203e095" width="100%" alt="PBR光照模型,无IBR光照,无抗锯齿"/>
+<img src="https://github.com/user-attachments/assets/ec7ab229-5eef-4e3e-a065-757704a8876a" width="100%" alt="延迟管线下的PBR光照模型,暂无IBR环境光照,无抗锯齿"/>
 <br>
 <br><br>
 <b>PBR, 无IBL光照, 无抗锯齿</b><br>
