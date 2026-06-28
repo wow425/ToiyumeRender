@@ -36,6 +36,8 @@ private:
 	Scene::Camera::Camera  m_Camera;
 	unique_ptr<Scene::Camera::CameraController> m_CameraController;
 
+	int test1 = 0;
+
 	// 模型
 	Scene::Model::ModelInstance Models[10];
 };
