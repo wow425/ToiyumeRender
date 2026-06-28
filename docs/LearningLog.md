@@ -1,0 +1,357 @@
+<table width="100%">
+<tr>
+<td width="50%" valign="top">
+
+<h3>📅 学习日志 (Learning Log)</h3>
+<blockquote>记录每日的开发进度、踩坑点与图形学理论学习。</blockquote>
+
+<!-- ================= 年 ================= -->
+<details open>
+<summary><b>📂 2026年</b></summary>
+
+<br>
+
+<!-- ================= 月 ================= -->
+<details open>
+<summary><b>📅 2026-04</b></summary>
+
+<details>
+<summary><b>2026-04-08: </b></summary>
+<p>完成 RootSignature 类的编写，学习了利用位图存储索引，使用位运算查找索引的高效遍历方法。</p>
+<p>完成 DynamicDescriptorHeap 类的编写。</p>
+</details>
+
+<br>
+
+<details>
+<summary><b>2026-04-09: </b></summary>
+<p>啃DynamicDescriptorHeap类，方法没啃完，逻辑关系有些复杂还没理清，明日继续</p>
+</details>
+
+<br>
+
+<details>
+<summary><b>2026-04-10: </b></summary>
+<p>啃完DynamicDescriptorHeap类，资源管理全流程大致梳理一遍。<p>
+<p>CPU端处创建存放碎片化的资源堆，也就是DescriptorAllocator 负责这一职能，<p>
+<p>GPU端处创建着色器可视堆，也就是DynamicDescriptorHeap类负责这一职能，<p>
+<p>而CPU端处创建的DescriptorHandleCache (属于 DynamicDescriptorHeap 的内部结构)的描述符句柄缓存，负责存储根签名所需要的资源句柄，将根签名所需要的资源从碎片化的资源堆运往着色器可视堆，起到中转站作用。<p>
+</p>
+</details>
+
+<br>
+
+<details>
+<summary><b>2026-04-11: </b></summary>
+<p> 啃完CommandAllocatorPool类，CommandListManager类<p>
+<p> 命令分配器池的锁是成员锁，确保不同类型的命令队列独立且并行。而描述符分配器池的锁是类静态锁，实现全局不竞争。<p>
+<p> void CommandQueue::StallForFence(uint64_t FenceValue)方法学到了跨队列同步，生产者-消费者模型，自动化路由<p>
+<p>了解到帧图架构，以后实现<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-12: </b></summary>
+<p> 在啃CommandContext类<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-13: </b></summary>
+<p> 在啃CommandContext类,编写完Pipelinestate类<p>
+<p> 今日课多，没投入多少时间<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-14: </b></summary>
+<p> 命令模块啃完<p>
+<p> 通过SIMDMemCopy方法了解到通过读写混合缓冲区WCB来单独开辟一条适合单方向海量对齐数据传递给GPU的道路，<p>
+<p> CPU对待内存写入有两套机制<p>
+<p>WB回写WriteBack<p>
+<p>数据先写到Cache中，再从Cache传输到主存中<p>
+<p>WC写入合并WriteCombined<p>
+<p>专为跨总线传输大量单项数据而设计的，上传堆默认是WC<p>
+<p>绕开Cache，数据直接写在CPU的写入合并缓冲区WCB中，然后打包传输给PCIe总线上<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-16: </b></summary>
+<p>运行流程梳理一遍，运行框架完成，今日花费时间不足<p>
+<p> 学习了变量生命周期管理 <p>
+<p>1.命令空间内的变量（在命名空间中直接定义的变量（如果在 .cpp 中且不在任何函数内），默认具有静态存储期）<p>
+<p>2. 单例模式与静态成员<p>
+<p>3. 常驻内存池与资源管理<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-17: </b></summary>
+<p>Graphics::Initialize();图形模块初始化及其内部一些代码搞完<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-19: </b></summary>
+<p>优化代码存储逻辑层次<p>
+<p>增加Camera类，Model类（尚未完成），Renderer类（尚未完成），SystemTime类<p>
+<p>再次删减多余渲染功能代码，之前删减不彻底导致现在继续学习依旧困难重重<p>
+<p>迄今为止，前面学习没意识到问题，沿着流程实现一个方法，就顺带着把该方法的类全都实现了，导致陷入细节漩涡中，现在改用先完成最小化可运行，再逐渐增加功能的策略<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-20: </b></summary>
+<p>ConstantBuffers完成，编写Model类未完成<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-21: </b></summary>
+<p>model类完成，glTF类完成<p>
+<p>model模块中的优化手段基本阉割掉，以后再添加<p>
+<p>进一步熟悉模型的层次结构图和利用掩码图取代遍历查找<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-23: </b></summary>
+<p>Model模块只差renderer方法编写就完成了，许多底层优化的都跳过了，未来再补<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-24: </b></summary>
+<p>今日摸鱼，配置了DXC<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-25: </b></summary>
+<p>今日娱乐，也就重新配置DXC以生成16进制的头文件格式，复刻miniengine的shader编译模式，并粗略编写了defaultVS，defaultPS<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-26: </b></summary>
+<p> Renderer方法编写完毕，Model模块完成<p>  
+<p>    // TODO: 完成预编译shader带宏定义脚本<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-27: </b></summary>
+<p> 程序运行流程跑通，但LoadMaterials方法仅支持标准PBR规范每网格5纹理规格，明日修改逻辑以增加不规范非PBR模型<p>  
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-28: </b></summary>
+<p> 排BUG<p>
+<p>1.模型纹理不合PBR规范，需用默认纹理填充空余材质纹理，修改默认纹理Create<p>
+<p>2. 模型顶点数据无法正常上传，命令模块的上传数据方法完善<p>
+<p>3. 纹理跟网格都能正常上传至shader处，但VS out输出的是个面片，顶点position都被压缩到四点了，明日排查根签名，PSO,shader三者<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-29: </b></summary>
+<p> 排BUG<p>
+<p>Shade端接收的Mesh CB数据为空的，CPU端的Mesh CB上传堆跟默认堆都有数据，根签名绑定Mesh CB无数据，根签名绑定Mesh CB地址出现问题<p>
+<p> 调试层没正常开启, 需要修改graphicsCore初始化逻辑<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-04-30: </b></summary>
+<p> 修BUG<p>
+<p> 1. GraphicsCore跟Display各自持有Factory，导致Debug时难以排查交换链问题，故改成全局唯一持有，Display调用即可<p>
+<p> 2. 简化GraphicsCore初始化逻辑，以确保Debug Layer能正常启动<p>
+<p> 3. VS接收到的Mesh CB数据异常已修复，原因是DFS读取Mesh数据写入上传堆环节，DFS没写对<p>
+</p>
+</details>
+
+</details>
+
+<br>
+
+<!-- 月总结 -->
+<h4 id="2026-04-月总结">📝 2026-04 月总结</h4>
+<p>本月完成了 DX12 渲染器从底层资源管理到完整渲染流程的关键搭建</p>
+---
+
+
+
+<!-- ================= 月 ================= -->
+<details open>
+<summary><b>📅 2026-05</b></summary>
+
+<details>
+<summary><b>2026-05-2: </b></summary>
+<p> 修BUG<p>
+<p> PS未将数据绘制到back buffer不在于OM阶段，PS阶段，而是光栅化阶段深度剔除掉了，因为视图投影矩阵数据错误，导致透视除法后的z值小于0，而DX的NDC在[0,1]<p>
+<p>明日简化重写camera类，并复习推理一遍camera相关数学知识<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-3: </b></summary>
+<p> 修BUG<p>
+<p> 变换矩阵问题没修好，明天复习原理，全部重新写一遍得了<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-4: </b></summary>
+<p> BUG修复完毕，借鉴miniengine搭的渲染器框架完工！<p>
+<p> 起初看renderdoc里上传VS的viewproj矩阵数据不标准，照着啃camera类，但四元数的内容看的不太明白，便简化成非四元数camera类了<p>
+<p> camera类修改完成仍然无法渲染物体到color buffer，沿着渲染管线排查光栅化状态，背面剔除跟绕序都没问题，问题出在深度测试<p> 
+<p> depthbuffer默认深度值为0，这是无限z情况下才行的，关闭了无限z并没有动态变化，而且depthbuffer的描述符描述中的depth value也是缺少动态修改，写死为0的，将其修改成使用depth value值<p> 
+<p> TODO:开闭无限z跟反转z使得光栅化状态配置跟depth buffer配置随之变化<p> 
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-5: </b></summary>
+<p> 休息 <p> 
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-6: </b></summary>
+<p>学习延迟渲染管线理论<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-7: </b></summary>
+<p>克隆Delt06DX12学习项目https://github.com/Delt06/dx12-renderer?utm_source=chatgpt.com<p>
+<p>已重构文件层次关系，将改用cmake管理<p>
+<p> 边学习Miniengine完全实现GPU Infrastructure层，和边学习Delt06DX12实现RenderGraph帧图跟Render Pass调度层<p>
+<p> 接下来学习重心转向Delt06DX12实现上层抽象和实现延迟渲染全流程<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-8: </b></summary>
+<p>改用cmake管理和vcpkg导包。dxc离线编译还没弄<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-11: </b></summary>
+<p>添加lightingsystem类，shadowbuffer类<p>
+<p>接下来实现部分内容解耦以提升扩展性，方便实现DeferredApp<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-12: </b></summary>
+<p>今日课多，完成BaseRenderer类和RendererRegistry类，明日修改Renderer类以适配BaseRenderer类，实现engine提供抽象接口，demo具体实现，便于以后扩展<p>
+</p>
+</details>
+
+<details>
+<summary><b>2026-05-14: </b></summary>
+<p>RendererRegistry类设计延迟实例化，先创建规则creator，再生成对象RendererPtr，实现反射式自动注册<p>
+<p>现代 Renderer 的核心思想是pass决定资源，而不是engine预创建资源<p>
+<p>miniengine的pso绑定设计成一个全局方法，读取model的mesh数据时，根据解析出来的参数值应用对应的输入布局和shader来生成pso，并pso绑定mesh，绘制时直接调用<p>
+<p> 需要设计material系统解耦。需要将mesh与pso解耦，需要设计material系统。实现资源（Mesh / Material）与渲染策略（PSO / Pass）解耦<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-05-15: </b></summary>
+<p>  miniengine的设计是在model导入时完成材质解析，生成对应的pso，并将pso绑定到mesh上，绘制时直接调用，导致绑死无法改绑，需要解耦模型导入与渲染策略绑定<p>
+<p> 今天尚未完成解耦<p>
+<p> 不少直接在头文件里使用using namespace std;，导致命名空间污染，已修复<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-05-17: </b></summary>
+<p>完成Renderer类的重构，Display类不再负责管理SceneColor，仅持有来自Renderer类传来的SceneColor，BufferManager类负责管理，但目前尚未构成完成的BufferManager<p>
+<p> 完成模型导入层，材质层与渲染策略层的解耦。模型导入层仅存储几何信息，材质层存储材质信息，两者交与渲染策略层以选择PSO<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-05-19: </b></summary>
+<p>修复掉帧问题，因为ModelSort()调用了GatherRenderables()，而GatherRenderables()是收集可绘制项打包进MeshSorter向量中，每帧末没有清理MeshSorter，导致MeshSorter不断累加<p>
+在每帧末清空MeshSorter即可<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-05-20: </b></summary>
+<p>大致完成GBuffer Pass。<p>
+<p>完成cmake调用dxc编译shader配置，采用预先编译shader，使用头文件而非运行时编译<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-05-21: </b></summary>
+<p>GBuffer Pass跟Lighting Pass完成，明日开始添加渲染功能了<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-05-22: </b></summary>
+<p>复习PBR理论<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-05-24: </b></summary>
+<p>实现基于局部的镜面反射模型BRDF + 兰伯特Diffuse,采用CookTorrance<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-05-25: </b></summary>
+<p>复习PBR光照模型和IBL理论<p>
+<p>PBR Lighting = Direct Lighting + Indirect Lighting <p>
+<p> L0 =  directDiffuse + directSpecular + indirectDiffuse + indirectSpecular;<p>
+<p>Direct Lighting:物体受到点,方向,聚光三类直接光照,与BRDF交互产生的Specular(Cook-Torrance) + Diffuse(兰伯特近似)<p>
+<p>Indirect Lighting:采用IBL技术,物体受到环境贴图上的光照,同样与BRDF交互产生Specular + Diffuse,<p>
+<p>因实时采样积分消耗大,需预计算空间换时间处理.<p>
+<p>IBL Diffuse只和normal有关, 可一次卷积采样即可. 而IBL Specular与roughness/view有关,需要预计算拆成Prefilter + LUT<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-05-26: </b></summary>
+<p>创建EnvironmentLightingManager类，负责IBL跟skybox全流程，从加载到skyboxPass。<p>
+<p>目前仅写完EnvironmentLightingManager类框架<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-05-27: </b></summary>
+<p>仍在实现EnvironmentLightingManager类, 啃了下TextureConvert类和TextureManager类设计<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-05-28: </b></summary>
+<p>效率低，在做环境贴图转cubemap的pass<p>
+</p> 
+</details>
+
+<details>
+<summary><b>2026-06-1: </b></summary>
+<p>6月复习,暂停进度<p>
+</p> 
+</details>
+
+
+<!-- 月总结 -->
+<h4 id="2026-05-月总结">📝 2026-05 月总结</h4>
+<p>完成渲染器框架搭建</p>
+
+---
+
+</details>
+
+<br>
