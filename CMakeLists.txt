@@ -13,11 +13,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 强制 MSVC 编译器使用 UTF-8 编码，并开启 Unicode 字符集支持
-if(MSVC)
+# 强制编译器使用 UTF-8 编码，并开启 Unicode 字符集支持
     add_compile_options(/utf-8)
     add_compile_definitions(UNICODE _UNICODE) # <--- 新增这一行
-endif()
 
 # ==========================================
 # Vcpkg 依赖管理

@@ -2,7 +2,20 @@
 # 编译可执行文件
 # ==========================================
 # 使用 WIN32 标志隐藏 Windows 黑框控制台
-add_executable(DeferredApp WIN32 DeferredApp.cpp )
+add_executable(DeferredApp WIN32 DeferredApp.cpp)
+
+# ==========================================
+# Include 路径
+# ==========================================
+
+target_include_directories(
+        DeferredApp
+        PUBLIC
+        # Engine根目录
+        ${CMAKE_SOURCE_DIR}/Engine
+        # 如果需要访问项目根目录
+        ${CMAKE_SOURCE_DIR}
+)
 
 # 链接引擎库
 target_link_libraries(DeferredApp PRIVATE TooiyumeEngine)

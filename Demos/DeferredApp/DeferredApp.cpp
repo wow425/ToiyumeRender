@@ -23,7 +23,7 @@ using Renderer::MeshSorter;
 class Tooiyume : public GameCore::IGameApp
 {
 public:
-	Tooiyume(void) {}
+	Tooiyume(void) = default;
 
 	virtual void Startup(void) override;
 	virtual void Cleanup(void) override;
