@@ -8,6 +8,13 @@ using namespace Graphics;
 // RTV,UAV,SRV
 void ColorBuffer::CreateDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format, uint32_t ArraySize, uint32_t NumMips)
 {
+	if (m_IsCubeMap)
+	{
+		CreateCubeDerivedViews(Device, Format, NumMips);
+		return;
+	}
+
+
 	ASSERT(ArraySize == 1 || NumMips == 1, "We don't support auto-mips on texture arrays");
 
 	m_NumMipMaps = NumMips - 1;
@@ -139,6 +146,76 @@ void ColorBuffer::CreateArray(const std::wstring& Name, uint32_t Width, uint32_t
 
 	CreateTextureResource(Graphics::g_Device, Name, ResourceDesc, ClearValue, VidMem);
 	CreateDerivedViews(Graphics::g_Device, Format, ArrayCount, 1);
+}
+
+
+void ColorBuffer::CreateCubeDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format, uint32_t NumMips)
+{
+	ASSERT(NumMips <= _countof(m_UAVHandle), "ColorBuffer cube UAV mip storage is too small");
+
+	m_NumMipMaps = NumMips - 1;
+	D3D12_RENDER_TARGET_VIEW_DESC RTVDesc = {}; // RTV
+	RTVDesc.Format = Format;
+	RTVDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
+	RTVDesc.Texture2DArray.MipSlice = 0;
+	RTVDesc.Texture2DArray.FirstArraySlice = 0;
+	RTVDesc.Texture2DArray.ArraySize = 6;
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc = {}; // SRV
+	SRVDesc.Format = Format;
+	SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+	SRVDesc.TextureCube.MostDetailedMip = 0;
+	SRVDesc.TextureCube.MipLevels = NumMips;
+	SRVDesc.TextureCube.ResourceMinLODClamp = 0.0f;
+
+	D3D12_UNORDERED_ACCESS_VIEW_DESC UAVDesc = {}; // UAV
+	UAVDesc.Format = GetUAVFormat(Format);
+	UAVDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+	UAVDesc.Texture2DArray.FirstArraySlice = 0;
+	UAVDesc.Texture2DArray.ArraySize = 6;
+	UAVDesc.Texture2DArray.PlaneSlice = 0;
+
+	if (m_SRVHandle.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+	{
+		m_RTVHandle = Graphics::AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+		m_SRVHandle = Graphics::AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		ID3D12Resource* Resource = m_pResource.Get();
+		Device->CreateRenderTargetView(Resource, &RTVDesc, m_RTVHandle);
+		Device->CreateShaderResourceView(Resource, &SRVDesc, m_SRVHandle);
+		for (uint32_t i = 0; i < NumMips; ++i)
+		{
+			if (m_UAVHandle[i].ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+				m_UAVHandle[i] = Graphics::AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+			UAVDesc.Texture2DArray.MipSlice = i;
+
+			Device->CreateUnorderedAccessView(Resource, nullptr, &UAVDesc, m_UAVHandle[i]);
+		}
+	}
+}
+
+
+void ColorBuffer::CreateCube(const std::wstring& Name, uint32_t Width, uint32_t NumMips,
+	DXGI_FORMAT Format, D3D12_GPU_VIRTUAL_ADDRESS VidMem)
+{
+		NumMips = (NumMips == 0 ? ComputeNumMips(Width, Width) : NumMips);
+
+		m_IsCubeMap = true;
+
+		D3D12_RESOURCE_FLAGS Flags = CombineResourceFlags();
+		D3D12_RESOURCE_DESC ResourceDesc = DescribeTex2D(Width, Width, 6, NumMips, Format, Flags);
+		D3D12_CLEAR_VALUE ClearValue = {};
+
+		ClearValue.Format = Format;
+		ClearValue.Color[0] = m_ClearColor.R();
+		ClearValue.Color[1] = m_ClearColor.G();
+		ClearValue.Color[2] = m_ClearColor.B();
+		ClearValue.Color[3] = m_ClearColor.A();
+		m_format = Format;
+
+		CreateTextureResource(Graphics::g_Device, Name, ResourceDesc, ClearValue, VidMem);
+		CreateDerivedViews(Graphics::g_Device, Format, 6, NumMips);
+
 }
 
 

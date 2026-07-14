@@ -1,4 +1,4 @@
-#include "../06_Environment/EnvironmentCommon.hlsli"
+#include "EnvironmentCommon.hlsli"
 
 // skybox是无限远环境辐射radiance， 只跟方向有关，因此通过UV反推得到世界空间方向向量，进行sample即可
 // direction -> color

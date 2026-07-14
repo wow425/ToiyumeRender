@@ -21,6 +21,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Vcpkg 依赖管理
 # ==========================================
 # 注意：确保在配置 CMake 时传入了 -DCMAKE_TOOLCHAIN_FILE=[vcpkg_root]/scripts/buildsystems/vcpkg.cmake
+
 find_package(directxtex CONFIG REQUIRED)
 find_package(directxmesh CONFIG REQUIRED)
 find_package(DirectX-Headers CONFIG REQUIRED)

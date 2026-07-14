@@ -17,6 +17,12 @@ target_include_directories(
         ${CMAKE_SOURCE_DIR}
 )
 
+target_include_directories(
+        DeferredApp
+        PUBLIC
+        ${CMAKE_SOURCE_DIR}/cmake-build-debug/ShaderCache
+)
+
 # 链接引擎库
 target_link_libraries(DeferredApp PRIVATE TooiyumeEngine)
 

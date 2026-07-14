@@ -18,6 +18,11 @@
 
 #include "SkyboxVS.h"
 #include "SkyboxPS.h"
+#include "EquirectangularToCubemapCS.h"
+#include "IrradianceConvolutionCS.h"
+#include "SpecularPrefilterCS.h"
+#include "BRDFLUTCS.h"
+#include <algorithm>
 
 namespace Renderer::EnvironmentLighting
 {
@@ -41,7 +46,7 @@ namespace Renderer::EnvironmentLighting
 		m_RootSigAndPSOs.reset();
 	}
 
-	void EnvironmentLightingManager::CreateSkyboxPipeline(DXGI_FORMAT scene, DXGI_FORMAT depth)
+	void EnvironmentLightingManager::CreateSkyboxPipeline(DXGI_FORMAT scene, DXGI_FORMAT depth) const
 	{
 		using namespace Renderer;
 
@@ -69,23 +74,49 @@ namespace Renderer::EnvironmentLighting
 		skyboxPSO.Finalize();
 	}
 
-	void EnvironmentLightingManager::CreatePrecomputePipelines(DXGI_FORMAT scene, DXGI_FORMAT depth)
+	// 构建IBL所需的RootSig和PSO
+	void EnvironmentLightingManager::CreatePrecomputePipelines(DXGI_FORMAT scene, DXGI_FORMAT depth) const
 	{
-		// TODO:
-		// 1) Equirectangular -> Cubemap
-		// 2) Irradiance convolution
-		// 3) Prefilter env map
-		// 4) BRDF LUT
-		//
-		// 你可以选择：
-		// - 全部用 compute shader
-		// - 或者部分用 fullscreen pass / cubemap face raster pass
-		//
-		// 个人渲染器里建议：
-		// - Equirect -> Cubemap：compute 或 6 face raster
-		// - Irradiance：compute
-		// - Prefilter：compute
-		// - BRDF LUT：fullscreen quad 或 compute
+		(void)scene;
+		(void)depth;
+			// irradianceRootSig和PSO
+		auto& irradianceRootSig = m_RootSigAndPSOs->m_IrradianceRootSig;
+		irradianceRootSig.Reset(3, 1);
+		irradianceRootSig.InitStaticSampler(0, m_LinearSamplerDesc, D3D12_SHADER_VISIBILITY_ALL);
+		irradianceRootSig[0].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 1);
+		irradianceRootSig[1].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 1);
+		irradianceRootSig[2].InitAsConstantBuffer(0);
+		irradianceRootSig.Finalize(L"Irradiance Convolution RootSig");
+
+		auto& irradiancePSO = m_RootSigAndPSOs->m_IrradiancePSO;
+		irradiancePSO.SetName(L"EnvironmentLighting : Irradiance Convolution PSO");
+		irradiancePSO.SetRootSignature(irradianceRootSig);
+		irradiancePSO.SetComputeShader(IrradianceConvolutionCS_cso, sizeof(IrradianceConvolutionCS_cso));
+		irradiancePSO.Finalize();
+			// prefilterRootSig和PSO
+		auto& prefilterRootSig = m_RootSigAndPSOs->m_PrefilterRootSig;
+		prefilterRootSig.Reset(3, 1);
+		prefilterRootSig.InitStaticSampler(0, m_LinearSamplerDesc, D3D12_SHADER_VISIBILITY_ALL);
+		prefilterRootSig[0].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 1);
+		prefilterRootSig[1].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 1);
+		prefilterRootSig[2].InitAsConstantBuffer(0);
+		prefilterRootSig.Finalize(L"Specular Prefilter RootSig");
+			auto& prefilterPSO = m_RootSigAndPSOs->m_PrefilterPSO;
+			prefilterPSO.SetName(L"EnvironmentLighting : Specular Prefilter PSO");
+			prefilterPSO.SetRootSignature(prefilterRootSig);
+			prefilterPSO.SetComputeShader(SpecularPrefilterCS_cso, sizeof(SpecularPrefilterCS_cso));
+			prefilterPSO.Finalize();
+
+			auto& brdfRootSig = m_RootSigAndPSOs->m_BRDFLUTRootSig;
+			brdfRootSig.Reset(2, 0);
+			brdfRootSig[0].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 1);
+			brdfRootSig[1].InitAsConstantBuffer(0);
+		brdfRootSig.Finalize(L"BRDF LUT RootSig");
+			auto& brdfPSO = m_RootSigAndPSOs->m_BRDFLUTPSO;
+			brdfPSO.SetName(L"EnvironmentLighting : BRDF LUT PSO");
+		brdfPSO.SetRootSignature(brdfRootSig);
+		brdfPSO.SetComputeShader(BRDFLUTCS_cso, sizeof(BRDFLUTCS_cso));
+			brdfPSO.Finalize();
 	}
 
 	void EnvironmentLightingManager::SaveDDS()
@@ -115,16 +146,25 @@ namespace Renderer::EnvironmentLighting
 
 	void EnvironmentLightingManager::BakeEnvironmentTextures(GraphicsContext& gfxContext)
 	{
+		(void)gfxContext;
+		if (m_Baked || m_HDRLoaded || !m_Textures.HDRTexture.IsValid()) return;
 
-		//EquirectangularToCubemapPass(); // CubeMap
+		ComputeContext& computeContext = ComputeContext::Begin(L"Environment IBL Bake");
 
-		//IrradianceConvolutionPass(); // Diffuse IBL
+		EquirectangularToCubemapPass(computeContext.GetGraphicsContext());
+		IrradianceConvolutionPass(computeContext.GetGraphicsContext());
+		SpecularPrefilterPass(computeContext.GetGraphicsContext());
+		BRDFLUTPass(computeContext.GetGraphicsContext());
 
-		//SpecularPrefilterPass(); // Specular IBL
+		computeContext.TransitionResource(*m_EnvironmentCubeMap, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		computeContext.TransitionResource(*m_IrradianceCubeMap,	D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		computeContext.TransitionResource(*m_PrefilterCubeMap,	D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		computeContext.TransitionResource(*m_BRDFLUT,			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-		//BRDFLUTPass();
+		computeContext.Finish(true);
 
-		//SaveDDS();
+		m_Baked = true;
+		m_Ready = true;
 	}
 
 	void EnvironmentLightingManager::LoadHDR(const std::wstring& HDRPath)
@@ -160,7 +200,26 @@ namespace Renderer::EnvironmentLighting
 		* 资源RootSig(自创),PSO(自创), 根实参(t0为HDR Map, s0为静态 point Sampler),视口矩阵和裁剪矩阵(传参),RT(自创),VS,PS
 		*
 		*/
+		ComputeContext& context = gfxContext.GetComputeContext();
 
+		struct alignas(16) EnvironmentBakeCB
+		{
+			uint32_t Size;
+			uint32_t MipLevel;
+			float Roughness;
+			uint32_t SampleCount;
+		} constants = { m_EnvironmentCubeSize, 0, 0.0f, 1024 };
+
+		context.SetRootSignature(m_RootSigAndPSOs->m_EquirectToCubemapRootSig);
+		context.SetPipelineState(m_RootSigAndPSOs->m_EquirectToCubemapPSO);
+		context.TransitionResource(*m_EnvironmentCubeMap, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		context.SetDynamicDescriptor(0, 0, m_Textures.HDRTexture.GetSRV());
+		context.SetDynamicDescriptor(1, 0, m_EnvironmentCubeMap->GetUAV(0));
+		context.SetDynamicConstantBufferView(2, sizeof(constants), &constants);
+
+		context.Dispatch3D(m_EnvironmentCubeSize, m_EnvironmentCubeSize, 6, 8, 8, 1);
+
+		context.InsertUAVBarrier(*m_EnvironmentCubeMap);
 	}
 
 	void EnvironmentLightingManager::IrradianceConvolutionPass(GraphicsContext& gfxContext)
@@ -169,7 +228,28 @@ namespace Renderer::EnvironmentLighting
 		// 漫反射环境光卷积。
 		// 对每个输出方向做 cosine-weighted hemisphere integration。
 		// 低频，分辨率一般很小。
-		(void)gfxContext;
+
+		ComputeContext& context = gfxContext.GetComputeContext();
+
+		struct alignas(16) EnvironmentBakeCB
+		{
+			uint32_t Size;
+			uint32_t MipLevel;
+			float Roughness;
+			uint32_t SampleCount;
+		} constants = { m_IrradianceCubeSize, 0, 0.0f, 1024 };
+
+		context.SetRootSignature(m_RootSigAndPSOs->m_IrradianceRootSig);
+		context.SetPipelineState(m_RootSigAndPSOs->m_IrradiancePSO);
+		context.TransitionResource(*m_EnvironmentCubeMap, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		context.TransitionResource(*m_IrradianceCubeMap, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		context.SetDynamicDescriptor(0, 0, m_EnvironmentCubeMap->GetSRV());
+		context.SetDynamicDescriptor(1, 0, m_IrradianceCubeMap->GetUAV(0));
+		context.SetDynamicConstantBufferView(2, sizeof(constants), &constants);
+
+		context.Dispatch3D(m_IrradianceCubeSize, m_IrradianceCubeSize, 6, 8, 8, 1);
+
+		context.InsertUAVBarrier(*m_IrradianceCubeMap);
 	}
 
 	void EnvironmentLightingManager::SpecularPrefilterPass(GraphicsContext& gfxContext)
@@ -182,7 +262,32 @@ namespace Renderer::EnvironmentLighting
 		// 关键：
 		// - GGX importance sampling
 		// - 输出到不同 mip level
-		(void)gfxContext;
+		ComputeContext& context = gfxContext.GetComputeContext();
+
+		context.SetRootSignature(m_RootSigAndPSOs->m_PrefilterRootSig);
+		context.SetPipelineState(m_RootSigAndPSOs->m_PrefilterPSO);
+
+		context.TransitionResource(*m_EnvironmentCubeMap, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		context.TransitionResource(*m_PrefilterCubeMap, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+		for (uint32_t mip = 0; mip < m_PrefilterMipCount; ++mip)
+		{
+			const uint32_t mipSize = std::max(1u, m_PrefilterCubeSize >> mip);
+			const float roughness = m_PrefilterMipCount > 1 ? (float)mip / (float)(m_PrefilterMipCount - 1) : 0.0f;
+			struct alignas(16) EnvironmentBakeCB
+			{
+				uint32_t Size;
+				uint32_t MipLevel;
+				float Roughness;
+				uint32_t SampleCount;
+			} constants = { mipSize, mip, roughness, 1024 };
+
+			context.SetDynamicDescriptor(0, 0, m_EnvironmentCubeMap->GetSRV());
+			context.SetDynamicDescriptor(1, 0, m_PrefilterCubeMap->GetUAV(mip));
+			context.SetDynamicConstantBufferView(2, sizeof(constants), &constants);
+			context.Dispatch3D(mipSize, mipSize, 6, 8, 8, 1);
+			context.InsertUAVBarrier(*m_PrefilterCubeMap);
+		}
 	}
 
 	void EnvironmentLightingManager::BRDFLUTPass(GraphicsContext& gfxContext)
@@ -194,15 +299,29 @@ namespace Renderer::EnvironmentLighting
 		// 常见做法：
 		// - fullscreen triangle
 		// - 或 compute shader
-		(void)gfxContext;
+
+		ComputeContext& context = gfxContext.GetComputeContext();
+
+		struct alignas(16) EnvironmentBakeCB
+		{
+			uint32_t Size;
+			uint32_t MipLevel;
+			float Roughness;
+			uint32_t SampleCount;
+		} constants = { m_BRDFLUTSize, 0, 0.0f, 1024 };
+
+		context.SetRootSignature(m_RootSigAndPSOs->m_BRDFLUTRootSig);
+		context.SetPipelineState(m_RootSigAndPSOs->m_BRDFLUTPSO);
+		context.TransitionResource(*m_BRDFLUT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		context.SetDynamicDescriptor(0, 0, m_BRDFLUT->GetUAV(0));
+		context.SetDynamicConstantBufferView(1, sizeof(constants), &constants);
+		context.Dispatch2D(m_BRDFLUTSize, m_BRDFLUTSize, 8, 8);
+		context.InsertUAVBarrier(*m_BRDFLUT);
 	}
 
 
-	void EnvironmentLightingManager::SkyboxPass(GraphicsContext& gfxcontext, const Camera& camera)
+	void EnvironmentLightingManager::SkyboxPass(GraphicsContext& gfxcontext, const Scene::Camera::Camera& camera)
 	{
-		//if (!m_Ready || m_TextureRefs.EnvironmentCubeTextureRef.IsValid()) return;
-
-
 		// TODO:
 		// 1) 设置深度状态：DepthFunc = LessEqual，DepthWrite = Off
 		// 2) 绑定 Skybox PSO / RootSig
@@ -210,25 +329,57 @@ namespace Renderer::EnvironmentLighting
 		// 4) 绑定 linear SamplerDesc 到 s0
 		// 5) 使用去掉 translation 的 view matrix
 		// 6) 绘制 cube
-		//
-		// 伪代码示意：
-		// ctx.SetGraphicsPSO(m_SkyboxPSO.get());
-		// ctx.SetRootSignature(m_SkyboxRootSig.get());
-		// ctx.SetShaderResource(0, m_Resources.EnvironmentCube->GetSRV());
-		// ctx.SetSamplerDesc(0, m_LinearSamplerDesc.get());
-		// ctx.DrawIndexed(36);
 
+		if (!m_Ready || m_EnvironmentCubeMap == nullptr) return;
 
+		struct alignas(16) SkyboxCameraCB
+		{
+			Math::Matrix4 InvView;
+			Math::Matrix4 InvProj;
+		} cameraCB = { Math::Invert(camera.GetViewMatrix()), Math::Invert(camera.GetProjMatrix()) };
+
+		gfxcontext.SetRootSignature(m_RootSigAndPSOs->m_SkyboxRootSig); // skybox要点
+		gfxcontext.SetPipelineState(m_RootSigAndPSOs->m_SkyboxPSO);		//  skybox要点
+
+		gfxcontext.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		gfxcontext.TransitionResource(*m_EnvironmentCubeMap, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		gfxcontext.SetDynamicDescriptor(0, 0, m_EnvironmentCubeMap->GetSRV());
+		gfxcontext.SetDynamicConstantBufferView(1, sizeof(cameraCB), &cameraCB);
+
+		gfxcontext.Draw(3, 0);
 	}
 
 	void EnvironmentLightingManager::CreateEquirectangularToCubemapPipeline()
 	{
+		auto& rootSig = m_RootSigAndPSOs->m_EquirectToCubemapRootSig;
+		rootSig.Reset(3, 1);
+		rootSig.InitStaticSampler(0, m_LinearSamplerDesc, D3D12_SHADER_VISIBILITY_ALL);
+		rootSig[0].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 1);
+		rootSig[1].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 1);
+		rootSig[2].InitAsConstantBuffer(0);
+		rootSig.Finalize(L"Equirectangular To Cubemap RootSig");
 
+		auto& pso = m_RootSigAndPSOs->m_EquirectToCubemapPSO;
+		pso.SetName(L"EnvironmentLighting : Equirectangular To Cubemap PSO");
+		pso.SetRootSignature(rootSig);
+		pso.SetComputeShader(EquirectangularToCubemapCS_cso, sizeof(EquirectangularToCubemapCS_cso));
+		pso.Finalize();
 	}
 
 	void EnvironmentLightingManager::InitializeToCubemap()
 	{
-		//m_EnvironmentCubeMap = Graphics::BufferManager::CreateColorBuffer(L"EnvironmentCubeMap RT", )
+		m_EnvironmentCubeMap = std::make_shared<ColorBuffer>();
+		m_EnvironmentCubeMap->CreateCube(L"EnvironmentCubeMap", m_EnvironmentCubeSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+
+		m_IrradianceCubeMap = std::make_shared<ColorBuffer>();
+		m_IrradianceCubeMap->CreateCube(L"IrradianceCubeMap", m_IrradianceCubeSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+
+		m_PrefilterCubeMap = std::make_shared<ColorBuffer>();
+		m_PrefilterCubeMap->CreateCube(L"PrefilterCubeMap", m_PrefilterCubeSize, m_PrefilterMipCount, DXGI_FORMAT_R16G16B16A16_FLOAT);
+
+		m_BRDFLUT = std::make_shared<ColorBuffer>();
+		m_BRDFLUT->Create(L"BRDF LUT", m_BRDFLUTSize, m_BRDFLUTSize, 1, DXGI_FORMAT_R16G16_FLOAT);
 	}
+
 }
 

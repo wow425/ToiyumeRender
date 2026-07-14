@@ -67,6 +67,9 @@ namespace Renderer::Deferred
 		GBuffer_Material,  // R为Metallic，G为Roughness，B为Specular， A为Shading Model / Material ID
 		GBuffer_Emission,  // R为Emissive， G为Subsurface Mask， B为Custom Data， A为ClearCoat   
 		Depth,
+		IBL_Irradiance,
+		IBL_Prefilter,
+		IBL_BRDFLUT,
 		Light, // 光照常量
 		Camera, // Camera常量
 

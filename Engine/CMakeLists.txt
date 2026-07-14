@@ -58,6 +58,33 @@ compile_shader(
     ps_6_4
 )
 
+compile_shader(
+    EquirectangularToCubemapCS
+   Shader/06_Environment/EquirectangularToCubemapCS.hlsl
+   MainCS
+   cs_6_4
+)
+
+compile_shader(
+   IrradianceConvolutionCS
+   Shader/06_Environment/IrradianceConvolutionCS.hlsl
+   MainCS
+   cs_6_4
+)
+
+compile_shader(
+   SpecularPrefilterCS
+   Shader/06_Environment/SpecularPrefilterCS.hlsl
+   MainCS
+   cs_6_4
+)
+
+compile_shader(
+   BRDFLUTCS
+    Shader/06_Environment/BRDFLUTCS.hlsl
+    MainCS
+   cs_6_4
+)
 
 # ==========================================
 # 链接Shader
@@ -69,6 +96,10 @@ add_dependencies(TooiyumeEngine
    LightingPS_Shader
    SkyboxVS_Shader
    SkyboxPS_Shader
+   EquirectangularToCubemapCS_Shader
+  IrradianceConvolutionCS_Shader
+  SpecularPrefilterCS_Shader
+  BRDFLUTCS_Shader
 )
 
 target_include_directories(TooiyumeEngine PUBLIC

@@ -1,3 +1,6 @@
+// #pragma hlsl profile ps_6_6
+// #pragma hlsl entry main
+
 #include "../02_Deferred/DeferredCommon.hlsli"
 
 
@@ -6,6 +9,11 @@ Texture2D<float2> GBuffer_Normal : register(t1);
 Texture2D<float4> GBuffer_Material : register(t2);
 Texture2D<float4> GBuffer_Emission : register(t3);
 Texture2D<float> DepthTexture : register(t4);
+
+TextureCube<float4> IrradianceMap : register(t5);
+TextureCube<float4> PrefilterMap : register(t6);
+Texture2D<float2> BRDFLUT : register(t7);
+SamplerState LinearClampSampler : register(s0);
 
 cbuffer Light : register(b0)
 {
@@ -32,6 +40,12 @@ cbuffer Camera : register(b1)
     float4x4 InViewProj;
 }
 
+float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
+{
+   return F0 + (max(float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness), F0) - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
+}
+
+
 float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
 {
     uint2 pixel = uint2(position.xy);
@@ -44,8 +58,8 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
     float ao = baseColorAO.a;
 
     float4 material = GBuffer_Material.Load(int3(pixel, 0));
-    float metallic = material.r;
-    float roughness = material.g;
+	float metallic = saturate(material.r);
+    float roughness = max(material.g, 0.04);
     float specular = material.b;
 
     float3 emission = GBuffer_Emission.Load(int3(pixel, 0)).rgb;
@@ -63,7 +77,9 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
     float3 positionWS = ReconstructWorldPosition(uv, depth, InViewProj);
 
     float3 V = normalize(cameraPos.xyz - positionWS);
-
+    float3 N = normalize(normalWS);
+    float3 F0 = float3(0.04, 0.04, 0.04) * max(specular, 0.001); // ?
+    F0 = lerp(F0, baseColor, metallic);
     //-----------------------------------
     // Directional Light
     //-----------------------------------
@@ -71,7 +87,7 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
     float3 dirRadiance = DirectionalColor.rgb * DirectionIntensity.w;
 
     float3 directionalLighting = EvaluateCookTorranceLight(
-        normalWS,
+        N,
         V,
         dirL,
         baseColor,
@@ -93,7 +109,7 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
     float3 pointRadiance = PointLightColorIntensity.rgb * PointLightColorIntensity.a * pointAttenuation;
         
     float3 pointLighting = EvaluateCookTorranceLight(
-        normalWS,
+        N,
         V,
         pointL,
         baseColor,
@@ -103,15 +119,28 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
     );
 
     //-----------------------------------
-    // Ambient
+    // PBR IBL Ambient
     //-----------------------------------
-    float3 ambient = baseColor * 0.2 * ao; // 添加IBL后改为0.03
+    //float3 ambient = baseColor * 0.2 * ao; // 添加IBL后改为0.03
+    // 尚未看
+   float NdotV = saturate(dot(N, V));
+   float3 F = FresnelSchlickRoughness(NdotV, F0, roughness);
+    float3 kS = F;
+    float3 kD = (1.0 - kS) * (1.0 - metallic);
+    float3 irradiance = IrradianceMap.Sample(LinearClampSampler, N).rgb;
+   float3 diffuseIBL = irradiance * baseColor;
+    float3 R = reflect(-V, N);
+   const float maxPrefilterMip = 4.0;
+  float3 prefilteredColor = PrefilterMap.SampleLevel(LinearClampSampler, R, roughness * maxPrefilterMip).rgb;
+   float2 envBRDF = BRDFLUT.Sample(LinearClampSampler, float2(NdotV, roughness)).rg;
+   float3 specularIBL = prefilteredColor * (F * envBRDF.x + envBRDF.y);
+   float3 ambient = (kD * diffuseIBL + specularIBL) * ao;
+
 
     //-----------------------------------
     // Final Color
     //-----------------------------------
-    //float3 finalColor = ambient + directionalLighting + pointLighting + emission;
-    float3 finalColor = ambient + pointLighting + emission;
+    float3 finalColor = ambient + directionalLighting + pointLighting + emission;
 
     finalColor = finalColor / (finalColor + 1.0); // ToneMapping
     finalColor = pow(saturate(finalColor), 1.0 / 2.2); // 伽马校正

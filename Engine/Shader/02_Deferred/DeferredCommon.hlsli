@@ -1,4 +1,4 @@
-#pragma oncce
+#pragma once
 
 #ifndef __DEFERRED_COMMON_HLSLI__
 #define __DEFERRED_COMMON_HLSLI__

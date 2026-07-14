@@ -30,9 +30,9 @@ class SamplerDescDesc;
 class GraphicsPSO;
 class RootSignature;
 class GraphicsContext;
-class Camera;
 class ByteAddressBuffer;
 
+namespace Scene::Camera{ class Camera; }
 namespace Renderer::EnvironmentLighting
 {
 
@@ -50,19 +50,19 @@ namespace Renderer::EnvironmentLighting
 	struct EnvironmentMapRootSigAndPSOs
 	{
 		RootSignature m_EquirectToCubemapRootSig; // hdr转cubemap
-		GraphicsPSO   m_EquirectToCubemapPSO;
+		ComputePSO   m_EquirectToCubemapPSO;
 
 		RootSignature m_SkyboxRootSig;		 // skybox绘制
 		GraphicsPSO     m_SkyboxPSO;
 
 		RootSignature m_IrradianceRootSig;		// Diffuse IBL
-		GraphicsPSO     m_IrradiancePSO;
+		ComputePSO     m_IrradiancePSO;
 
 		RootSignature m_PrefilterRootSig;		// Specular IBL
-		GraphicsPSO     m_PrefilterPSO;
+		ComputePSO     m_PrefilterPSO;
 
-		RootSignature m_BRDFLUTRootSig;			// Specular BRDF LUT
-		GraphicsPSO     m_BRDFLUTPSO;
+		RootSignature	m_BRDFLUTRootSig;			// Specular BRDF LUT
+		ComputePSO     m_BRDFLUTPSO;
 	};
 
 	class EnvironmentLightingManager
@@ -78,24 +78,46 @@ namespace Renderer::EnvironmentLighting
 		void BakeEnvironmentTextures(GraphicsContext& gfxContext);		// 将hdr纹理烘焙成skybox,IBL纹理
 
 
-		void SkyboxPass(GraphicsContext& gfxcontext, const Camera& camera); // 绘制skybox
+		void SkyboxPass(GraphicsContext& gfxcontext, const  Scene::Camera::Camera& camera); // 绘制skybox
 
 
 		const EnvironmentMapTextures& GetEnvironmentMapTextureRefs() const { return m_Textures; }
 
+
+		bool IsReady() const { return m_Ready; }
+
+		const ColorBuffer* GetEnvironmentCube() const { return m_EnvironmentCubeMap.get(); }
+		const ColorBuffer* GetIrradianceCube() const { return m_IrradianceCubeMap.get(); }
+		const ColorBuffer* GetPrefilterCube() const { return m_PrefilterCubeMap.get(); }
+		const ColorBuffer* GetBRDFLUT() const { return m_BRDFLUT.get(); }
+
+		uint32_t GetPrefilterMipCount() const { return m_PrefilterMipCount; }
 	private:
 		EnvironmentMapTextures m_Textures = {};
 		std::shared_ptr<EnvironmentMapRootSigAndPSOs> m_RootSigAndPSOs = nullptr;
 		SamplerDesc m_LinearSamplerDesc;
 
+		bool m_HDRLoaded = false;
+		bool m_Baked = false;
+		bool m_Ready = false;
+		uint32_t m_EnvironmentCubeSize = 512;
+		uint32_t m_IrradianceCubeSize = 32;
+		uint32_t m_PrefilterCubeSize = 128;
+		uint32_t m_PrefilterMipCount = 5;
+		uint32_t m_BRDFLUTSize = 256;
+
 	private:
 		std::shared_ptr<ColorBuffer> m_EnvironmentCubeMap;
+		std::shared_ptr<ColorBuffer> m_IrradianceCubeMap;
+		std::shared_ptr<ColorBuffer> m_PrefilterCubeMap;
+		std::shared_ptr<ColorBuffer> m_BRDFLUT;
+
 		void InitializeToCubemap();
 		void CreateEquirectangularToCubemapPipeline();
 		void EquirectangularToCubemapPass(GraphicsContext& gfxContext);
 	private:
-		void CreateSkyboxPipeline(DXGI_FORMAT scene, DXGI_FORMAT depth);	// 创建RootSig和PSO
-		void CreatePrecomputePipelines(DXGI_FORMAT scene, DXGI_FORMAT depth); // TODO
+		void CreateSkyboxPipeline(DXGI_FORMAT scene, DXGI_FORMAT depth) const;	// 创建RootSig和PSO
+		void CreatePrecomputePipelines(DXGI_FORMAT scene, DXGI_FORMAT depth) const; // TODO
 		void CreateSamplerDesc(); // 配置线性sampler
 
 
@@ -107,7 +129,6 @@ namespace Renderer::EnvironmentLighting
 
 		void SaveDDS();
 	};
-
 } // Renderer
 
 

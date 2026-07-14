@@ -37,7 +37,7 @@ namespace Renderer::EnvironmentLighting
 {
 	EnvironmentLightingManager s_EnvironmentLightingManager;
 
-	constexpr wchar_t HDRtexture[] = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Skybox/grasslands_sunset_2k.hdr";
+	constexpr wchar_t HDRtexture[] = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Skybox/grasslands_sunset_2k.dds";
 	//constexpr wchar_t kDiffuseIBL[] = L"Textures/studio_diffuseIBL.dds";
 	//constexpr wchar_t kSpecularIBL[] = L"Textures/studio_specularIBL.dds";
 }
@@ -92,7 +92,7 @@ namespace Renderer::Deferred
 
 			Scene::LightingSystem::InitializeResources();
 		}
-		// skybox
+		// skybox,IBL准备
 		{
 			s_EnvironmentLightingManager.Initialize(SceneColorBufferFormat, SceneDepthBufferFormat);
 			s_EnvironmentLightingManager.LoadHDR(HDRtexture);
@@ -150,6 +150,8 @@ namespace Renderer::Deferred
 				}
 			}
 		}
+
+		s_EnvironmentLightingManager.BakeEnvironmentTextures(gfxContext);
 
 		// 这里放每帧更新：
 		// 1. 相机常量 m_CameraController管理分离
@@ -307,6 +309,16 @@ Vignette
 				context.SetDynamicDescriptor((uint32_t)LightingSlot::GBuffer_Material, 0, m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_Material]->GetSRV());
 				context.SetDynamicDescriptor((uint32_t)LightingSlot::GBuffer_Emission, 0, m_GBuffers->GBuffers[(uint32_t)GBufferSlot::GBuffer_Emission]->GetSRV());
 				context.SetDynamicDescriptor((uint32_t)LightingSlot::Depth, 0, m_GBuffers->SceneDepthBuffer->GetDepthSRV());
+
+				// IBL
+				context.TransitionResource(*(const_cast<ColorBuffer*>(s_EnvironmentLightingManager.GetIrradianceCube())), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+				context.TransitionResource(*(const_cast<ColorBuffer*>(s_EnvironmentLightingManager.GetPrefilterCube())), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+				context.TransitionResource(*(const_cast<ColorBuffer*>(s_EnvironmentLightingManager.GetBRDFLUT())), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+				context.SetDynamicDescriptor((uint32_t)LightingSlot::IBL_Irradiance, 0, s_EnvironmentLightingManager.GetIrradianceCube()->GetSRV());
+				context.SetDynamicDescriptor((uint32_t)LightingSlot::IBL_Prefilter, 0, s_EnvironmentLightingManager.GetPrefilterCube()->GetSRV());
+				context.SetDynamicDescriptor((uint32_t)LightingSlot::IBL_BRDFLUT, 0, s_EnvironmentLightingManager.GetBRDFLUT()->GetSRV());
+
+
 				context.SetConstantBuffer((uint32_t)LightingSlot::Light, Scene::LightingSystem::m_LightGPUBuffer.GetGpuVirtualAddress());
 
 				Scene::Camera::CameraData CameraCB;
@@ -326,7 +338,10 @@ Vignette
 		{
 			context.PIXBeginEvent(L"SkyPass");
 
-
+			context.TransitionResource(*m_GBuffers->SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			context.TransitionResource(*m_GBuffers->SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			context.SetRenderTarget(m_GBuffers->SceneColorBuffer->GetRTV(), m_GBuffers->SceneDepthBuffer->GetDSV());
+			s_EnvironmentLightingManager.SkyboxPass(context, *frame.Camera);
 
 			context.PIXEndEvent();
 		}  // 6.  Sky Pass
@@ -581,7 +596,16 @@ Vignette
 		PointSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
 
 		// 根签名设置并finalize
-		m_LightingRootSig.Reset((uint32_t)LightingSlot::Count, 0);
+		m_LightingRootSig.Reset((uint32_t)LightingSlot::Count, 1);
+		SamplerDesc LinearSamplerDesc;
+		LinearSamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+		LinearSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		LinearSamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		LinearSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		m_LightingRootSig.InitStaticSampler(0, LinearSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
+
+
+
 		// 直接Texture.Load()，不用sampler
 		// m_LightingRootSig.InitStaticSampler(0, PointSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL); // 点采样器s0
 		m_LightingRootSig[(uint32_t)LightingSlot::GBuffer_BaseColor].InitAsDescriptorRange(
@@ -598,6 +622,13 @@ Vignette
 
 		m_LightingRootSig[(uint32_t)LightingSlot::Depth].InitAsDescriptorRange(
 			D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)LightingSlot::Depth, 1, D3D12_SHADER_VISIBILITY_PIXEL); // t4
+		// IBL
+		m_LightingRootSig[(uint32_t)LightingSlot::IBL_Irradiance].InitAsDescriptorRange(
+		D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)LightingSlot::IBL_Irradiance, 1, D3D12_SHADER_VISIBILITY_PIXEL); // t5
+		m_LightingRootSig[(uint32_t)LightingSlot::IBL_Prefilter].InitAsDescriptorRange(
+		D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)LightingSlot::IBL_Prefilter, 1, D3D12_SHADER_VISIBILITY_PIXEL); // t6
+		m_LightingRootSig[(uint32_t)LightingSlot::IBL_BRDFLUT].InitAsDescriptorRange(
+		D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)LightingSlot::IBL_BRDFLUT, 1, D3D12_SHADER_VISIBILITY_PIXEL); // t7
 
 		m_LightingRootSig[(uint32_t)LightingSlot::Light].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_PIXEL); // b0
 		m_LightingRootSig[(uint32_t)LightingSlot::Camera].InitAsConstantBuffer(1, D3D12_SHADER_VISIBILITY_PIXEL); // b1
