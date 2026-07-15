@@ -76,13 +76,13 @@ void MainCS(uint3 dispatchThreadID : SV_DispatchThreadID)
                 
             float mip = 0.5 * log2(saSample /saTexel);
                
-            mip =clamp( mip,0.0,5.0);
+            mip = clamp(mip, 0.0, gMipLevel - 1);
                 
             float3 color =gEnvironmentCube .SampleLevel(gLinearSampler,L,mip).rgb;
                 
-            prefilteredColor +=color *NdotL;
-                
-            totalWeight +=NdotL;
+            float weight = NdotL;
+            prefilteredColor += color * weight;
+            totalWeight += weight;
         }
     }
 

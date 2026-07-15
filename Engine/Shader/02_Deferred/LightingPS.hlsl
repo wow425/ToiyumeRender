@@ -45,6 +45,16 @@ float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
    return F0 + (max(float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness), F0) - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
 }
 
+// ACES Filmic Tone Mapping Curve (Krzysztof Narkowicz fit)
+float3 ACESFilm(float3 x)
+{
+    float a = 2.51f;
+    float b = 0.03f;
+    float c = 2.43f;
+    float d = 0.59f;
+    float e = 0.14f;
+    return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
+}
 
 float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
 {
@@ -78,7 +88,7 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
 
     float3 V = normalize(cameraPos.xyz - positionWS);
     float3 N = normalize(normalWS);
-    float3 F0 = float3(0.04, 0.04, 0.04) * max(specular, 0.001); // ?
+    float3 F0 = 0.16 * specular * specular;
     F0 = lerp(F0, baseColor, metallic);
     //-----------------------------------
     // Directional Light
@@ -130,7 +140,7 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
     float3 irradiance = IrradianceMap.Sample(LinearClampSampler, N).rgb;
    float3 diffuseIBL = irradiance * baseColor;
     float3 R = reflect(-V, N);
-   const float maxPrefilterMip = 4.0;
+   const float maxPrefilterMip = 8.0;
   float3 prefilteredColor = PrefilterMap.SampleLevel(LinearClampSampler, R, roughness * maxPrefilterMip).rgb;
    float2 envBRDF = BRDFLUT.Sample(LinearClampSampler, float2(NdotV, roughness)).rg;
    float3 specularIBL = prefilteredColor * (F * envBRDF.x + envBRDF.y);
@@ -142,8 +152,7 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
     //-----------------------------------
     float3 finalColor = ambient + directionalLighting + pointLighting + emission;
 
-    finalColor = finalColor / (finalColor + 1.0); // ToneMapping
-    finalColor = pow(saturate(finalColor), 1.0 / 2.2); // 伽马校正
+    finalColor = ACESFilm(finalColor); // ACES校正
 
     return float4(finalColor, 1.0);
     //return float4(abs(positionWS) * 0.1, 1);

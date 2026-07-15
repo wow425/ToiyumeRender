@@ -1,4 +1,4 @@
-﻿#include "EnvironmentCommon.hlsli"
+#include "EnvironmentCommon.hlsli"
 
 TextureCube<float4> gEnvironmentCube : register(t0);
 RWTexture2DArray<float4> gIrradianceCube : register(u0);
@@ -32,8 +32,10 @@ void MainCS(uint3 dispatchThreadID : SV_DispatchThreadID)
        float sinTheta = sqrt(Xi.y);
        float3 tangentSample = float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
        float3 sampleDir = normalize(right * tangentSample.x + up * tangentSample.y + N * tangentSample.z);
-       irradiance += gEnvironmentCube.SampleLevel(gLinearSampler, sampleDir, 0).rgb;
-   }
+        // 采样后限制最大 Radiance，防止个别 HDR 像素导致积分爆炸
+        float3 sampleColor = gEnvironmentCube.SampleLevel(gLinearSampler, sampleDir, 0).rgb;
+        irradiance += min(sampleColor, float3(10.0, 10.0, 10.0)); // 这里的 10.0 可根据 HDR 曝光度调整
+    }
 
    irradiance /= float(sampleCount);
    gIrradianceCube[dispatchThreadID] = float4(irradiance, 1.0);
