@@ -368,8 +368,10 @@ namespace Renderer::EnvironmentLighting
 
 	void EnvironmentLightingManager::InitializeToCubemap()
 	{
+		uint32_t envMip = floor(log2(m_EnvironmentCubeSize)) + 1;
+		
 		m_EnvironmentCubeMap = std::make_shared<ColorBuffer>();
-		m_EnvironmentCubeMap->CreateCube(L"EnvironmentCubeMap", m_EnvironmentCubeSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+		m_EnvironmentCubeMap->CreateCube(L"EnvironmentCubeMap", m_EnvironmentCubeSize, 5, DXGI_FORMAT_R16G16B16A16_FLOAT);
 
 		m_IrradianceCubeMap = std::make_shared<ColorBuffer>();
 		m_IrradianceCubeMap->CreateCube(L"IrradianceCubeMap", m_IrradianceCubeSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
