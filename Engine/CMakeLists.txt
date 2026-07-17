@@ -11,7 +11,9 @@ file(GLOB_RECURSE ENGINE_SOURCES
 # ==========================================
 # Engine 静态库
 # ==========================================
-add_library(TooiyumeEngine STATIC ${ENGINE_SOURCES})
+add_library(TooiyumeEngine STATIC ${ENGINE_SOURCES}
+        04_Renderer/TemporalEffects.cpp
+        04_Renderer/TemporalEffects.h)
 
 # ==========================================
 # Shader 编译

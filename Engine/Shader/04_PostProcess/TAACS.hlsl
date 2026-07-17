@@ -1,13 +1,15 @@
+
+// 重投影---防鬼影---时间融合
+
+
+
 // 输入资源
 Texture2D<float4> gCurrentColor : register(t1, space1);
 Texture2D<float4> gHistoryColor : register(t2, space1);
-Texture2D<float> gDepth : register(t3, space1);
 Texture2D<float2> gVelocity : register(t4, space1);
-
 // 输出资源
 RWTexture2D<float4> gOutputColor : register(u0, space1);
 
-// 参数
 cbuffer TAAConstans : register(b2)
 {
     float2 gScreenSize;
@@ -26,21 +28,16 @@ SamplerState gsamAnisotropicClamp : register(s5);
 [numthreads(8, 8, 1)]
 void CS(uint3 dtid : SV_DispatchThreadID)
 {
-    
-    // 【核心修复】：越界线程直接杀死 (Bounds Check)
-    // 保护 UAV 写入不触发 GPU Page Fault
+    // 防止线程越界
     if (dtid.x >= (uint) gScreenSize.x || dtid.y >= (uint) gScreenSize.y)
     {
         return;
     }
     
-    
-    
     // 1. 提取当前颜色，供早期判断使用
     float4 currColor = gCurrentColor[dtid.xy];
 
-    // 【核心修改】：处理冷启动/相机瞬移 (Alpha == 1.0)
-    // 提示：使用 >= 0.999f
+    // 处理冷启动/相机瞬移 (Alpha == 1.0)
     if (gAlpha >= 0.999f)
     {
         // 直接输出当前颜色，并结束该线程
@@ -54,14 +51,13 @@ void CS(uint3 dtid : SV_DispatchThreadID)
     float2 velocity = gVelocity.SampleLevel(gsamPointClamp, uv, 0);
     float2 historyUV = uv - velocity;
     
-        // 3. 边界检查：注意这里使用 0.0f 和 1.0f，避免类型歧义
+    // 3. 边界检查：注意这里使用 0.0f 和 1.0f，避免类型歧义
     if (any(historyUV < 0.0f) || any(historyUV > 1.0f))
     {
         gOutputColor[dtid.xy] = currColor; // 直接用上面声明好的 currColor
         return;
     }
-    
-    // （删除了这里原本重复声明的 currColor）
+
     float4 m1 = 0.0f, m2 = 0.0f; // 明确初始化为 float
     
     [unroll]
@@ -77,7 +73,7 @@ void CS(uint3 dtid : SV_DispatchThreadID)
     
     // 计算 3x3 邻域的均值和标准差
     float4 mean = m1 / 9.0f;
-    // 4. 注意这里 max 的第一个参数必须是 0.0f
+
     float4 stddev = sqrt(max(0.0f, (m2 / 9.0f) - (mean * mean)));
     
     // 5. 邻域钳制 (Neighborhood Clamping)

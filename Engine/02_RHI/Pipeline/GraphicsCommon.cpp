@@ -13,7 +13,10 @@ namespace Graphics
 {
 	SamplerDesc SamplerLinearWrapDesc;
 	SamplerDesc SamplerLinearClampDesc;
+	SamplerDesc SamplerLinearBorderDesc;
+
 	SamplerDesc SamplerPointClampDesc;
+	SamplerDesc SamplerPointBorderDesc;
 
 	D3D12_CPU_DESCRIPTOR_HANDLE SamplerLinearWrap;
 	D3D12_CPU_DESCRIPTOR_HANDLE SamplerAnisoWrap;
@@ -61,18 +64,27 @@ void Graphics::InitializeCommonState(void)
 	SamplerLinearWrapDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 	SamplerLinearWrap = SamplerLinearWrapDesc.CreateDescriptor();
 
-
-
-
+	SamplerLinearBorderDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	SamplerLinearBorderDesc.SetTextureAddressMode(D3D12_TEXTURE_ADDRESS_MODE_BORDER);
+	SamplerLinearBorderDesc.SetBorderColor(Color(0.0f, 0.0f, 0.0f, 0.0f));
+	SamplerLinearBorder = SamplerLinearBorderDesc.CreateDescriptor();
 
 	SamplerLinearClampDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 	SamplerLinearClampDesc.SetTextureAddressMode(D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 	SamplerLinearClamp = SamplerLinearClampDesc.CreateDescriptor();
 
-
 	SamplerPointClampDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
 	SamplerPointClampDesc.SetTextureAddressMode(D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 	SamplerPointClamp = SamplerPointClampDesc.CreateDescriptor();
+
+	SamplerPointBorderDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+	SamplerPointBorderDesc.SetTextureAddressMode(D3D12_TEXTURE_ADDRESS_MODE_BORDER);
+	SamplerPointBorderDesc.SetBorderColor(Color(0.0f, 0.0f, 0.0f, 0.0f));
+	SamplerPointBorder = SamplerPointBorderDesc.CreateDescriptor();
+
+
+
+
 
 
 	// --- 2.纹理 ---
@@ -156,13 +168,14 @@ void Graphics::InitializeCommonState(void)
 
 
 	// --- 6. 全局根签名 ---
-	g_CommonRS.Reset(4, 2); // 删减了无用的边界采样器，改为2个静态采样器
+	g_CommonRS.Reset(4, 3);
 	g_CommonRS[0].InitAsConstants(0, 4);
 	g_CommonRS[1].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 10);
 	g_CommonRS[2].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 10);
 	g_CommonRS[3].InitAsConstantBuffer(1);
 	g_CommonRS.InitStaticSampler(0, SamplerLinearClampDesc);
-	g_CommonRS.InitStaticSampler(1, SamplerLinearWrapDesc); // 替换为基础绘制常用的 Wrap
+	g_CommonRS.InitStaticSampler(1, SamplerPointBorderDesc);
+	g_CommonRS.InitStaticSampler(2, SamplerLinearBorderDesc);
 	g_CommonRS.Finalize(L"GraphicsCommonRS");
 }
 

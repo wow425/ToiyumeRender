@@ -57,7 +57,7 @@ float3 ACESFilm(float3 x)
 }
 
 float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
-{
+{ 
     uint2 pixel = uint2(position.xy);
 
     //-----------------------------------
