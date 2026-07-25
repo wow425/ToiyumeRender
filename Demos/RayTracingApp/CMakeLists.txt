@@ -1,0 +1,56 @@
+# ==========================================
+# 编译可执行文件
+# ==========================================
+# 使用 WIN32 标志隐藏 Windows 黑框控制台
+add_executable(RayTracingApp WIN32 RayTracingApp.cpp)
+
+# ==========================================
+# Include 路径
+# ==========================================
+
+target_include_directories(
+        RayTracingApp
+        PUBLIC
+        # Engine根目录
+        ${CMAKE_SOURCE_DIR}/Engine
+        # 如果需要访问项目根目录
+        ${CMAKE_SOURCE_DIR}
+)
+
+target_include_directories(
+        RayTracingApp
+        PUBLIC
+        ${CMAKE_SOURCE_DIR}/cmake-build-debug/ShaderCache
+)
+
+# 链接引擎库
+target_link_libraries(RayTracingApp PRIVATE TooiyumeEngine)
+
+# ==========================================
+# 拷贝运行时的 DLL 依赖 (POST_BUILD)
+# ==========================================
+
+# 1. 拷贝 PIX 运行库
+add_custom_command(TARGET RayTracingApp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_SOURCE_DIR}/ThirdParty/PIX/bin/WinPixEventRuntime.dll"
+    $<TARGET_FILE_DIR:RayTracingApp>
+    COMMENT "Copying WinPixEventRuntime.dll to output directory..."
+)
+
+# 2. 拷贝 DXC 编译器动态库 (基于您提供的 vcpkg_installed 路径)
+add_custom_command(TARGET RayTracingApp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-windows/bin/dxcompiler.dll"
+    $<TARGET_FILE_DIR:RayTracingApp>
+    COMMENT "Copying dxcompiler.dll to output directory..."
+)
+
+# 3. 拷贝 DXIL 库 (DX12 编译 Shader 并签名的必需依赖，通常与 dxcompiler.dll 在同一目录下)
+add_custom_command(TARGET RayTracingApp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-windows/bin/dxil.dll"
+    $<TARGET_FILE_DIR:RayTracingApp>
+    COMMENT "Copying dxil.dll to output directory..."
+)
+

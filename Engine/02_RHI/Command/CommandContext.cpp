@@ -89,7 +89,7 @@ uint64_t CommandContext::Flush(bool WaitForCompletion)
 
 	ASSERT(m_CurrentAllocator != nullptr);
 	// 获取最新围栏值
-	uint64_t FenceValue = g_CommandManager.GetQueue(m_Type).ExecuteCommandList(m_CommandList);
+	uint64_t FenceValue = g_CommandManager.GetQueue(m_Type).ExecuteCommandList(m_CommandList.Get());
 	// 是否FenceValue对应的命令队列等待
 	if (WaitForCompletion)
 		g_CommandManager.WaitForFence(FenceValue);
@@ -131,7 +131,7 @@ uint64_t CommandContext::Finish(bool WaitForCompletion)
 
 	CommandQueue& Queue = g_CommandManager.GetQueue(m_Type);
 	// 执行命令列表
-	uint64_t FenceValue = Queue.ExecuteCommandList(m_CommandList);
+	uint64_t FenceValue = Queue.ExecuteCommandList(m_CommandList.Get());
 	Queue.DiscardAllocator(FenceValue, m_CurrentAllocator);
 	m_CurrentAllocator = nullptr;
 	// CPU端堆资源回收
@@ -175,7 +175,7 @@ CommandContext::~CommandContext(void)
 
 void CommandContext::Initialize(void)
 {
-	g_CommandManager.CreateNewCommandList(m_Type, &m_CommandList, &m_CurrentAllocator);
+	g_CommandManager.CreateNewCommandList(m_Type, &m_CurrentAllocator, TY_IID_PPV_ARGS(&m_CommandList));
 }
 
 void CommandContext::Reset(void)
@@ -494,7 +494,7 @@ void CommandContext::InitializeTexture(GpuResource& Dest, UINT NumSubresources, 
 	// copy data to the intermediate upload heap and then schedule a copy from the upload heap to the default texture
 	// 复制数据到上传堆，再从上传堆复制到默认纹理堆
 	DynAlloc mem = InitContext.ReserveUploadMemory(uploadBufferSize);
-	UpdateSubresources(InitContext.m_CommandList, Dest.GetResource(), mem.Buffer.GetResource(), 0, 0, NumSubresources, SubData);
+	UpdateSubresources(InitContext.m_CommandList.Get(), Dest.GetResource(), mem.Buffer.GetResource(), 0, 0, NumSubresources, SubData);
 	InitContext.TransitionResource(Dest, D3D12_RESOURCE_STATE_GENERIC_READ);
 
 	// Execute the command list and wait for it to finish so we can release the upload buffer
@@ -631,14 +631,14 @@ void CommandContext::PIXBeginEvent(const wchar_t* label)
 #ifdef RELEASE
 	(void)label;
 #else
-	::PIXBeginEvent(m_CommandList, 0, label);
+	::PIXBeginEvent(m_CommandList.Get(), 0, label);
 #endif
 }
 
 void CommandContext::PIXEndEvent(void)
 {
 #ifndef RELEASE
-	::PIXEndEvent(m_CommandList);
+	::PIXEndEvent(m_CommandList.Get());
 #endif
 }
 
@@ -647,7 +647,7 @@ void CommandContext::PIXSetMarker(const wchar_t* label)
 #ifdef RELEASE
 	(label);
 #else
-	::PIXSetMarker(m_CommandList, 0, label);
+	::PIXSetMarker(m_CommandList.Get(), 0, label);
 #endif
 }
 

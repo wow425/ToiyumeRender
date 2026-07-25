@@ -26,7 +26,7 @@ namespace GameCore
 	void InitializeApplication(IGameApp& game)
 	{
 
-		Graphics::Initialize(false);// 图形模块初始化
+		Graphics::Initialize(game.RequiresRaytracingSupport());// 图形模块初始化
 
 		SystemTime::Initialize();// 计时器模块
 

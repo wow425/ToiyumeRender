@@ -345,12 +345,22 @@
 </p> 
 </details>
 
+<details>
+<summary><b>2026-07-25: </b></summary>
+<p>啃DXR管线<p>
+<p> 1.DXR要求高版本的commandlist和device。<p>
+<p>2.根签名：光栅化是全局根签名，而DXR是局部+全局根签名。全局根签名GRS：存放TLAS，输出纹理，全局常量，全局资源堆。局部跟签名LRS:对特定shader生效，不通过API绑定，而是硬编码在着色器绑定表SBT的显存里，挂载光线命中的物体的专属资源<p>
+<p>3.着色器绑定表SBT:shader标识符+局部根签名。光线命中物体，获取物体实例ID去SBT查表以确定执行哪种shader并获得命中物体的参数。<p>
+<p>4.现代趋势是以bindless代替LRS,以实现极致的间接寻址，提高cache命中率。<p>
+<p>5.RTPSO:将会用到的子对象塞入PSO中，没有顶点输入布局了<p>
+<p>5.1.现代做法是预编译shader为cso，运行时加载注入RTPSO<p>
+<p>5.2.Hit Group命中组。intersection相交+anyHit任意命中+ClosestHit最近命中的三种shader组合包装。<p>
+<p>5.3.Shader Config着色器配置：设置ray携带的payload数据和attribute交点属性的最大字节数，影响占用率。<p>
+<p>5.4.Pipeline Config管线配置：设置最大递归深度，影响性能。<p>
+<p>6. AcceleartionStructrues加速结构：<p>
+</p> 
+</details>
 
-<!-- 月总结 -->
-<h4 id="2026-05-月总结">📝 2026-05 月总结</h4>
-<p>完成渲染器框架搭建</p>
-
----
 
 </details>
 

@@ -36,6 +36,8 @@ namespace Graphics
 	bool g_bTypedUAVLoadSupport_R16G16B16A16_FLOAT = false;
 
 	ID3D12Device* g_Device = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Device5> g_DeviceDXR;
+	bool g_bRaytracingSupported = false;
 	Microsoft::WRL::ComPtr<IDXGIFactory6> g_DXGIFactory;
 	CommandListManager g_CommandManager;
 	ContextManager g_ContextManager;
@@ -150,6 +152,9 @@ void Graphics::Initialize(bool RequireDXRSupport)
 	DXGI_ADAPTER_DESC1 desc = {};
 	pAdapter->GetDesc1(&desc);
 
+	//
+	// ===================== 创建 D3D12 Device =====================
+	//
 	if (SUCCEEDED(D3D12CreateDevice(pAdapter.Get(), D3D_FEATURE_LEVEL_12_1, TY_IID_PPV_ARGS(&pDevice))))
 		g_Device = pDevice.Detach();
 	else
@@ -160,11 +165,48 @@ void Graphics::Initialize(bool RequireDXRSupport)
 
 	Utility::Printf(L"Selected GPU:  %s (%u MB)\n", desc.Description, desc.DedicatedVideoMemory >> 20);
 
-	if (RequireDXRSupport && !g_Device)
+	//
+	// ===================== DXR Feature Check =====================
+	//
+	if (RequireDXRSupport == true)
 	{
-		Utility::Printf("Unable to find a DXR-capable device. Halting.\n");
-		__debugbreak();
+		D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
+
+		if (SUCCEEDED(g_Device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5))))
+		{
+			if (options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0)
+			{
+				g_bRaytracingSupported = true;
+				//
+				// 获取 DXR Device Interface
+				//
+				ASSERT_SUCCEEDED(g_Device->QueryInterface(TY_IID_PPV_ARGS(&g_DeviceDXR)));
+				Utility::Print("DXR is supported.\n");
+
+				if (options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_1)
+				{
+					Utility::Print("Raytracing Tier: 1.1\n");
+				}
+				else
+				{
+					Utility::Print("Raytracing Tier: 1.0\n");
+				}
+			}
+			else
+			{
+				g_bRaytracingSupported = false;
+				Utility::Print("DXR is not supported on this device.\n");
+				return;
+			}
+		}
+		else
+		{
+			g_bRaytracingSupported = false;
+			Utility::Print("Failed to query D3D12_OPTIONS5. DXR is unavailable.\n");
+			return;
+		}
 	}
+
 
 	//
 	// ===================== InfoQueue（精简版） =====================

@@ -88,7 +88,7 @@ void CommandListManager::Create(ID3D12Device* pDevice)
 	m_CopyQueue.Create(pDevice);
 }
 
-void CommandListManager::CreateNewCommandList(D3D12_COMMAND_LIST_TYPE Type, ID3D12GraphicsCommandList** List, ID3D12CommandAllocator** Allocator)
+void CommandListManager::CreateNewCommandList(D3D12_COMMAND_LIST_TYPE Type, ID3D12CommandAllocator** Allocator, REFIID riid, void** ppList)
 {
 	ASSERT(Type != D3D12_COMMAND_LIST_TYPE_BUNDLE, "Bundles are not yet supported");
 	switch (Type)
@@ -99,8 +99,11 @@ void CommandListManager::CreateNewCommandList(D3D12_COMMAND_LIST_TYPE Type, ID3D
 	case D3D12_COMMAND_LIST_TYPE_COPY: *Allocator = m_CopyQueue.RequestAllocator(); break;
 	}
 
-	ASSERT_SUCCEEDED(m_Device->CreateCommandList(1, Type, *Allocator, nullptr, TY_IID_PPV_ARGS(List)));
-	(*List)->SetName(L"CommandList");
+	ASSERT_SUCCEEDED(m_Device->CreateCommandList(1, Type, *Allocator, nullptr, riid, ppList));
+	if (ppList && *ppList)
+	{
+		static_cast<ID3D12Object*>(*ppList)->SetName(L"CommandList");
+	}
 }
 
 // ==========================================

@@ -133,7 +133,7 @@ public:
 	}
 
 	ComputeContext& GetComputeContext() { return reinterpret_cast<ComputeContext&>(*this); } // 计算命令列表不用验证类别，因为计算是图形的子集，包含完整功能
-	ID3D12GraphicsCommandList* GetCommandList() { return m_CommandList; }
+	ID3D12GraphicsCommandList* GetCommandList() { return m_CommandList.Get(); }
 
 	// 复制
 	void CopyBuffer(GpuResource& Dest, GpuResource& Src);
@@ -185,7 +185,9 @@ protected:
 	void BindDescriptorHeaps(void);
 	// 命令
 	CommandListManager* m_OwningManager; // 专属命令列表管理器
-	ID3D12GraphicsCommandList* m_CommandList; // 图形命令列表
+	// ID3D12GraphicsCommandList* m_CommandList; // 图形命令列表
+	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> m_CommandList;
+
 	ID3D12CommandAllocator* m_CurrentAllocator; // 当前命令分配器
 	// 根签名，管线状态
 	ID3D12RootSignature* m_CurGraphicsRootSignature; // 当前图形根签名
@@ -582,8 +584,8 @@ inline void ComputeContext::Dispatch(size_t GroupCountX, size_t GroupCountY, siz
 	// 屏障提交
 	FlushResourceBarriers();
 	// shader-visible Heap，描述符上传至根签名cache？
-	m_DynamicViewDescriptorHeap.CommitComputeRootDescriptorTables(m_CommandList);
-	m_DynamicSamplerDescriptorHeap.CommitComputeRootDescriptorTables(m_CommandList);
+	m_DynamicViewDescriptorHeap.CommitComputeRootDescriptorTables(m_CommandList.Get());
+	m_DynamicSamplerDescriptorHeap.CommitComputeRootDescriptorTables(m_CommandList.Get());
 	m_CommandList->Dispatch((UINT)GroupCountX, (UINT)GroupCountY, (UINT)GroupCountZ);
 }
 
@@ -719,8 +721,8 @@ inline void GraphicsContext::DrawInstanced(UINT VertexCountPerInstance, UINT Ins
 	UINT StartVertexLocation, UINT StartInstanceLocation)
 {
 	FlushResourceBarriers();
-	m_DynamicViewDescriptorHeap.CommitGraphicsRootDescriptorTables(m_CommandList);
-	m_DynamicSamplerDescriptorHeap.CommitGraphicsRootDescriptorTables(m_CommandList);
+	m_DynamicViewDescriptorHeap.CommitGraphicsRootDescriptorTables(m_CommandList.Get());
+	m_DynamicSamplerDescriptorHeap.CommitGraphicsRootDescriptorTables(m_CommandList.Get());
 	m_CommandList->DrawInstanced(VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation);
 }
 
@@ -728,8 +730,8 @@ inline void GraphicsContext::DrawIndexedInstanced(UINT IndexCountPerInstance, UI
 	INT BaseVertexLocation, UINT StartInstanceLocation)
 {
 	FlushResourceBarriers();
-	m_DynamicViewDescriptorHeap.CommitGraphicsRootDescriptorTables(m_CommandList);
-	m_DynamicSamplerDescriptorHeap.CommitGraphicsRootDescriptorTables(m_CommandList);
+	m_DynamicViewDescriptorHeap.CommitGraphicsRootDescriptorTables(m_CommandList.Get());
+	m_DynamicSamplerDescriptorHeap.CommitGraphicsRootDescriptorTables(m_CommandList.Get());
 	m_CommandList->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
 }
 

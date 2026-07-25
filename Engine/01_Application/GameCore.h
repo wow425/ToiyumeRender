@@ -22,6 +22,8 @@ namespace GameCore
 		virtual void RenderScene(void) = 0;
 
 		virtual void RenderUI(GraphicsContext&) {};
+
+		virtual bool RequiresRaytracingSupport() const { return false; }
 	};
 }
 
