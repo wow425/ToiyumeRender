@@ -59,7 +59,7 @@ std::wstring ChosenSword = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRen
 
 std::wstring KyomachiyaA = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Kyomachiya/KyomachiyaA.gltf";
 
-
+std::wstring leimiaier = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/leimiaier/leimiaierALL.gltf";
 
 void Tooiyume::Startup(void)
 {
@@ -73,7 +73,7 @@ void Tooiyume::Startup(void)
 	std::wstring gltfFileName;
 	bool forceRebuild = true;
 	Models[0] = Scene::Model::LoadModel(saberCaster3NoArmor, forceRebuild);
-	Models[1] = Scene::Model::LoadModel(ChosenSword, forceRebuild);
+	Models[1] = Scene::Model::LoadModel(leimiaier, forceRebuild);
 
 
 	// Camera设置

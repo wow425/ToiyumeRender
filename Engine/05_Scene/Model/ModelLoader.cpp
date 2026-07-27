@@ -55,13 +55,20 @@ void LoadMaterials(Scene::Model::Model& model,
 
 	// 1. Load textures加载纹理
 	{
-		const uint32_t numTextures = (uint32_t)textureNames.size();
+     const uint32_t numTextures = (uint32_t)textureNames.size();
 		model.textures.resize(numTextures);
 		for (size_t ti = 0; ti < numTextures; ++ti)
 		{
-			std::wstring originalFile = basePath + textureNames[ti];
+            std::wstring originalFile = basePath + textureNames[ti];
+			// 防御性检查：确保 textureOptions 长度足够
+			uint8_t opt = 0xFF;
+			if (ti < textureOptions.size())
+				opt = textureOptions[ti];
+			else
+				Utility::Printf("Warning: textureOptions missing entry for texture %zu, using default\n", ti);
+
 			// 动态编译：若无 DDS 或原始文件更新，则调用纹理转换工具生成优化过的 DDS
-			CompileTextureOnDemand(originalFile, textureOptions[ti]);
+			CompileTextureOnDemand(originalFile, opt);
 
 			std::wstring ddsFile = Utility::RemoveExtension(originalFile) + L".dds";
 			// 从磁盘载入 GPU 资源
@@ -104,14 +111,25 @@ void LoadMaterials(Scene::Model::Model& model,
 			}
 		}
 
-		D3D12_CPU_DESCRIPTOR_HANDLE SourceTextures[kNumTextures];
+       D3D12_CPU_DESCRIPTOR_HANDLE SourceTextures[kNumTextures];
 		for (uint32_t j = 0; j < kNumTextures; ++j)
 		{
 			//// 0xffff 表示该槽位无贴图，使用引擎默认贴图
-			if (srcMat.stringIdx[j] == 0xffff)
+			uint16_t idx = srcMat.stringIdx[j];
+			if (idx == 0xffff)
+			{
 				SourceTextures[j] = DefaultTextures[j];
+			}
+			else if (idx >= model.textures.size())
+			{
+				// 防御性回退：索引越界时使用默认纹理
+				Utility::Printf("Warning: texture index %u out of range (num textures=%zu). Using default.\n", idx, model.textures.size());
+				SourceTextures[j] = DefaultTextures[j];
+			}
 			else
-				SourceTextures[j] = model.textures[srcMat.stringIdx[j]].GetSRV();
+			{
+				SourceTextures[j] = model.textures[idx].GetSRV();
+			}
 		}
 
 		g_Device->CopyDescriptors(1, &TextureHandles, &DestCount, DestCount,
@@ -148,8 +166,20 @@ void LoadMaterials(Scene::Model::Model& model,
 			model.m_Materials[matIdx].SamplerTable = samplerMapLookup->second;
 		}
 
-		model.m_Materials[matIdx].Flags = ConvertToRenderMaterialFlags(materialConstants[matIdx]);
-		model.m_Materials[matIdx].MaterialCBV = model.m_MaterialConstants.GetGpuVirtualAddress() + sizeof(MaterialConstants) * matIdx;
+      // Safely read material constants if available
+		if (matIdx < materialConstants.size())
+			model.m_Materials[matIdx].Flags = ConvertToRenderMaterialFlags(materialConstants[matIdx]);
+		else
+		{
+			model.m_Materials[matIdx].Flags = Scene::Material::kMaterial_None;
+			Utility::Printf("Warning: materialConstants missing for material %u, using default flags\n", matIdx);
+		}
+
+		// Compute Material CBV address only if material constant buffer exists
+		if (model.m_MaterialConstants.GetGpuVirtualAddress() != D3D12_GPU_VIRTUAL_ADDRESS_NULL && matIdx < materialConstants.size())
+			model.m_Materials[matIdx].MaterialCBV = model.m_MaterialConstants.GetGpuVirtualAddress() + sizeof(MaterialConstants) * matIdx;
+		else
+			model.m_Materials[matIdx].MaterialCBV = 0;
 	}
 }
 
