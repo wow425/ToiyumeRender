@@ -42,7 +42,7 @@ cbuffer Camera : register(b1)
 
 float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
 {
-   return F0 + (max(float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness), F0) - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
+    return F0 + (max(float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness), F0) - F0) * pow(max(1.0 - cosTheta, 0.0), 5.0);
 }
 
 // ACES Filmic Tone Mapping Curve (Krzysztof Narkowicz fit)
@@ -57,7 +57,7 @@ float3 ACESFilm(float3 x)
 }
 
 float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
-{ 
+{
     uint2 pixel = uint2(position.xy);
 
     //-----------------------------------
@@ -68,7 +68,7 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
     float ao = baseColorAO.a;
 
     float4 material = GBuffer_Material.Load(int3(pixel, 0));
-	float metallic = saturate(material.r);
+    float metallic = saturate(material.r);
     float roughness = max(material.g, 0.04);
     float specular = material.b;
 
@@ -133,25 +133,28 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
     //-----------------------------------
     //float3 ambient = baseColor * 0.2 * ao; // 添加IBL后改为0.03
     // 尚未看
-   float NdotV = saturate(dot(N, V));
-   float3 F = FresnelSchlickRoughness(NdotV, F0, roughness);
+    float NdotV = saturate(dot(N, V));
+    float3 F = FresnelSchlickRoughness(NdotV, F0, roughness);
     float3 kS = F;
     float3 kD = (1.0 - kS) * (1.0 - metallic);
     float3 irradiance = IrradianceMap.Sample(LinearClampSampler, N).rgb;
-   float3 diffuseIBL = irradiance * baseColor;
+    float3 diffuseIBL = irradiance * baseColor;
     float3 R = reflect(-V, N);
-   const float maxPrefilterMip = 8.0;
-  float3 prefilteredColor = PrefilterMap.SampleLevel(LinearClampSampler, R, roughness * maxPrefilterMip).rgb;
-   float2 envBRDF = BRDFLUT.Sample(LinearClampSampler, float2(NdotV, roughness)).rg;
-   float3 specularIBL = prefilteredColor * (F * envBRDF.x + envBRDF.y);
-   float3 ambient = (kD * diffuseIBL + specularIBL) * ao;
+    const float maxPrefilterMip = 8.0;
+    float3 prefilteredColor = PrefilterMap.SampleLevel(LinearClampSampler, R, roughness * maxPrefilterMip).rgb;
+    float2 envBRDF = BRDFLUT.Sample(LinearClampSampler, float2(NdotV, roughness)).rg;
+    float3 specularIBL = prefilteredColor * (F * envBRDF.x + envBRDF.y);
+    float3 ambient = (kD * diffuseIBL + specularIBL) * ao;
 
 
     //-----------------------------------
     // Final Color
     //-----------------------------------
-    float3 finalColor = ambient + directionalLighting + pointLighting + emission;
-
+    // 
+    // float3 finalColor = ambient +  directionalLighting +  pointLighting + emission;
+    
+    float3 finalColor = ambient + emission;
+    
     finalColor = ACESFilm(finalColor); // ACES校正
 
     return float4(finalColor, 1.0);
