@@ -51,7 +51,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
 {
 	return GameCore::WinRun<Tooiyume>(L"Tooiyume", hInst, cmd);
 }
-
+//
 Renderer::Deferred::DeferredRenderer DeferredRenderer;
 
 std::wstring saber_emiya = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Saber/saber_emiya.glb";
