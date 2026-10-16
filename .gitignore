@@ -384,3 +384,5 @@ vcpkg/
 # 而是放在一个特定的 Assets/ 文件夹并使用 Git LFS 管理
 # 或者暂时忽略它们，在 README 中提供下载链接
  Assets/Models/
+/Assets/Model/Kyomachiya
+/Assets/Model
