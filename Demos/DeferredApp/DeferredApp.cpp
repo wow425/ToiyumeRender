@@ -61,6 +61,9 @@ std::wstring KyomachiyaA = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRen
 
 std::wstring leimiaier = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/leimiaier/leimiaierALL.gltf";
 
+std::wstring merlin = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Merlin/merlin.gltf";
+
+
 void Tooiyume::Startup(void)
 {
 	Renderer::RendererCreateDesc desc;
@@ -72,7 +75,7 @@ void Tooiyume::Startup(void)
 	// 模型加载
 	std::wstring gltfFileName;
 	bool forceRebuild = true;
-	Models[0] = Scene::Model::LoadModel(saberCaster3NoArmor, forceRebuild);
+	Models[0] = Scene::Model::LoadModel(merlin, forceRebuild);
 	Models[1] = Scene::Model::LoadModel(leimiaier, forceRebuild);
 	Models[2] = Scene::Model::LoadModel(ChosenSword, forceRebuild);
 
