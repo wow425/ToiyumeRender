@@ -77,7 +77,6 @@ void Tooiyume::Startup(void)
 	bool forceRebuild = true;
 	Models[0] = Scene::Model::LoadModel(merlin, forceRebuild);
 	Models[1] = Scene::Model::LoadModel(leimiaier, forceRebuild);
-	Models[2] = Scene::Model::LoadModel(ChosenSword, forceRebuild);
 
 
 	// Camera设置
@@ -97,7 +96,6 @@ void Tooiyume::Update(float deltaT)
 	desc.Models.reserve(10);
 	desc.Models.push_back(&Models[0]);
 	desc.Models.push_back(&Models[1]);
-	desc.Models.push_back(&Models[2]);
 
 	m_CameraController->Update(deltaT);
 
@@ -117,7 +115,6 @@ void Tooiyume::RenderScene(void)
 	desc.Models.reserve(10);
 	desc.Models.push_back(&Models[0]);
 	desc.Models.push_back(&Models[1]);
-	desc.Models.push_back(&Models[2]);
 
 
 
