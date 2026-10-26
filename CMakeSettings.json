@@ -1,8 +1,0 @@
-"variables": [
-  {
-    "name": "CMAKE_TOOLCHAIN_FILE",
-    "value": "F:/VS/rep/vcpkg/scripts/buildsystems/vcpkg.cmake",
-    "type": "FILEPATH",
-    "buildRoot": "${projectDir}\\..\\cmake-build-debug\\${name}"
-  }
-]
