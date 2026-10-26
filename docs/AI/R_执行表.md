@@ -1,0 +1,374 @@
+# TooiyumeRender 升级执行表（交接文档）
+
+> 用途：**跨会话复用**。新会话直接读本文件即可恢复全部上下文，无需重读长对话。
+> 最后更新：2026-10-26 ｜ 当前进度：**R0 ✅ R1 ✅ R2 ✅ R3 ✅ R4 ✅ → R5 待开工**
+
+---
+
+## 0. 一句话状态
+
+项目是 DX12 渲染器（C++20 / HLSL / CMake / vcpkg）。R0 建立了可重复构建与资产基线，R1 修复了确定性渲染错误。**Deferred 路径现已正确渲染模型**（修复前模型完全不可见）。R2 已修复 Resize/最小化/相机宽高比/资源重建/backbuffer 索引 7 个缺陷并完成长宽比遍历验证。R3 已建成统一入口 `RendererDemoApp`：渲染器注册表可运行时切换 Forward/Deferred、Dear ImGui 六面板、`RenderParams` 成为参数唯一真源，并顺带修掉 Forward 全黑与一批 RHI 生命周期缺陷。**R4 已打通显示编码链**：Exposure→ACES→sRGB 成为 Lighting 与 Skybox 共用的唯一实现（修复前 Skybox 完全绕过曝光，天空 52% 像素硬截断）；Prefilter mip 上界改取真实值（4，原写死 8.0）；`m_HDRLoaded` 死标志语义修正；glTF MASK 材质接通 AlphaTest。模型区截断 23.0%→0.1%，天空 52.0%→0.0%。下一步 R5：DXR 最小闭环。
+
+---
+
+## 1. 关键路径
+
+| 项 | 路径 |
+|---|---|
+| 项目根 | `D:\CS-Self-Study\Computer_Graphics\DX12\TooiyumeRender` |
+| 引擎 | `Engine/`（00_Core / 01_Application / 02_RHI / 03_AssetSystem / 04_Renderer / 05_Scene / Shader / 20_cmake） |
+| Demo | `Demos/`（ForwardApp / DeferredApp / RayTracingApp / **RendererDemoApp**） |
+| 资产 | `Assets/Model`（7 个模型目录）、`Assets/Skybox` |
+| 文档 | `docs/AI/` |
+| 构建脚本 | `scripts/build.bat`（Debug/Release）、`scripts/run.bat` |
+| 构建产物 | `out/build/{Debug,Release}/Demos/*/*.exe` |
+| RenderDoc | `D:\CS-Self-Study\Computer_Graphics\RenderDoc` |
+
+---
+
+## 2. R 阶段执行表
+
+| 阶段 | 优先级 | 目标 | 状态 |
+|---|---|---|---|
+| **R0** 基线与可复现性 | P0 | 资产、路径、CMake、Shader 编译链、构建脚本 | ✅ **完成** |
+| **R1** 核心渲染正确性 | P0 | 材质槽、默认贴图、深度 VB、TBN、分辨率、sorter、CB 契约 | ✅ **完成** |
+| **R2** 生命周期与窗口稳定性 | P0 | Resize、最小化、相机宽高比、资源重建、backbuffer 索引 | ✅ **完成** |
+| **R3** 统一入口与交互工作台 | P1 | RendererDemoApp、RendererRegistry 接通、ImGui、RenderParams | ✅ **完成** |
+| **R4** 光栅 PBR 闭环 | P1 | 曝光/ACES/sRGB 统一链、Prefilter mip 上界、IBL 状态机、AlphaTest | ✅ **完成** |
+| R5 DXR 最小闭环 | P1 | D0 设备能力 → D1 AS 构建 → D2 DispatchRays | ⬜ **下一步** |
+| R6 扩展与加固 | P2 | Shadow、透明、SSAO、TAA、热重载、文档清理 | ⬜ 未开始 |
+
+**硬性要求**：每个阶段必须通过「干净构建 + 实际运行 + 可观察证据」三项验收后才能进入下一阶段。每次施工完成后在 `docs/AI` 产出学习文档。
+
+---
+
+## 3. R0 已完成内容（✅）
+
+| 项 | 内容 |
+|---|---|
+| 资产 | 从 GitHub 补齐 `Saber` / `saberCaster` / `toneriko` 三个模型目录 |
+| 资源根 | 新增 `Engine/00_Core/Utility/AssetRoot.{h,cpp}`，五级回退解析：命令行 `-AssetsRoot` → `TOOIYUME_ASSETS_ROOT` → exe 上溯 → 工作目录上溯 → 编译期兜底 |
+| 硬编码 | 移除 18 处 `D:/CS-Self-Study/...`；Demo 全局路径改为惰性函数（避免静态初始化顺序问题） |
+| CMake | `CMakePresets.json` 改 `$env{VCPKG_ROOT}`；删除非法 `CMakeSettings.json`；`vcpkg.json` 补 `builtin-baseline` |
+| Shader | `01_Default` 纳入编译；删除仓库内旧字节码头；Forward 改用生成头 |
+| 脚本 | `scripts/build.bat`（自动探测 VS/cmake/ninja/vcpkg）、`run.bat` |
+| 其他 | `RELEASE` 宏补全；`forceRebuild` 改 `-RebuildModels` 开关；日志落盘 + `LOG_INFO`/`LOG_TRACE` 分级；资产缺失分级诊断 |
+
+**文档**：`R0_构建与运行基线.md`、`R0_变更清单与复现.md`
+
+---
+
+## 4. R1 已完成内容（✅）
+
+| ID | 修复 | 要点 |
+|---|---|---|
+| R1.1 | 统一材质纹理槽语义 | 三处枚举统一到 glTF/HLSL 顺序；BaseColor 修正为 sRGB |
+| R1.2 | 修正默认纹理表 | Normal→平面法线、AO→白、Emissive→黑、MR→白 |
+| R1.3 | 深度 VB per-draw 偏移 | 补 `curDepthVertOffset` 累加 |
+| R1.4 | Tangent 解码 | 用已还原的 UNORM 值构造 TBN；补手性符号还原 |
+| R1.5 | 移除 1920×1080 硬编码 | 扩展 `CameraData` 传 `RenderTargetSize`/`InvRenderTargetSize` |
+| R1.6 | sorter 生命周期 | `Update` 开头 `Reset` + **每帧重建列表**（变换仍受 IsDirty 门控） |
+| R1.7 | CB 契约 | `GlobalConstants` 全 16 字节对齐 + `static_assert` |
+| 额外 | Shader 生成头依赖 | 新增 `shader_attach_header_dependency`（CMake `OBJECT_DEPENDS`） |
+| 额外 | WASD 输入失效 | R0 引入的回归：`KbmZeroInputs()` 每帧擦除键位；改为三路取或 + WndProc 转发 |
+
+**文档**：`R1_核心渲染正确性.md`、`R1_变更清单与验证.md`
+**证据**：`R1_evidence/{final_r1, ch_basecolor, ch_metallic}.png`（GPU 回读）
+
+---
+
+## 5. R2 已完成（✅）
+
+主题：**Resize 与 GPU 资源生命周期**。7 个缺陷已全部修复，详见 `R2_生命周期与窗口稳定性.md`。
+
+### 已核实的 7 个缺陷（✅ 均已修复）
+
+| # | 缺陷 | 证据位置 |
+|---|---|---|
+| 1 | `OnResize` **零调用**，`ResizeDisplayDependentBuffers` 被注释 | `Display.cpp:167` |
+| 2 | `Display::SceneColorBuffer` 不跟随重建，仅 Startup 赋值 3 处 | `Display.cpp` + 3 个 Demo |
+| 3 | `WM_SIZE` 不过滤 0×0；0 尺寸时 `CreateForwardBufferTargets` return 而 `Destroy...` 不判空 | `GameCore.cpp:164` |
+| 4 | `SetAspectRatio` **零调用**，投影恒为 9:16 | `Camera.h:82` |
+| 5 | backbuffer 手工 `+1 % 3`，应用 `GetCurrentBackBufferIndex()` | `Display.cpp:237` |
+| 6 | `GpuResource::Destroy` **不重置描述符句柄** → 二次 Create 沿用旧描述符 | `GpuResource.h:30-35` |
+| 7 | Present 状态转换顺序需复核（与 #5 叠加可能渲染到正在显示的 buffer） | `Display.cpp:249-262` |
+
+### 实施顺序建议
+
+1. `IGameApp` 加 `OnResize` 虚函数 → `Display::Resize` 末尾转发
+2. Renderer `OnResize` 重建 RT 并重绑 `Display::SceneColorBuffer`
+3. `WM_SIZE` 过滤 0 尺寸
+4. 相机 aspect 跟随
+5. 换 `GetCurrentBackBufferIndex`
+6. `Destroy` 重置描述符句柄（**全 RHI 行为变更，需确认无别处依赖旧语义**）
+
+### 验收（✅ 全部通过）
+
+| 验收项 | 结果 |
+|---|---|
+| 不同长宽比窗口连续拖动：不崩、不拉伸、无尺寸不匹配 | ✅ `-ResizeTest` 遍历 6 种长宽比（含 4:1 与竖屏），截帧均为原始分辨率、内容无拉伸 |
+| 最小化/还原/重复调分辨率可恢复 | ✅ `WM_SIZE` 过滤 0×0，最小化后恢复正常 |
+| 连续 100 次 Resize：描述符不持续增长、无旧画面残留 | ✅ `-ResizeStress` 无 `DXGI_ERROR`、无断言 |
+| Debug Layer 无资源状态或 RTV 维度错误 | ✅ 全程无相关告警 |
+
+---
+
+## 6. R3 已完成（✅）
+
+主题：**统一入口与交互工作台**。四个交付物：`RendererDemoApp`（唯一入口）、`RendererRegistry` 真创建 + 运行时切换、Dear ImGui 1.91.9b（Win32/DX12 后端）、`RenderParams` 参数唯一真源。详见 `R3/R3_统一入口与交互工作台.md`。
+
+### 6.1 计划内交付
+
+| ID | 内容 | 落点 |
+|---|---|---|
+| R3.1 | 新增 `Demos/RendererDemoApp`（1102 行）：Registry 取实例、`unique_ptr<BaseRenderer>` 持有、六面板、`-R3Test` 自测 | `Demos/RendererDemoApp/RendererDemoApp.cpp` |
+| R3.2 | `RendererRegistry` 接通：`Instance()` 内一次性**显式注册** Deferred/Forward；补 `GetRegisteredNames()` / `HasRenderer()` | `Engine/04_Renderer/Renderer/Base/RendererRegistry.cpp:24-44` |
+| R3.3 | `ForwardRenderer` 修名（去尾随空格）、`GetFeatures()` 只返 `Forward`、`OnResize` 补视口、`EndFrame` 补 `ClearDirty` | `ForwardRenderer.cpp:34 / :59 / :106 / :342` |
+| R3.4 | Dear ImGui：`ThirdParty/imgui`（1.91.9b）+ `Engine/04_Renderer/ImGuiLayer.{h,cpp}`（自建 64 槽 shader-visible SRV 堆、Alloc/Free 回环） | `ImGuiLayer.cpp:88 / :180` |
+| R3.5 | `RenderParams` + `LightData` 扩到 96 字节 + `LightingPS.hlsl` cbuffer 扩字段（Exposure / EnableTonemap / EnableSun|PointLight / DebugView） | `RenderParams.h`、`LightingSystem.cpp:111`、`LightingPS.hlsl:41/:47` |
+| R3.6 | `GameCore` 加 `HasRenderUI()` / `SetWndProcHook()` / UI 插入点（RenderScene 与 Present 之间） | `GameCore.cpp:123-134 / :238-240` |
+| R3.7 | `GpuTimer`（TIMESTAMP 查询 + 回读 + 围栏三段式），Performance 面板显示真实 GPU 帧时间 | `Engine/04_Renderer/GpuTimer.{h,cpp}` |
+
+### 6.2 计划外修复（13 条，均为「跑起来才暴露」）
+
+| # | 缺陷 | 修法 |
+|---|---|---|
+| 1 | 注册表恒为空（静态库 dead-strip，静态初始化器从未运行） | `Instance()` 内显式 `RegisterRenderer`（不依赖静态对象） |
+| 2 | `RESOURCE_BARRIER_INVALID_HEAP #741`：对 UPLOAD 堆资源发 `COPY_SOURCE` | `TransitionResource` 对 UPLOAD/READBACK 早退 |
+| 3 | 切 Renderer 后 0xC0000005：`CommandContext` 缓存了已销毁堆指针 | `Reset()` 里 `ZeroMemory(m_CurrentDescriptorHeaps, ...)` |
+| 4 | 运行时换模型后模型消失 | `ModelInstance::operator=` 补 `m_IsDirty = true` |
+| 5 | 换模型命中 `#921 OBJECT_DELETED_WHILE_STILL_IN_USE` | `UnloadModel()` 先 `IdleGPU()` |
+| 6 | `GpuBuffer::Destroy` 不归还 SRV/UAV 描述符 | 加 `Destroy()` override + `Free`，恢复 `TypedBuffer` 分配守卫 |
+| 7 | `EnvironmentLightingManager` 标志跨 Renderer 不复位（二次 Initialize 不烘焙） | Initialize/Shutdown 复位 `m_Baked/m_Ready/m_HDRLoaded` 并释放 cubemap |
+| 8 | `LightingSystem::Shutdown()` 零调用者 | 两个 Renderer 的 `Shutdown` 各补一行 |
+| 9 | `ModelLoader` 采样器缓存跨 Renderer 失效（堆重建后偏移含义变了） | `DescriptorHeap` 加 `GetGeneration()`，缓存存 `{generation, offset}` 并校验 |
+| 10 | `TextureManager` 的 SRV 从不归还（切 Renderer 持续涨描述符） | `ManagedTexture` 加析构 `Free`（`m_OwnsDescriptor` 区分默认纹理） |
+| 11 | `GpuResource` 不记堆类型，导致 #741 无处判断 | 加 `m_HeapType` + `GetHeapType()` |
+| 12 | `ForwardApp` 从不调 `Renderer.Update`、`Models` 恒空 | 补接线（`Tooiyume.cpp`） |
+| 13 | 宽字符 `printf` 用 `%s` 打 `std::string` / `%hs` 打 `wchar_t*`，日志乱码 | 统一 `%hs`（窄）/ `%ws`（宽） |
+
+### 6.3 验收（✅ 全部通过）
+
+| 验收项（路线图 §6.3） | 结果 |
+|---|---|
+| 同一入口切 Forward / Deferred，不崩不残留 | ✅ `-R3Test` 11 步全通：Deferred → Forward → Deferred，描述符 RTV/SRV/pool = 13/65/8 → 13/61/8 → 4/29/8 → 13/61/8，**堆池恒 8** |
+| 切模型无残留、无崩溃、无泄漏 | ✅ 运行时由 merlin 切 saber_emiya 正常出图；`r3_06`（切模型后）与 `r3_08`（切回 Deferred 后）**逐字节相同** md5 `488a8074f730` |
+| FPS / 帧时间 / Debug View 可用，且区分 CPU 与 GPU 时间 | ✅ Performance 面板 CPU frame 3.60 ms / CPU FPS 277.7 / **GPU frame 2.346 ms**（`GpuTimer`）；Debug View 8 项下拉全部出图 |
+| 拖已接通参数画面可预测变化 | ✅ 差分 bbox 恒为模型区域 `(749,117,1138,577)`；Sun 3→8 模型区平均亮度 184.36→188.84、关灯→179.34、Exposure 1→3→213.10；10 张截图 md5 各不相同 |
+| Debug Layer 干净 | ✅ 日志 `grep -c "D3D12 ERROR\|WARNING\|CORRUPTION\|LIVE OBJECT"` = 1，唯一命中是 InfoQueue 配置行 |
+
+**证据**：`docs/AI/R3/r3_00_initial_deferred.png` … `r3_09_imgui_panels.png`（10 张，全部 1920×1080 GPU 回读）
+
+### 6.4 R3 顺带记录的新经验（已并入 §8）
+
+- 静态库里的**文件级静态对象**（自动注册器）会被 dead-strip 静默丢弃，且 **dumpbin 对已链接 exe 无符号表**，只能靠扫二进制里的 UTF-16LE 字面量取证。
+- 判断「是渲染错还是状态错」时，**给清屏色一个与黑不同的值**能一眼区分「没 draw」与「链路坏」。本阶段正是靠 `Color(0.10,0.12,0.16)` 定位到「Forward 只画了 ClearColor」。
+- `-Screenshot` 目录参数**必须反斜杠**；正斜杠会让 `SaveToWICFile` 返回 `0x8007007B`。
+
+---
+
+## 6b. R4 已完成（✅）
+
+主题：**光栅 PBR 闭环 —— 显示编码链 / IBL 状态机 / AlphaTest**。详见 `docs/AI/R4/R4_光栅PBR闭环.md`。
+
+### 6b.1 交付内容
+
+| ID | 内容 | 落点 |
+|---|---|---|
+| R4.1 | **显示编码链统一**：新增 `ColorPipeline.hlsli`（`LinearToSRGB` / `ACESFilm` / `EncodeDisplayColor`），Lighting 与 Skybox **共用**。修复 Skybox 完全绕过曝光（旧实现直接 `return float4(hdrColor)`） | `Engine/Shader/02_Deferred/ColorPipeline.hlsli`（新增）、`LightingPS.hlsl`、`SkyboxPS.hlsl` |
+| R4.2 | **CB 契约 96 → 112 字节**：追加 `float4 DisplayParams`（x=EnableSRGBEncode y=PrefilterMaxMip）。三处同步 + `static_assert` | `RenderParams.h`、`LightingSystem.h/.cpp`、`LightingPS.hlsl` |
+| R4.3 | **Prefilter mip 上界**：写死 `8.0` → 烘焙后回填真实值 `4`（5 mip − 1）。该值由渲染器派生，不进用户真源 | `DeferredRenderer.cpp:Update`、`LightingSystem::SetPrefilterMaxMip` |
+| R4.4 | **IBL 状态机**：`m_HDRLoaded` 从「死标志 + 语义反了」改为真实语义；烘焙短路条件不再包含它 | `EnvironmentLightingManager.cpp` |
+| R4.5 | **AlphaTest**：`GBufferPS` 位域解码 + `clip`，`alphaRef` 用 `f16tof32` 解 half | `GBufferPS.hlsl` |
+| R4.6 | **验收脚本** `-R4Test`：10 步单变量 A/B，全部 GPU 回读 | `Demos/RendererDemoApp/RendererDemoApp.cpp` |
+
+### 6b.2 验收（✅ 全部通过）
+
+| 验收项 | 结果 |
+|---|---|
+| Debug + Release 构建 | ✅ 均 exit 0；3 个 Shader 实际重编译 |
+| 模型区硬截断 | ✅ **23.0% → 0.1%** |
+| 天空区硬截断 | ✅ **52.0% → 0.0%** |
+| sRGB A/B | ✅ 模型区 176.9（开）vs 132.3（关），md5 不同 |
+| Tonemap A/B | ✅ 关闭后模型 32.2%、天空 67.2% 硬截断 |
+| Skybox 跟随曝光 | ✅ 曝光 4.0 → 天空 250.2（100% 截断），证明天空进链 |
+| AlphaTest A/B | ✅ 差异只在镂空 bbox 67 px；关 clip 时眼睛为实心黑块 |
+| IBL 贡献 | ✅ 只留 IBL 167.1 / 关 IBL 146.5 |
+| IBL 状态机日志 | ✅ `HDRLoaded=1 PrefilterMips=5 (roughness 映射 0..4)` |
+| 可重复性 | ✅ 首帧与末帧 md5 完全相同 `16c8aeec…` |
+| Debug Layer | ✅ 0 ERROR |
+| 描述符泄漏 | ✅ 10 步切换 RTV/SRV/pool 恒定 |
+
+**证据**：`docs/AI/R4/evidence/`（10 张 GPU 回读 + `r4_10_alphatest_ab_zoom.png` 放大对照）；基线 `docs/AI/R4/baseline/`。
+
+### 6b.3 R4 纠正的两处旧结论
+
+- ~~「IBL 四个烘焙 Pass 是空壳」~~ → 四个 Pass 均有真实 `Dispatch`（`EnvironmentLightingManager.cpp:254/:284/:322/:352`）。旧结论来自更早版本，`git show HEAD:` 同样已含 Dispatch。
+- ~~「模型偏白主因是 IBL 直接采样 HDR」~~ → 真因是显示编码链缺失（`*_UNORM` + 无 sRGB 编码 + Skybox 绕过曝光）。
+
+---
+
+## 7. 已知遗留问题
+
+| 问题 | 说明 | 归属 |
+|---|---|---|
+| ~~模型整体偏白~~ | **R4 已解决**。根因**不是** IBL 采样 HDR，而是显示编码链缺失：SceneColor/swapchain 都是 `*_UNORM`，全链路无 sRGB 编码，且 Skybox 完全绕过曝光。修复后模型区硬截断 23.0%→0.1%，天空 52.0%→0.0% | ✅ R4 |
+| ~~IBL 烘焙 4 个 Pass 是空壳~~ | **旧结论有误，R4 施工时已核实**：四个 Pass 都有真实 `Dispatch3D/Dispatch2D`（`EnvironmentLightingManager.cpp:254/:284/:322/:352`）。真正的问题是 `m_HDRLoaded` 死标志语义反了 + Prefilter mip 上界写死，均已修 | ✅ R4 |
+| Forward 只输出 baseColor | `DefaultPS.hlsl::MainPS` 只返回 baseColor，不消费 `Light b0` → Forward 面板的光照控件被 `BeginDisabled` 禁用。**R4 范围外，顺延未做** | **R4 后续** |
+| 光照硬编码 | R3 已改为 `RenderParams` 单点真源 | ✅ R3 已解决 |
+| `TextureRef::operator=` 不减 Unload | 只减引用计数不 `Unload`，缓存条目残留（不会 double free） | R4 观察项（本轮未触碰） |
+| `PipelineStateCache::s_PipelineDescs` 的 `Reset()` 无调用者 | 跨 Renderer 单调增长（仅 CPU 描述，含 `<0xffff` 断言） | R6 |
+| AlphaBlend（glTF BLEND） | 路线图 §7.1 明确与 AlphaTest 分开排期。R4 只做了 MASK | R6 |
+| 架构自检 6 项 RED | ai-check.ps1 报 R1/R2/R3/R4/R13/R9 红灯，**R4 之前即已存在**，属 WP0–WP8 排期债 | WP0–WP8 |
+
+---
+
+## 8. 本轮沉淀的关键经验（务必保留）
+
+1. **外部截图不能作为 GPU 画面证据**。实测 `PrintWindow` 抓两次完全不同的 Shader 输出，得到 md5 相同的 PNG。必须用 `ReadbackBuffer` 回读 —— 已封装为 `Engine/04_Renderer/DebugCapture.{h,cpp}`，支持 `R8G8B8A8_UNORM` / `R16G16B16A16_FLOAT`。
+
+2. **区分「代码改了」和「改动生效了」**。生成头、PCH、缓存都可能让改动静默失效。验证方式是看构建日志里对应 `.obj` 是否重编。
+
+3. **printf 打印自定义类型必须显式转 float**。`Vector3::GetX()` 返回 `Scalar`，直接传给可变参数会读出垃圾值（曾据此误判相机位置为 0）。写 `(float)p.GetX()`。
+
+4. **生命周期改动必须实际跑起来验证**。sorter 加 `Reset()` 局部看是对的，与 `IsDirty` 门控结合后产生"只有第一帧有画面"。
+
+5. **修复前先确认现象是真的**。本轮因截图和日志两处失真，浪费大量时间在不存在的问题上。
+
+6. **R3：静态库里的文件级静态对象会被 dead-strip**。`RendererAutoRegister<T>` 从未运行 → 注册表恒为空。且**已链接的 exe 没有 COFF 符号表**，`dumpbin -symbols` 只会输出 18 行 section summary，看不出任何东西。可靠的取证方式是扫二进制里的 UTF-16LE 字面量（如 `Deferred Texture Descriptors` 从 0 变 1）。结论：**不要用静态初始化器做关键注册**，改在 `Instance()` 里显式注册。
+
+7. **R3：清屏色用非黑值，是区分「没 draw」与「链路坏」的最快手段**。Forward 的清屏色 `Color(0.10,0.12,0.16)` 让 `r3_07_forward.png` 的「全幅同一色」一眼可判 = 清了屏但没画东西。
+
+8. **R3：`-Screenshot` 的目录参数必须反斜杠**。正斜杠会让 `SaveToWICFile` 返回 `0x8007007B (ERROR_INVALID_NAME)`，日志里的路径还会被截断。
+
+9. **R3：只在「渲染循环跑起来之后」才会暴露的状态机缺陷**。同一个 `ModelInstance`，启动时加载正常、运行时赋值却消失——因为 `operator=` 没置脏而 `Update` 有 `IsDirty` 门控。**任何「重建资源」的赋值/移动都要显式置脏**。
+
+10. **R4：同一个输出目标的所有 Pass 必须共用同一条显示编码链**。修复前 `LightingPS` 有自己的 ACES，而 `SkyboxPS` 直接 `return float4(hdrColor)` —— 天空成了整幅画面里唯一绕过曝光/色调映射的区域，实测 52% 像素硬截断成纯白。**把编码链抽成 `ColorPipeline.hlsli` 供所有消费者引用**，是唯一能让「漏用」在代码结构上变难的做法。
+
+11. **R4：`*_UNORM` 目标不会自动做 gamma 编码**。`R8G8B8A8_UNORM` 与 `R8G8B8A8_UNORM_SRGB` 是两件事；用前者就必须在 Shader 里显式做 sRGB 编码。本次 A/B 实测：不编码时模型区平均亮度 132.3，编码后 176.9 —— 差 34%，是肉眼可见的整体偏暗。
+
+12. **R4：硬编码的资源属性上界会「看起来能用」**。`maxPrefilterMip = 8.0` 而立方体只有 5 个 mip，超界采样被硬件 clamp 到最后一个 mip —— 不报错、不崩溃，只是粗糙度响应在 0.6 之后被压平。**凡是「从资源派生」的常量，都应在资源创建后回填，而不是写在 Shader 里**。
+
+13. **R4：死标志会掩盖语义错误**。`if (m_Baked || m_HDRLoaded || ...)` 里 `m_HDRLoaded` 从未置 true，于是「HDR 已加载就禁止烘焙」这个反了的语义永远不生效。**见到「某标志只被置 false 从不置 true」就该怀疑整条判断链**。
+
+15. **R4.1：CMakePresets.json 不容忍任何多余字段**。根对象里一个 `_comment` 就会让 CMake 拒绝解析整个文件（`Invalid extra field`），VS 的 CMake 集成因此完全无法配置。注释必须写进各字段的 `description`。
+
+16. **R4.1：VS 的 CMake 集成不继承用户 shell 的环境变量**。在 cmd 里 `set VCPKG_ROOT=...` 对 VS 无效。凡是"构建必需"的路径信息，要么写进 presets，要么做成仓库内可自发现的（如 `vcpkg_installed` + `CMAKE_PREFIX_PATH`）。
+
+17. **R4.1：`add_custom_command(TARGET ...)` 要求命令与 target 在同一个 CMakeLists 目录**。跨目录集中管理会报 `TARGET 'xxx' was not created in this directory`。正确做法是：父目录定义**函数**，子目录创建 target 后自行调用。
+
+18. **R4.1：多处 `vcpkg_installed` 副本必然分叉，且极难排查**。本轮 LNK2019 的真因是仓库根目录那份 DirectXMesh 缺少 `dx12` feature（缺少 D3D12 重载），而 `out/build/Debug/vcpkg_installed` 那份是新的、带 feature 的。**排查方法是直接 `grep` 两个 .lib 的目标符号**，比对 md5 与符号数比看链接命令有效得多。
+
+19. **R4.1：验证"构建等价性"要用渲染输出比，而不是"能编译"**。VS 构建与脚本构建产出的 10 张截图 md5 逐字节相同，才能排除"能跑但画错"（例如 DLL 变体混用、宏不一致）。
+
+20. **R4.2（最重要的一条）：GPU 回读正常 ≠ 能正常显示。** 回读只走 `Render()` 后的 SceneColor，**完全不经过** `PreparePresentSDR → CopyResource → Present`。上一轮我用回读图判定"通过"，结果窗口是黑的、点击就退出，而所有日志都正常 —— 因为真正的失败点 `Present skipped` 用的是 `LOG_TRACE`，被编译器整个删掉了。**渲染验收必须分两层：渲染层用 GPU 回读，呈现层必须看窗口是否真的可见 + Present 返回值。**
+
+21. **R4.2：失败路径绝不能用 `LOG_TRACE`。** `Utility.h` 里非 `TOOIYUME_VERBOSE_LOG` 时它展开为 `do{}while(0)`。把"出错了就 return"的日志放进去，等于把这个 bug 从日志里抹掉。本次全黑问题排查 30 分钟里，绝大部分时间是被"日志没有报错"误导。
+
+22. **R4.2：资源格式比较要区分「位布局」与「视图语义」。** 引擎把 ColorBuffer 创建成 `*_TYPELESS`（`PixelBuffer::DescribeTex2D` 里做 `GetBaseFormat` 归一化），再按需建具体视图。判断两个资源能否 `CopyResource`，要看**位布局是否同一家族**（`R8G8B8A8_TYPELESS`/`_UNORM`/`_UNORM_SRGB` 都是 4 字节同布局），而不是枚举值相等。用后者会得到"永远不匹配"，且**不报任何 D3D12 错误**。
+
+23. **R4.2：黑屏要先用 GPU 回读切分责任。** 若回读正常 → 问题是呈现路径（Present/CopyResource/交换链）；若回读写出的图也是黑的 → 才是渲染管线问题。这一步能把排查范围砍掉一半，是本次最快见效的手段。
+
+24. **R4.3：「闪退」先看退出码，别默认是崩溃。** 退出码 **0** = 程序自己决定退出（读 `while` 的判定条件）；非 0（如 0xC0000005）= 真崩溃（上调试器）。本次点击退出是前者，我先按崩溃方向查（cdb + `SetUnhandledExceptionFilter`）完全扑空，最后发现根因是 `IsDone()` 读到了一个假键位。**判断依据只有一条：退出码。**
+
+25. **R4.3：DIK 扫描码 ≠ VK 虚拟键码，混用会撞出致命巧合。** DirectInput 用 DIK（物理位置），`GetAsyncKeyState` 用 VK（逻辑键）。`DIK_ESCAPE = 0x01` 而 `VK_LBUTTON = 0x01`——于是「按鼠标左键」被判成「按 Escape」，程序正常退出且**没有任何错误日志**。同一张错表还导致 WASD 全部错位（`DIK_W=0x11` vs `VK_W=0x57`），这就是历史遗留的「WASD 时灵时不灵」。**映射表的变量名必须体现它存的是哪套编码**（`s_DXKeyMapping` 存 DIK 却叫 DX，是埋雷点）。
+
+26. **R4.3：模拟输入要选对层级。** `PostMessage(WM_LBUTTONDOWN)` 只走 WndProc/ImGui，**不经过** `GetAsyncKeyState`；`mouse_event`/`SetCursorPos` 是系统级注入，走完整硬件输入路径。验证输入相关缺陷时必须用后者——本次用 PostMessage 复现不出来，换 mouse_event 立刻复现。
+
+27. **R4.6：断言不是错误处理，写之前先问"失败是否影响核心功能"。** `GpuTimer` 里两处 `ASSERT(false)`（回读 Map 失败、Begin 未配对 End）直接导致"拉伸窗口闪退"。性能统计拿不到样本属于**功能降级**，必须跳过这一帧而不是终止进程。判断标准：影响核心渲染/资源状态 → 断言合理；只影响诊断信息 → 必须降级。
+
+28. **R4.6：D3D12 资源描述里的值，事后改成员变量是改不动的。** `D3D12_CLEAR_VALUE` 在 `CreateTextureResource` 时就固化到资源上；`ColorBuffer::Create` 之后调用 `SetClearColor` 只改 CPU 副本，于是 `ClearRenderTargetView` 每帧报 #820 并走慢路径。**凡是被固化进资源描述的参数，都必须作为创建参数传入。**
+
+29. **R4.6：`ResizeBuffers` 有两个必须与创建时一致的项。** ① `SwapChainFlags`（如 `ALLOW_MODE_SWITCH`），不一致会返回 `DXGI_ERROR_DEVICE_REMOVED`；② Resize 之后**必须重新调用 `GetCurrentBackBufferIndex()`** —— 用旧索引会对错误状态的 buffer 发屏障，触发 `EXECUTION ERROR #232` 设备移除。后者尤其隐蔽：崩溃信息是 `DXGI_ERROR_ACCESS_DENIED`，看不出和索引有关。
+
+30. **R4.6：容器的元素指针不能跨越修改操作。** `RenderFrameDesc.Models` 存 `ModelInstance*`，而 `vector` 扩容会搬移元素。所有改容器的操作（增删模型）必须集中到**帧边界**，渲染期间只读。另外 `ModelInstance` 无拷贝赋值（含 UploadBuffer），直接放 `vector` 值类型编译不过 —— 用 `unique_ptr` 持有即可，让编译期帮你守住这个约束。
+
+
+14. **R4：A/B 取证要能证明缺陷存在，而不只是证明修复后好看**。AlphaTest 的验收特意做了一次「临时注释掉 `clip`」的对照构建：关闭时角色眼睛是实心黑块，开启后露出虹膜，差异只落在镂空 bbox（67 px）。**没有「缺陷态」的对照，就无法排除「本来就是这个样子」**。
+
+---
+
+## 9. 构建与运行
+
+### 9.1 三条入口（均可独立工作）
+
+| 入口 | 命令 | 适用场景 | 是否需 VCPKG_ROOT |
+|---|---|---|---|
+| **Visual Studio** | 打开文件夹 → 选 `x64-debug` → 构建 | 日常开发/调试 | **否**（用仓库内 `vcpkg_installed`） |
+| CMake presets | `cmake --preset x64-debug` + `--build --preset build-debug` | 命令行/CI | 否 |
+| 项目脚本 | `scripts\build.bat Debug` | 与历史一致 | 是 |
+
+> **R4.1 变更**：VS 里不再需要设环境变量。根 `CMakeLists.txt` 在拿不到 toolchain 时
+> 自动使用仓库内 `vcpkg_installed/x64-windows`。
+> 详见 `docs/AI/R4/R4.1_VisualStudio构建修复.md`。
+
+```bat
+rem ---- 方式 A：Visual Studio（推荐，无需环境变量）----
+rem 在 VS 中"打开文件夹" → CMake 配置下拉选 x64-debug → 生成
+
+rem ---- 方式 B：CMake presets（命令行，无需环境变量）----
+cmake --list-presets
+cmake --preset x64-debug
+cmake --build --preset build-debug
+
+rem ---- 方式 C：项目脚本（需 VCPKG_ROOT）----
+set VCPKG_ROOT=F:\VS\rep\vcpkg
+scripts\build.bat Debug clean
+scripts\build.bat Release clean
+
+rem 运行
+scripts\run.bat Debug Deferred
+scripts\run.bat Debug Forward
+scripts\run.bat Debug RayTracing
+scripts\run.bat Debug RendererDemo        rem R3 统一入口（ImGui 六面板）
+
+rem 强制重建模型缓存（改了纹理槽顺序后必须）
+scripts\run.bat Debug Deferred -RebuildModels
+
+rem GPU 回读截帧（目录用反斜杠，且必须已存在）
+DeferredApp.exe -Screenshot D:\shots
+
+rem R3 验收自测（11 步，自动退出）
+scripts\run.bat Debug RendererDemo -R3Test D:\CS-Self-Study\Computer_Graphics\DX12\TooiyumeRender\docs\AI\R3
+```
+
+---
+
+## 10. 关键文件速查
+
+| 文件 | 职责 | 相关阶段 |
+|---|---|---|
+| `Engine/00_Core/Utility/AssetRoot.*` | 资源根解析 | **新增**（R0） |
+| `Engine/00_Core/Utility/Utility.h` | 日志落盘、`LOG_INFO`/`LOG_TRACE`、Release `ASSERT` | R0 |
+| `Engine/03_AssetSystem/Assets/Constants/ConstantBuffers.h` | 材质/全局常量权威定义 | R1（槽位 + 对齐） |
+| `Engine/05_Scene/Model/ModelLoader.cpp` | 模型加载、默认纹理表 | R1 |
+| `Engine/03_AssetSystem/Importers/Model/ModelConvert.cpp` | glTF → .ty 烘焙 | R1 |
+| `Engine/04_Renderer/Renderer/Deferred/DeferredRenderer.cpp` | Deferred 主链 | R1（sorter、分辨率） |
+| `Engine/Shader/02_Deferred/LightingPS.hlsl` | 光照合成 | R1（分辨率、CB 契约） |
+| `Engine/04_Renderer/DebugCapture.*` | GPU 回读截帧 | **新增**（R1） |
+| `Engine/20_cmake/ShaderCompiler.cmake` | Shader 编译 + 依赖追踪 | R0/R1 |
+| `Engine/CMakeLists.txt` | 构建配置 | R0/R1/R3 |
+| `Demos/RendererDemoApp/RendererDemoApp.cpp` | R3 统一入口：Registry 切换 + 六 ImGui 面板 + RenderParams | **新增**（R3） |
+| `Engine/04_Renderer/Renderer/Base/RendererRegistry.cpp` | 渲染器注册表（显式注册，规避 dead-strip） | R3 |
+| `Engine/04_Renderer/ImGuiLayer.{h,cpp}` | ImGui Win32/DX12 后端（自建 SRV 堆） | **新增**（R3） |
+| `Engine/04_Renderer/GpuTimer.{h,cpp}` | GPU 时间戳查询（TIMESTAMP + 回读 + 围栏） | **新增**（R3） |
+| `Engine/04_Renderer/RenderParams.h` | 渲染参数唯一真源 | **新增**（R3） |
+| `Engine/05_Scene/Lighting/LightingSystem.cpp` | 参数打包/上传（`PackParams` / `ApplyParams`） | R3 |
+| `ThirdParty/imgui/` | Dear ImGui 1.91.9b（含 backends） | **新增**（R3） |
+| `Engine/Shader/02_Deferred/ColorPipeline.hlsli` | **显示编码链唯一实现**（Exposure→ACES→sRGB），Lighting 与 Skybox 共用 | **新增**（R4） |
+| `Engine/Shader/02_Deferred/GBufferPS.hlsl` | GBuffer 写入 + MASK AlphaTest `clip` | R4 |
+| `Engine/04_Renderer/EnvironmentLightingManager.cpp` | IBL 烘焙 + Skybox（接收显示参数）+ 状态机 | R4 |
+| `docs/AI/R4/R4_光栅PBR闭环.md` | R4 技术文档（架构/数据流/学习路线/回忆题） | **新增**（R4） |
+| `CMakePresets.json` | VS/命令行 presets（R4.1 修复：删除非法字段） | R4.1 |
+| `Engine/20_cmake/DeployRuntimeDlls.cmake` | 运行时 DLL 统一部署函数 | **新增**（R4.1） |
+| `docs/AI/R4/R4.1_VisualStudio构建修复.md` | VS 构建问题诊断与修复记录 | **新增**（R4.1） |
+
+---
+
+## 11. 新会话如何恢复
+
+1. 读本文件 `docs/AI/R_执行表.md`
+2. 需要细节时再读对应阶段文档：`R0_*.md` / `R1_*.md` / `R2/R2_生命周期与窗口稳定性.md` / `R3/R3_统一入口与交互工作台.md`
+3. R4 已完成，直接说「开始 R5」即可（R5 = DXR 最小闭环：D0 设备能力 → D1 AS 构建 → D2 DispatchRays）
+4. 施工日志模板：`docs/AIWorkLogs/_TEMPLATE_WP_施工日志.md`；已完成示例：`docs/AIWorkLogs/TR-20261026-01_R3-统一入口与交互工作台.md`
+5. 注意：**不要重复踩过的坑**（见 §8，R3 新增第 6–9 条）

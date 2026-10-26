@@ -1,10 +1,17 @@
 #pragma once
 
 #include "02_RHI/Resource/PixelBuffer.h"
+// R2：Destroy 里要调用 Graphics::g_DescriptorAllocator.Free 归还描述符。
+#include "02_RHI/GraphicsCore.h"
 
 class DepthBuffer : public PixelBuffer
 {
 public:
+	// R2：显式析构体（原因同 ColorBuffer 的析构注释）
+	// GpuResource 的析构里调用虚函数 Destroy 不会分派到本类，
+	// 导致 DSV/SRV 在走 shared_ptr 析构路径时从不归还。
+	~DepthBuffer() { Destroy(); }
+
 	DepthBuffer(float ClearDepth = 1.0f, uint8_t ClearStencil = 0)
 		: m_ClearDepth(ClearDepth), m_ClearStencil(ClearStencil)
 	{
@@ -12,6 +19,40 @@ public:
 		m_hDSV[1].ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 		m_hDSV[2].ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 		m_hDSV[3].ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
+		m_hDepthSRV.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
+		m_hStencilSRV.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
+	}
+
+	// ============================================================
+	// 销毁资源并释放描述符句柄（R2）
+	// ------------------------------------------------------------
+	// 与 ColorBuffer::Destroy 同理：CreateDerivedViews 依赖
+	// 「句柄 == UNKNOWN」判断是否重新分配描述符。
+	// 不重置会导致 Resize 时跳过分配、往旧句柄写入，
+	// 造成描述符泄漏与跨资源覆盖。
+	// ============================================================
+	virtual void Destroy() override
+	{
+		PixelBuffer::Destroy();
+
+		// ============================================================
+		// R2：归还描述符（与 ColorBuffer::Destroy 同因）
+		// ------------------------------------------------------------
+		// DSV 4 个变体 + 深度/模板 SRV 都属于 CPU-only 描述符堆，
+		// 不归还就会在每次 Resize 时按此数量持续泄漏。
+		// ============================================================
+		for (int i = 0; i < _countof(m_hDSV); ++i)
+		{
+			if (m_hDSV[i].ptr != D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+				Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_DSV].Free(m_hDSV[i], 1);
+		}
+		if (m_hDepthSRV.ptr != D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+			Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV].Free(m_hDepthSRV, 1);
+		if (m_hStencilSRV.ptr != D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+			Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV].Free(m_hStencilSRV, 1);
+
+		for (int i = 0; i < _countof(m_hDSV); ++i)
+			m_hDSV[i].ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 		m_hDepthSRV.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 		m_hStencilSRV.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 	}

@@ -1,4 +1,6 @@
 #include "00_Core/SystemTime.h"
+#include "00_Core/Utility/AssetRoot.h"
+#include "00_Core/Utility/CommandLineArg.h"
 #include "01_Application/GameCore.h"
 #include "01_Application/Display.h"
 #include "05_Scene/Camera/Camera.h"
@@ -31,6 +33,9 @@ public:
 	virtual void Update(float deltaT) override;
 	virtual void RenderScene(void) override;
 
+	// R2：窗口尺寸变化 → 重建渲染目标
+	void OnResize(uint32_t width, uint32_t height) override;
+
 	virtual bool RequiresRaytracingSupport();
 
 private:
@@ -54,15 +59,31 @@ int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ 
 //
 Renderer::Deferred::DeferredRenderer DeferredRenderer;
 
-std::wstring saber_emiya = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Saber/saber_emiya.glb";
-std::wstring toneriko = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/toneriko/toneriko1.gltf";
-std::wstring saberCaster3NoArmor = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/saberCaster/saberCaster3NoArmor.gltf";
-std::wstring ChosenSword = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/saberCaster/ChosenSword.gltf";
+static std::wstring saber_emiya() { return Asset::Resolve(L"Model/Saber/saber_emiya.glb"); }
+static std::wstring toneriko() { return Asset::Resolve(L"Model/toneriko/toneriko1.gltf"); }
+static std::wstring saberCaster3NoArmor() { return Asset::Resolve(L"Model/saberCaster/saberCaster3NoArmor.gltf"); }
+static std::wstring ChosenSword() { return Asset::Resolve(L"Model/saberCaster/ChosenSword.gltf"); }
 
-std::wstring KyomachiyaA = L"D:/CS-Self-Study/Computer_Graphics/DX12/TooiyumeRender/Assets/Model/Kyomachiya/KyomachiyaA.gltf";
+static std::wstring KyomachiyaA() { return Asset::Resolve(L"Model/Kyomachiya/KyomachiyaA.gltf"); }
 
 bool Tooiyume::RequiresRaytracingSupport() { return true; }
 
+
+// R2：窗口尺寸变化。Display 保证调用时 swapchain 已重建完毕。
+void Tooiyume::OnResize(uint32_t width, uint32_t height)
+{
+	LOG_INFO(L"[R2] OnResize %ux%u\n", width, height);
+
+	DeferredRenderer.OnResize(width, height);
+
+	// 重绑：Renderer 重建后旧 shared_ptr 指向已销毁对象，必须换新
+	Display::SceneColorBuffer = DeferredRenderer.GetDeferredBuffer().SceneColorBuffer;
+
+	// 注意：SetAspectRatio 的参数是 **height / width**（见 Camera.h 默认值 9/16），
+	// 不是常见的 width/height。CameraData 里的 aspect 也是这个方向，
+	// 写反会让投影矩阵把画面横竖颠倒拉伸。
+	m_Camera.SetAspectRatio((float)height / (float)width);
+}
 
 void Tooiyume::Startup(void)
 {
@@ -74,9 +95,12 @@ void Tooiyume::Startup(void)
 	Display::SceneColorBuffer = DeferredRenderer.GetDeferredBuffer().SceneColorBuffer;
 	// 模型加载
 	std::wstring gltfFileName;
-	bool forceRebuild = true;
-	Models[0] = Scene::Model::LoadModel(saberCaster3NoArmor, forceRebuild);
-	Models[1] = Scene::Model::LoadModel(ChosenSword, forceRebuild);
+	// R0：默认使用已有的 .ty 缓存；只有显式传入 -RebuildModels 时才强制重新烘焙。
+	// 原实现写死 true，导致每次都全量重解析 glTF + 重算切线/索引 + 重转纹理，
+	// 把 ModelLoader 里精心写的 mtime 缓存完全废掉。
+	bool forceRebuild = CommandLineArgs::HasFlag(L"RebuildModels");
+	Models[0] = Scene::Model::LoadModel(saberCaster3NoArmor(), forceRebuild);
+	Models[1] = Scene::Model::LoadModel(ChosenSword(), forceRebuild);
 
 
 	// Camera设置
@@ -136,7 +160,6 @@ void Tooiyume::Cleanup(void)
 	DeferredRenderer.Shutdown();
 
 }
-
 
 
 

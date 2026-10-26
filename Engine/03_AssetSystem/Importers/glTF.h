@@ -135,7 +135,10 @@ namespace glTF
         };
         float emissiveFactor[3];
         float normalTextureScale;
+        // R1.1：本顺序必须与 ConstantBuffers.h 的全局材质纹理槽位顺序完全一致，
+        // 也与 GBufferPS.hlsl 的 t0..t4 一致。三者任何一处改动都要同步另两处。
         enum { kBaseColor, kMetallicRoughness, kOcclusion, kEmissive, kNormal, kNumTextures };
+        static_assert(kNumTextures == 5, "与 ConstantBuffers.h 的 kNumTextures 必须一致");
         Texture* textures[kNumTextures];
         uint32_t index;
     };

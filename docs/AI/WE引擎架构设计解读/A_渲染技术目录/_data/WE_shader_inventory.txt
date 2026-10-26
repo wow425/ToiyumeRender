@@ -1,0 +1,578 @@
+TOTAL shader dir files: 365 | hlsl 305 | hlsli 40 | h 18
+TOTAL hlsl lines: 22660
+TOTAL hlsli lines: 18984
+TOTAL h lines: 4462
+### HLSL
+171	aerialPerspectiveCS.hlsl
+266	blockcompressCS_BC1.hlsl
+2	blockcompressCS_BC3.hlsl
+3	blockcompressCS_BC4.hlsl
+2	blockcompressCS_BC5.hlsl
+100	blockcompressCS_BC6H.hlsl
+2	blockcompressCS_BC6H_cubemap.hlsl
+36	bloomseparateCS.hlsl
+2	blur_bilateral_float1CS.hlsl
+2	blur_bilateral_float4CS.hlsl
+3	blur_bilateral_wide_float1CS.hlsl
+2	blur_bilateral_wide_float4CS.hlsl
+2	blur_gaussian_float1CS.hlsl
+178	blur_gaussian_float4CS.hlsl
+3	blur_gaussian_wide_float1CS.hlsl
+2	blur_gaussian_wide_float4CS.hlsl
+141	bvh_hierarchyCS.hlsl
+80	bvh_primitivesCS.hlsl
+81	bvh_propagateaabbCS.hlsl
+67	captureImpostorPS.hlsl
+31	chromatic_aberrationCS.hlsl
+12	circlePS.hlsl
+8	copyDepthPS.hlsl
+48	copyStencilBitPS.hlsl
+24	copytexture2D_float4CS.hlsl
+90	copytexture2D_float4_borderexpandCS.hlsl
+164	crt_screenCS.hlsl
+18	cubeMapPS.hlsl
+19	ddgi_debugVS.hlsl
+14	ddgi_indirectprepareCS.hlsl
+81	ddgi_rayallocationCS.hlsl
+515	ddgi_raytraceCS.hlsl
+2	ddgi_raytraceCS_rtapi.hlsl
+257	ddgi_updateCS.hlsl
+2	ddgi_updateCS_depth.hlsl
+61	depth_pyramidCS.hlsl
+50	depth_reprojectCS.hlsl
+122	depthoffield_mainCS.hlsl
+2	depthoffield_mainCS_cheap.hlsl
+2	depthoffield_mainCS_earlyexit.hlsl
+63	depthoffield_neighborhoodMaxCOCCS.hlsl
+125	depthoffield_postfilterCS.hlsl
+66	depthoffield_prepassCS.hlsl
+2	depthoffield_prepassCS_earlyexit.hlsl
+33	depthoffield_tileMaxCOC_horizontalCS.hlsl
+36	depthoffield_tileMaxCOC_verticalCS.hlsl
+46	depthoffield_upsampleCS.hlsl
+41	downsample4xCS.hlsl
+19	downsampleDepthBuffer4xPS.hlsl
+100	emittedparticleMS.hlsl
+43	emittedparticlePS_shadow.hlsl
+6	emittedparticlePS_simple.hlsl
+146	emittedparticlePS_soft.hlsl
+2	emittedparticlePS_soft_distortion.hlsl
+3	emittedparticlePS_soft_lighting.hlsl
+51	emittedparticleVS.hlsl
+84	emittedparticleVS_shadow.hlsl
+203	emittedparticle_emitCS.hlsl
+2	emittedparticle_emitCS_FROMMESH.hlsl
+2	emittedparticle_emitCS_volume.hlsl
+31	emittedparticle_finishUpdateCS.hlsl
+27	emittedparticle_kickoffUpdateCS.hlsl
+368	emittedparticle_simulateCS.hlsl
+3	emittedparticle_simulateCS_DEPTHCOLLISIONS.hlsl
+3	emittedparticle_simulateCS_SORTING.hlsl
+4	emittedparticle_simulateCS_SORTING_DEPTHCOLLISIONS.hlsl
+30	emittedparticle_sphbinningCS.hlsl
+17	emittedparticle_sphcellallocationCS.hlsl
+147	emittedparticle_sphdensityCS.hlsl
+198	emittedparticle_sphforceCS.hlsl
+27	emittedparticle_sphpartitionCS.hlsl
+19	envMapPS.hlsl
+17	envMapVS.hlsl
+20	envMap_skyPS_dynamic.hlsl
+11	envMap_skyPS_static.hlsl
+15	envMap_skyVS.hlsl
+12	extractStencilBitPS.hlsl
+158	fft_512x512_c2c_CS.hlsl
+3	fft_512x512_c2c_v2_CS.hlsl
+129	filterEnvMapCS.hlsl
+28	forceFieldPlaneVisualizerVS.hlsl
+30	forceFieldPointVisualizerVS.hlsl
+41	forceFieldVisualizerPS.hlsl
+40	fsr_sharpenCS.hlsl
+42	fsr_upscalingCS.hlsl
+30	fxaaCS.hlsl
+67	gaussian_splatCS.hlsl
+10	gaussian_splatPS.hlsl
+286	gaussian_splatVS.hlsl
+16	gaussian_splat_indirectCS.hlsl
+60	generateMIPChain2DCS_float4.hlsl
+21	generateMIPChain3DCS_float4.hlsl
+24	generateMIPChainCubeArrayCS_float4.hlsl
+24	generateMIPChainCubeCS_float4.hlsl
+91	hairparticlePS.hlsl
+25	hairparticlePS_prepass.hlsl
+19	hairparticlePS_prepass_depthonly.hlsl
+30	hairparticlePS_shadow.hlsl
+9	hairparticlePS_simple.hlsl
+46	hairparticleVS.hlsl
+544	hairparticle_simulateCS.hlsl
+125	hbaoCS.hlsl
+232	imagePS.hlsl
+71	imageVS.hlsl
+72	impostorPS.hlsl
+15	impostorPS_prepass.hlsl
+10	impostorPS_prepass_depthonly.hlsl
+8	impostorPS_simple.hlsl
+36	impostorVS.hlsl
+111	impostor_prepareCS.hlsl
+17	lensFlarePS.hlsl
+59	lensFlareVS.hlsl
+443	lightCullingCS.hlsl
+36	lightShaftsCS.hlsl
+32	lightmap_expandCS.hlsl
+35	lineardepthCS.hlsl
+41	luminancePass1CS.hlsl
+41	luminancePass2CS.hlsl
+62	mesh_blendPS.hlsl
+56	mesh_blend_expandCS.hlsl
+100	mesh_blend_prepareCS.hlsl
+40	meshlet_prepareCS.hlsl
+145	motionblurCS.hlsl
+2	motionblurCS_cheap.hlsl
+2	motionblurCS_earlyexit.hlsl
+70	motionblur_neighborhoodMaxVelocityCS.hlsl
+39	motionblur_tileMaxVelocity_horizontalCS.hlsl
+42	motionblur_tileMaxVelocity_verticalCS.hlsl
+145	msaoCS.hlsl
+203	msao_blurupsampleCS.hlsl
+2	msao_blurupsampleCS_blendout.hlsl
+2	msao_blurupsampleCS_premin.hlsl
+3	msao_blurupsampleCS_premin_blendout.hlsl
+2	msao_interleaveCS.hlsl
+45	msao_preparedepthbuffers1CS.hlsl
+35	msao_preparedepthbuffers2CS.hlsl
+85	normalsfromdepthCS.hlsl
+2	objectAS.hlsl
+4	objectDS.hlsl
+5	objectDS_prepass.hlsl
+6	objectDS_simple.hlsl
+92	objectGS_voxelizer.hlsl
+3	objectHS.hlsl
+4	objectHS_prepass.hlsl
+6	objectHS_simple.hlsl
+3	objectMS.hlsl
+3	objectMS_prepass.hlsl
+3	objectMS_prepass_alphatest.hlsl
+4	objectMS_simple.hlsl
+5	objectPS.hlsl
+58	objectPS_hologram.hlsl
+36	objectPS_paintradius.hlsl
+6	objectPS_prepass.hlsl
+5	objectPS_prepass_alphatest.hlsl
+2	objectPS_prepass_depthonly_alphatest.hlsl
+334	objectPS_voxelizer.hlsl
+3	objectVS_common.hlsl
+4	objectVS_common_tessellation.hlsl
+9	objectVS_debug.hlsl
+3	objectVS_prepass.hlsl
+3	objectVS_prepass_alphatest.hlsl
+5	objectVS_prepass_tessellation.hlsl
+4	objectVS_simple.hlsl
+7	objectVS_simple_tessellation.hlsl
+69	objectVS_voxelizer.hlsl
+18	occludeeVS.hlsl
+50	oceanSimulatorCS.hlsl
+239	oceanSurfacePS.hlsl
+3	oceanSurfacePS_envmap.hlsl
+2	oceanSurfacePS_shadowmap.hlsl
+6	oceanSurfaceSimplePS.hlsl
+62	oceanSurfaceVS.hlsl
+26	oceanUpdateDisplacementMapCS.hlsl
+38	oceanUpdateGradientFoldingCS.hlsl
+68	outlinePS.hlsl
+85	paint_textureCS.hlsl
+30	paintdecalPS.hlsl
+51	paintdecalVS.hlsl
+17	postprocessVS.hlsl
+120	radix_sortCS.hlsl
+495	raytraceCS.hlsl
+4	raytraceCS_rtapi.hlsl
+31	raytrace_debugbvhPS.hlsl
+18	raytrace_screenVS.hlsl
+467	renderlightmapPS.hlsl
+4	renderlightmapPS_rtapi.hlsl
+32	renderlightmapVS.hlsl
+26	resolveMSAADepthStencilCS.hlsl
+94	rtaoCS.hlsl
+89	rtao_denoise_filterCS.hlsl
+100	rtao_denoise_tileclassificationCS.hlsl
+219	rtdiffuseCS.hlsl
+125	rtdiffuse_spatialCS.hlsl
+224	rtdiffuse_temporalCS.hlsl
+94	rtdiffuse_upsampleCS.hlsl
+228	rtreflectionCS.hlsl
+200	rtreflectionLIB.hlsl
+3	rtshadowCS.hlsl
+108	rtshadow_denoise_filterCS.hlsl
+127	rtshadow_denoise_temporalCS.hlsl
+103	rtshadow_denoise_tileclassificationCS.hlsl
+108	rtshadow_upsampleCS.hlsl
+6	screenVS.hlsl
+324	screenspaceshadowCS.hlsl
+100	shadingRateClassificationCS.hlsl
+2	shadingRateClassificationCS_DEBUG.hlsl
+4	shadowMS.hlsl
+4	shadowMS_alphatest.hlsl
+5	shadowMS_transparent.hlsl
+25	shadowPS_alphatest.hlsl
+64	shadowPS_transparent.hlsl
+4	shadowVS.hlsl
+5	shadowVS_alphatest.hlsl
+5	shadowVS_transparent.hlsl
+22	sharpenCS.hlsl
+192	skinningCS.hlsl
+101	skyAtmosphere_cameraVolumeLutCS.hlsl
+142	skyAtmosphere_multiScatteredLuminanceLutCS.hlsl
+113	skyAtmosphere_skyLuminanceLutCS.hlsl
+71	skyAtmosphere_skyViewLutCS.hlsl
+44	skyAtmosphere_transmittanceLutCS.hlsl
+24	skyPS_dynamic.hlsl
+18	skyPS_static.hlsl
+8	skyVS.hlsl
+20	sphereVS.hlsl
+122	ssaoCS.hlsl
+191	ssgiCS.hlsl
+112	ssgi_deinterleaveCS.hlsl
+146	ssgi_upsampleCS.hlsl
+42	ssr_depthHierarchyCS.hlsl
+390	ssr_raytraceCS.hlsl
+2	ssr_raytraceCS_cheap.hlsl
+2	ssr_raytraceCS_earlyexit.hlsl
+164	ssr_resolveCS.hlsl
+236	ssr_temporalCS.hlsl
+41	ssr_tileMaxRoughness_horizontalCS.hlsl
+61	ssr_tileMaxRoughness_verticalCS.hlsl
+104	ssr_upsampleCS.hlsl
+10	sunPS.hlsl
+40	surfel_binningCS.hlsl
+647	surfel_coverageCS.hlsl
+88	surfel_denoiseCS.hlsl
+17	surfel_gridoffsetsCS.hlsl
+48	surfel_indirectprepareCS.hlsl
+387	surfel_integrateCS.hlsl
+607	surfel_raytraceCS.hlsl
+2	surfel_raytraceCS_rtapi.hlsl
+310	surfel_updateCS.hlsl
+120	temporalaaCS.hlsl
+188	terrainVirtualTextureUpdateCS.hlsl
+2	terrainVirtualTextureUpdateCS_emissivemap.hlsl
+2	terrainVirtualTextureUpdateCS_normalmap.hlsl
+2	terrainVirtualTextureUpdateCS_surfacemap.hlsl
+194	tonemapCS.hlsl
+19	trailPS.hlsl
+20	trailVS.hlsl
+196	underwaterCS.hlsl
+2	upsample_bilateralPS.hlsl
+2	upsample_bilateral_float1CS.hlsl
+84	upsample_bilateral_float4CS.hlsl
+10	vPointLightVS.hlsl
+14	vRectLightPS.hlsl
+19	vRectLightVS.hlsl
+13	vSpotLightVS.hlsl
+6	vertexcolorPS.hlsl
+7	vertexcolorVS.hlsl
+84	virtualTextureResidencyUpdateCS.hlsl
+52	virtualTextureTileAllocateCS.hlsl
+59	virtualTextureTileRequestsCS.hlsl
+79	visibility_analyzeCS.hlsl
+185	visibility_resolveCS.hlsl
+137	visibility_shadeCS.hlsl
+75	visibility_surfaceCS.hlsl
+79	visibility_velocityCS.hlsl
+7	voidPS.hlsl
+34	volumetricCloud_curlnoiseCS.hlsl
+30	volumetricCloud_detailnoiseCS.hlsl
+822	volumetricCloud_renderCS.hlsl
+2	volumetricCloud_renderCS_capture.hlsl
+2	volumetricCloud_renderCS_capture_MSAA.hlsl
+263	volumetricCloud_reprojectCS.hlsl
+143	volumetricCloud_shadow_renderCS.hlsl
+47	volumetricCloud_shapenoiseCS.hlsl
+96	volumetricCloud_upsamplePS.hlsl
+61	volumetricCloud_weathermapCS.hlsl
+90	volumetricLight_DirectionalPS.hlsl
+91	volumetricLight_PointPS.hlsl
+148	volumetricLight_SpotPS.hlsl
+12	volumetriclight_directionalVS.hlsl
+11	volumetriclight_pointVS.hlsl
+133	volumetriclight_rectanglePS.hlsl
+13	volumetriclight_rectangleVS.hlsl
+12	volumetriclight_spotVS.hlsl
+101	voxelGS.hlsl
+8	voxelVS.hlsl
+10	voxelgridVS.hlsl
+47	vxgi_offsetprevCS.hlsl
+30	vxgi_resolve_diffuseCS.hlsl
+40	vxgi_resolve_specularCS.hlsl
+52	vxgi_sdf_jumpfloodCS.hlsl
+128	vxgi_temporalCS.hlsl
+28	waveeffectPS.hlsl
+85	wetmap_updateCS.hlsl
+29	windCS.hlsl
+38	yuv_to_rgbCS.hlsl
+### HLSLI
+598	BlockCompress.hlsli
+164	ColorSpaceUtility.hlsli
+127	PixelPacking_R11G11B10.hlsli
+82	PixelPacking_RGBE.hlsli
+1038	SH_Lite.hlsli
+713	bc6h.hlsli
+20	bitonicSortHF.hlsli
+206	brdf.hlsli
+55	capsuleShadowHF.hlsli
+98	circle.hlsli
+194	cone.hlsli
+38	cube.hlsli
+386	cylinder.hlsli
+127	depthOfFieldHF.hlsli
+31	emittedparticleHF.hlsli
+99	fogHF.hlsli
+2047	fxaa.hlsli
+2689	globals.hlsli
+35	hairparticleHF.hlsli
+242	icosphere.hlsli
+81	imageHF.hlsli
+32	impostorHF.hlsli
+648	lightingHF.hlsli
+1152	objectHF.hlsli
+256	objectHF_mesh_shading.hlsli
+162	objectHF_tessellation.hlsli
+39	oceanSurfaceHF.hlsli
+8	quad.hlsli
+468	raytracingHF.hlsli
+653	shadingHF.hlsli
+465	shadowHF.hlsli
+764	skyAtmosphere.hlsli
+195	skyHF.hlsli
+150	stochasticSSRHF.hlsli
+1206	surfaceHF.hlsli
+2882	uvsphere.hlsli
+564	volumetricCloudsHF.hlsli
+12	volumetricLightHF.hlsli
+219	voxelConeTracingHF.hlsli
+45	voxelHF.hlsli
+### HDR
+137	ShaderInterop.h
+58	ShaderInterop_BVH.h
+447	ShaderInterop_DDGI.h
+171	ShaderInterop_EmittedParticle.h
+17	ShaderInterop_FFTGenerator.h
+27	ShaderInterop_FSR2.h
+30	ShaderInterop_GaussianSplat.h
+67	ShaderInterop_HairParticle.h
+85	ShaderInterop_Image.h
+36	ShaderInterop_Ocean.h
+160	ShaderInterop_Postprocess.h
+17	ShaderInterop_Raytracing.h
+1930	ShaderInterop_Renderer.h
+620	ShaderInterop_SurfelGI.h
+36	ShaderInterop_Terrain.h
+166	ShaderInterop_VXGI.h
+69	ShaderInterop_VoxelGrid.h
+389	ShaderInterop_Weather.h
+### RENDERER_API (207)
+86	void UpdateGPUSuballocator(
+88	void ModifyObjectSampler(
+91	void Initialize(
+94	void ClearWorld(
+99	void SetShaderPath(
+103	void SetShaderSourcePath(
+105	void ReloadShaders(
+172	void Clear(
+211	void UpdateVisibility(
+213	void UpdatePerFrameData(
+220	void UpdateRenderData(
+227	void UpdateRenderDataAsync(
+234	void TextureStreamingReadbackCopy(
+240	void UpdateOcean(
+245	void ReadbackOcean(
+251	void UpdateRaytracingAccelerationStructures(
+254	void BindCommonResources(
+258	void BindCameraCB(
+282	void DrawScene(
+290	void ProcessDeferredTextureRequests(
+293	void ComputeVolumetricCloudShadows(
+300	void ComputeSkyAtmosphereTextures(
+302	void ComputeSkyAtmosphereSkyViewLut(
+304	void ComputeSkyAtmosphereCameraVolumeLut(
+307	void DrawSky(
+309	void DrawSun(
+311	void DrawShadowmaps(
+316	void DrawDebugWorld(
+323	void DrawWireframeOverlay(
+329	void DrawSoftParticles(
+335	void UpdateGaussianSplatsForCamera(
+341	void DrawGaussianSplats(
+347	void DrawSpritesAndFonts(
+355	void DrawLightVisualizers(
+361	void DrawVolumeLights(
+366	void DrawLensFlares(
+371	void RefreshEnvProbes(
+373	void RefreshImpostors(
+375	void RefreshLightmaps(
+377	void RefreshWetmaps(
+379	void PaintDecals(
+382	void ResolveMSAADepthBuffer(
+383	void DownsampleDepthBuffer(
+391	void CreateTiledLightResources(
+393	void ComputeTiledLightCulling(
+404	void CreateLuminanceResources(
+405	void ComputeLuminance(
+418	void CreateBloomResources(
+419	void ComputeBloom(
+428	void ComputeShadingRateClassification(
+449	void DeleteOptionalResources(
+456	void CreateVisibilityResourcesSimple(
+457	void CreateVisibilityResources(
+458	void Visibility_Prepare(
+463	void Visibility_Surface(
+467	void Visibility_Shade(
+472	void Visibility_Velocity(
+518	void CreateSurfelGIResources(
+519	void SurfelGI_Coverage(
+526	void SurfelGI(
+533	void DDGI(
+553	void CreateVXGIResources(
+554	void VXGI_Voxelize(
+559	void VXGI_Resolve(
+566	void Postprocess_Blur_Gaussian(
+575	void Postprocess_Blur_Bilateral(
+589	void CreateSSAOResources(
+590	void Postprocess_SSAO(
+598	void Postprocess_HBAO(
+628	void CreateMSAOResources(
+629	void Postprocess_MSAO(
+647	void CreateRTAOResources(
+648	void Postprocess_RTAO(
+667	void CreateRTDiffuseResources(
+668	void Postprocess_RTDiffuse(
+684	void CreateSSGIResources(
+685	void Postprocess_SSGI(
+707	void CreateRTReflectionResources(
+708	void Postprocess_RTReflection(
+736	void CreateSSRResources(
+737	void Postprocess_SSR(
+757	void CreateRTShadowResources(
+758	void Postprocess_RTShadow(
+768	void CreateScreenSpaceShadowResources(
+769	void Postprocess_ScreenSpaceShadow(
+776	void Postprocess_LightShafts(
+803	void CreateDepthOfFieldResources(
+804	void Postprocess_DepthOfField(
+812	void Postprocess_Outline(
+833	void CreateMotionBlurResources(
+834	void Postprocess_MotionBlur(
+846	void CreateAerialPerspectiveResources(
+847	void Postprocess_AerialPerspective(
+861	void ResetFrame(
+862	void AdvanceFrame(
+866	void CreateVolumetricCloudResources(
+867	void Postprocess_VolumetricClouds(
+877	void Postprocess_VolumetricClouds_Upsample(
+881	void VolumetricClouds_Capture(
+885	void Postprocess_FXAA(
+899	void CreateTemporalAAResources(
+900	void Postprocess_TemporalAA(
+905	void Postprocess_Sharpen(
+911	void Postprocess_CRT(
+925	void Postprocess_Tonemap(
+943	void Postprocess_FSR(
+998	void CreateFSR2Resources(
+999	void Postprocess_FSR2(
+1011	void Postprocess_Chromatic_Aberration(
+1017	void Postprocess_Upsample_Bilateral(
+1025	void Postprocess_Downsample4x(
+1031	void Postprocess_Lineardepth(
+1036	void Postprocess_NormalsFromDepth(
+1041	void Postprocess_Underwater(
+1055	void CreateMeshBlendResources(
+1056	void PostProcess_MeshBlend_EdgeProcess(
+1060	void PostProcess_MeshBlend_Resolve(
+1067	void Postprocess_Custom(
+1077	void YUV_to_RGB(
+1090	void CopyDepthStencil(
+1100	void ScaleStencilMask(
+1107	void ExtractStencil(
+1114	void RayTraceScene(
+1127	void RayTraceSceneBVH(
+1130	void OcclusionCulling_Reset(
+1131	void OcclusionCulling_Render(
+1132	void OcclusionCulling_Resolve(
+1134	void ComputeReprojectedDepthPyramid(
+1154	void GenerateMipChain(
+1160	void BlockCompress(
+1171	void CopyTexture2D(
+1180	void CopyTexture2D(
+1188	void DrawWaterRipples(
+1191	void DrawWaveEffect(
+1195	void SetShadowProps2D(
+1196	void SetShadowPropsCube(
+1205	void SetWireRender(
+1207	void SetWireframeMode(
+1209	void SetToDrawDebugBoneLines(
+1211	void SetToDrawDebugPartitionTree(
+1214	void SetToDrawDebugEnvProbes(
+1215	void SetToDrawDebugEmitters(
+1217	void SetToDrawDebugForceFields(
+1219	void SetToDrawDebugCameras(
+1221	void SetToDrawDebugColliders(
+1223	void SetToDrawDebugSprings(
+1226	void SetToDrawGridHelper(
+1227	void SetGridHelperColor(
+1229	void SetGridHelper2D(
+1232	void SetToDrawVoxelHelper(
+1233	void SetDebugLightCulling(
+1235	void SetAdvancedLightCulling(
+1237	void SetVariableRateShadingClassification(
+1239	void SetVariableRateShadingClassificationDebug(
+1241	void SetOcclusionCullingEnabled(
+1243	void SetTemporalAAEnabled(
+1245	void SetTemporalAADebugEnabled(
+1247	void SetFreezeCullingCameraEnabled(
+1249	void SetVXGIEnabled(
+1251	void SetVXGIReflectionsEnabled(
+1253	void SetGameSpeed(
+1255	void SetShadowsEnabled(
+1257	void SetRaytraceBounceCount(
+1259	void SetRaytraceDebugBVHVisualizerEnabled(
+1261	void SetRaytracedShadowsEnabled(
+1263	void SetTessellationEnabled(
+1265	void SetDisableAlbedoMaps(
+1267	void SetForceDiffuseLighting(
+1269	void SetForceUnlit(
+1271	void SetScreenSpaceShadowsEnabled(
+1273	void SetSurfelGIEnabled(
+1275	void SetSurfelGIDebugEnabled(
+1277	void SetDDGIEnabled(
+1279	void SetDDGIDebugEnabled(
+1281	void SetDDGIRayCount(
+1283	void SetDDGIBlendSpeed(
+1285	void SetGIBoost(
+1287	void SetMeshShaderAllowed(
+1289	void SetMeshletOcclusionCullingEnabled(
+1291	void Workaround(
+1292	void SetCapsuleShadowEnabled(
+1294	void SetCapsuleShadowAngle(
+1296	void SetCapsuleShadowFade(
+1298	void SetShadowLODOverrideEnabled(
+1302	void SetDebugDrawEnabled(
+1310	void DrawBox(
+1311	void DrawBox(
+1312	void DrawBox(
+1313	void DrawBox(
+1315	void DrawSphere(
+1317	void DrawCapsule(
+1327	void DrawLine(
+1337	void DrawLine(
+1339	void DrawAxis(
+1348	void DrawPoint(
+1360	void DrawTriangle(
+1379	void DrawDebugText(
+1392	void DrawPaintRadius(
+1401	void PaintIntoTexture(
+1417	void PaintDecalIntoObjectSpaceTexture(
+1421	void DrawVoxelGrid(
+1425	void DrawPathQuery(
+1429	void DrawTrail(
+1432	void AddDeferredMIPGen(
+1433	void AddDeferredBlockCompression(
+1464	void PushBarrier(
+1465	void FlushBarriers(

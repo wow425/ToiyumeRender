@@ -24,10 +24,39 @@ cbuffer MaterialConstants : register(b0)
     uint flags;
 }
 
-cbuffer GlobalConstants : register(b1) // 已核对cpp端结构体定义顺序
+// R1.7：与 ConstantBuffers.h 的 GlobalConstants 逐字段一致。
+// 原先这里叫 ViewProj（C++ 叫 ViewProjMatrix），且缺 SunDirection/SunIntensity，
+// 两侧契约已经悄悄分叉。现统一命名与布局。
+cbuffer GlobalConstants : register(b1)
 {
-    float4x4 ViewProj;
-    float3 ViewerPos;
+    float4x4 ViewProjMatrix;   // offset  0
+    float4   CameraPos;        // offset 64
+    float4   SunDirection;     // offset 80
+    float4   SunIntensity;     // offset 96
+}
+
+// ============================================================
+// R4：材质标志位解码
+// ------------------------------------------------------------
+// flags 是一个 32 位位域（定义见 ConstantBuffers.h::MaterialConstants）：
+//   bit 0..4 : 各纹理使用 UV0/UV1
+//   bit 5    : twoSided
+//   bit 6    : alphaTest        ← glTF alphaMode == "MASK"
+//   bit 7    : alphaBlend       ← glTF alphaMode == "BLEND"（透明混合，不属于 R4 范围）
+//   bit 16..31: alphaRef，**half 精度**存储的 glTF alphaCutoff
+// ModelConvert 原样搬运该位域，因此这里必须按同一布局解码。
+// 历史状态：GBufferPS 从来不做 alpha 测试，MASK 材质（如 toneriko1）
+// 的镂空边缘被画成实心方块 —— 不是"材质错"，是这条分支根本不存在。
+// ============================================================
+#define MATFLAG_ALPHA_TEST  (1u << 6)
+#define MATFLAG_ALPHA_BLEND (1u << 7)
+
+// alphaRef 以 half 存在高 16 位。用 HLSL 内建 f16tof32 解码，
+// 不要自己写位运算近似：half 的指数/尾数布局与 float 不同，
+// 手写移位会得到完全错误的阈值（0.5 -> 6.1e-5 这种量级）。
+float DecodeAlphaRef(uint flags)
+{
+    return f16tof32((flags >> 16) & 0xFFFFu);
 }
 
 struct VSOutput
@@ -90,6 +119,20 @@ GBufferOutput MainPS(VSOutput input)
     GBufferOutput output;
     
     float4 basecolor = baseColorFactor * baseColorTexture.Sample(baseColorSampler, input.UV0);
+
+    // ============================================
+    // R4：Alpha Test（glTF MASK）
+    // ============================================
+    // 放在最前面：被裁掉的片元不应产生任何后续采样与 GBuffer 写入。
+    // clip 会终止整条像素着色器（对 MRT 的所有目标一致生效），
+    // 因此 GBuffer 的四个 RT 不会出现"部分目标被写"的不一致状态。
+    //
+    // 该 PSO 同时用于 Depth Pass（BlendNoColorWrite），所以 Z-PrePass
+    // 也会得到同样的镂空深度，不会出现"深度实心、颜色镂空"的错配。
+    if ((flags & MATFLAG_ALPHA_TEST) != 0)
+    {
+        clip(basecolor.a - DecodeAlphaRef(flags));
+    }
     
     // ============================================
     // Metallic Roughness

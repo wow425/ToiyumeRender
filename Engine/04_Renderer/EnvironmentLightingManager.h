@@ -33,6 +33,7 @@ class GraphicsContext;
 class ByteAddressBuffer;
 
 namespace Scene::Camera{ class Camera; }
+namespace Renderer { struct RenderParams; }
 namespace Renderer::EnvironmentLighting
 {
 
@@ -78,13 +79,19 @@ namespace Renderer::EnvironmentLighting
 		void BakeEnvironmentTextures(GraphicsContext& gfxContext);		// 将hdr纹理烘焙成skybox,IBL纹理
 
 
-		void SkyboxPass(GraphicsContext& gfxcontext, const  Scene::Camera::Camera& camera); // 绘制skybox
+		// R4：Skybox 现在参与曝光/色调映射/sRGB 链，必须拿到与 Lighting Pass 相同的参数。
+		// 传 const& 而不是内部去读全局状态，是为了让"天空和模型用同一份曝光"在类型上就成立。
+		void SkyboxPass(GraphicsContext& gfxcontext, const Scene::Camera::Camera& camera,
+		                const Renderer::RenderParams& params); // 绘制skybox
 
 
 		const EnvironmentMapTextures& GetEnvironmentMapTextureRefs() const { return m_Textures; }
 
 
 		bool IsReady() const { return m_Ready; }
+		// R4：诊断用。"环境图加载成功"与"烘焙完成"是两件事，
+		// 分开暴露才能在启动日志里区分「资产缺失」与「烘焙没跑」。
+		bool IsHDRLoaded() const { return m_HDRLoaded; }
 
 		const ColorBuffer* GetEnvironmentCube() const { return m_EnvironmentCubeMap.get(); }
 		const ColorBuffer* GetIrradianceCube() const { return m_IrradianceCubeMap.get(); }

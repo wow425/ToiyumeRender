@@ -5,6 +5,10 @@
 
 using namespace Graphics;
 
+// R2 诊断计数器定义（全程序唯一实例）
+uint32_t ColorBuffer::s_DestroyCalls = 0;
+uint32_t ColorBuffer::s_DestroyAlreadyUnknown = 0;
+
 // RTV,UAV,SRV
 void ColorBuffer::CreateDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format, uint32_t ArraySize, uint32_t NumMips)
 {

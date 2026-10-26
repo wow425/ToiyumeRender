@@ -84,6 +84,20 @@ Scene::Model::ModelInstance& Scene::Model::ModelInstance::operator= (std::shared
 	m_Model = sourceModel;
 	m_Locator = UniformTransform(kIdentity);
 
+	// ============================================================
+	// R3 修复：运行时换模型后模型不可见（整帧只剩天空/地面）
+	// ------------------------------------------------------------
+	// 下面会重建 m_MeshConstantsGPU（ByteAddressBuffer），新缓冲内容是未定义的。
+	// 而 Update() 的第二个守卫是 if (!m_IsDirty) return;：
+	//   第 1 帧 EndFrame 已经 ClearDirty -> m_IsDirty == false
+	//   此时换模型 -> 缓冲重建但 Update 早退 -> MeshConstants 从未上传
+	//   -> 每次 draw 的 WorldMatrix / WorldIT 全是垃圾 -> 顶点全被压成退化三角形
+	// 现象：日志一切正常（sorter 里对象数没变、DrawIndexed 照常提交、无 Debug Layer 报错），
+	//       但画面上模型凭空消失。与「只剩清屏色」的 Forward 分支是同一个根因。
+	// 正确语义：换了模型数据就是脏的，必须重新上传。
+	// ============================================================
+	m_IsDirty = true;
+
 
 	auto s = m_Locator.GetScale();
 	auto t = m_Locator.GetTranslation();
@@ -179,6 +193,39 @@ void Scene::Model::ModelInstance::Resize(float newRadius)
 	m_Locator.SetScale(newRadius / m_Model->m_BoundingSphere.GetRadius());
 
 	m_IsDirty = true;
+}
+
+// ============================================================
+// R4.6：把模型中心摆到指定世界坐标（支持 UI 里摆放多个模型）
+// ------------------------------------------------------------
+// 语义注意：设置的是**包围球中心**的位置，不是模型原点。
+// m_Locator 作用在模型的本地空间里，而本地空间的原点与包围球中心
+// 通常并不重合（美术导出时模型常带偏移）。若直接把 translation 设成
+// 目标点，模型会偏离目标一个"本地中心偏移 × 缩放"的量。
+//
+// 正确关系：  世界中心 = translation + scale * 本地中心
+//              => translation = 目标位置 - scale * 本地中心
+// ============================================================
+void Scene::Model::ModelInstance::SetWorldPosition(const Vector3& position)
+{
+	if (m_Model == nullptr)
+		return;
+
+	const Scalar scale = m_Locator.GetScale();
+	const Vector3 localCenter = m_Model->m_BoundingSphere.GetCenter();
+	m_Locator.SetTranslation(position - localCenter * scale);
+
+	// 必须置脏：Update() 只处理 dirty 的实例，否则新的 translation
+	// 永远到不了 MeshConstants，表现为"改了位置但模型没动"。
+	m_IsDirty = true;
+}
+
+Vector3 Scene::Model::ModelInstance::GetWorldPosition() const
+{
+	if (m_Model == nullptr)
+		return Vector3(kOrigin);
+
+	return m_Locator.GetTranslation() + m_Model->m_BoundingSphere.GetCenter() * m_Locator.GetScale();
 }
 
 Vector3 Scene::Model::ModelInstance::GetCenter() const

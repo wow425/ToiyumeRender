@@ -1,11 +1,11 @@
 ﻿{
-  "BackgroundImageAbsolutePath": "D:\\CS-Self-Study\\Computer_Graphics\\TA\\3DGamesAssets\\FGO material\\Return to Avalon -Fate Art Works-\\279.jpg",
+  "BackgroundImageAbsolutePath": "F:\\VS\\279.jpg",
   "BackgroundImagesDirectoryAbsolutePath": "c:\\users\\saber\\appdata\\local\\microsoft\\visualstudio\\17.0_75100436\\extensions\\nte2odgq.ij3\\Images",
   "BlurMethod": 0,
   "BlurRadius": 0,
   "EditorBackgroundColor": "",
   "EditorBackgroundColorObject": null,
-  "ExpandToIDE": true,
+  "ExpandToIDE": false,
   "Extensions": ".png, .jpg, .gif, .bmp",
   "ImageBackgroundType": 0,
   "ImageFadeAnimationInterval": "PT5S",

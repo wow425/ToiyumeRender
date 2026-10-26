@@ -17,8 +17,20 @@
 using namespace Renderer;
 using namespace Graphics;
 
-// 缓存已创建的采样器组合。Key: 寻址模式组合, Value: 描述符堆中的偏移
-std::unordered_map<uint32_t, uint32_t> g_SamplerPermutations;
+// R3：采样器组合缓存的一条记录。
+// 为什么不能只存 offset：s_SamplerHeap 是纯 bump 分配器，两个 Renderer 的 Shutdown 都会
+// 调 s_SamplerHeap.Destroy()，下一轮 Initialize 的 Create() 又把游标归零。于是上一轮
+// 存下来的偏移在新堆里「碰巧」仍然落在合法范围内，却指向了完全不同的采样器 ——
+// 不会崩溃、不会报错，只会让贴图采样模式静默错掉（重复/边缘拉伸/过滤不对），
+// 排查成本极高。所以缓存值里带上堆的代际号，代际不符一律当未命中、重新分配。
+struct SamplerCacheEntry
+{
+	uint32_t generation; // 分配时 Renderer::s_SamplerHeap 的代际（DescriptorHeap::GetGeneration）
+	uint32_t offset;     // 采样器描述符表在堆内的偏移（GetOffsetOfHandle 的结果）
+};
+
+// 缓存已创建的采样器组合。Key: 寻址模式组合, Value: 描述符堆偏移 + 代际号
+std::unordered_map<uint32_t, SamplerCacheEntry> g_SamplerPermutations;
 
 // 根据位掩码（AddressModes）动态获取或创建 D3D12 采样器描述符
 D3D12_CPU_DESCRIPTOR_HANDLE GetSampler(uint32_t addressModes)
@@ -85,22 +97,41 @@ void LoadMaterials(Scene::Model::Model& model,
 	{
 		const Scene::Model::MaterialTextureData& srcMat = materialTextures[matIdx];
 
-		// 分配纹理描述符表（Texture Descriptor Table）。每个材质一个表，每个表包含5个纹理槽位（BaseColor, Emissive, Normal, Metallic, Roughness）
-		// 并将纹理描述符从源（模型纹理或默认纹理）复制到新分配的表中
+		// 分配纹理描述符表。槽位顺序严格遵循 ConstantBuffers.h 的材质纹理槽位
+		// （即 HLSL GBufferPS 的 t0..t4）：
+		//   t0 BaseColor · t1 MetallicRoughness · t2 Occlusion · t3 Emissive · t4 Normal
 		DescriptorHandle TextureHandles = Renderer::s_TextureHeap.Alloc(kNumTextures);
 		uint32_t SRVDescriptorTable = Renderer::s_TextureHeap.GetOffsetOfHandle(TextureHandles);
 
 		uint32_t DestCount = kNumTextures;
 		uint32_t SourceCounts[kNumTextures] = { 1, 1, 1, 1, 1 };
 
-		// 默认备选纹理
+		// ============================================================
+		// 默认（占位）纹理 —— R1.2
+		// ------------------------------------------------------------
+		// 这些纹理决定「材质没有该贴图时，Shader 采样到什么」。选错会直接扭曲 PBR：
+		//   BaseColor         缺省应为白色 (1,1,1,1)：乘法单位元，保留 baseColorFactor 原色
+		//   MetallicRoughness 缺省应为 (1, 1, 1, 1)：G=roughness=1, B=metallic=1，
+		//                     再乘材质的 metallicFactor/roughnessFactor 才等于材质值
+		//                     （glTF 规定：无 MR 贴图时 metallic/roughness 全由 factor 决定）
+		//   Occlusion         缺省应为白色 (1,1,1,1)：AO=1 表示完全不受遮蔽
+		//   Emissive          缺省应为黑色 (0,0,0,1)：无自发光
+		//   Normal            缺省应为平面法线 (0.5,0.5,1,1)：解码后是切线空间 +Z
+		//
+		// 改造前这里把 5 个槽按另一套顺序填，导致：
+		//   Normal 槽拿到纯白 (1,1,1) → 解码成 (1,1,1) 的非法法线，全模型光照错乱
+		//   MetallicRoughness 槽拿到平面法线贴图 → metallic≈1，非金属全变金属
+		//   Occlusion 槽拿到透明黑 → AO=0，环境光被完全抹掉
+		// 实测该模型 20 个材质里 19 个只有 baseColor，其余槽全部走默认表，
+		// 所以这张表直接决定了画面是否正确。
+		// ============================================================
 		D3D12_CPU_DESCRIPTOR_HANDLE DefaultTextures[kNumTextures] =
 		{
-			GetDefaultTexture(kWhiteOpaque2D), // baseColorFactor
-			GetDefaultTexture(kWhiteOpaque2D), // emissiveFactor
-			GetDefaultTexture(kWhiteOpaque2D), // normalTextureScale
-			GetDefaultTexture(kBlackTransparent2D), // metallicFactor
-			GetDefaultTexture(kDefaultNormalMap) // roughnessFactor
+			GetDefaultTexture(kWhiteOpaque2D),     // t0 BaseColor:          乘 1 保持原色
+			GetDefaultTexture(kWhiteOpaque2D),     // t1 MetallicRoughness:  G=1,B=1 交给 factor 决定
+			GetDefaultTexture(kWhiteOpaque2D),     // t2 Occlusion:          AO = 1
+			GetDefaultTexture(kBlackOpaque2D),     // t3 Emissive:           无自发光
+			GetDefaultTexture(kDefaultNormalMap)   // t4 Normal:             平面法线 (0.5,0.5,1)
 		};
 		for (uint32_t i = 0; i < kNumTextures; ++i) // 验证所有默认纹理是否有效
 		{
@@ -141,12 +172,22 @@ void LoadMaterials(Scene::Model::Model& model,
 		uint32_t addressModes = srcMat.addressModes;
 		auto samplerMapLookup = g_SamplerPermutations.find(addressModes);
 
-		// 若该采样器组合未缓存，则在采样器堆中分配并拷贝
-		if (samplerMapLookup == g_SamplerPermutations.end())
+		// R3：缓存必须按「代际 + 偏移」校验。s_SamplerHeap 一旦 Destroy + Create（切 renderer
+		// 必然发生），旧偏移就指向别的采样器了，只有代际号相同才算真命中。
+		const uint32_t samplerHeapGeneration = Renderer::s_SamplerHeap.GetGeneration();
+		const bool samplerCacheHit =
+			samplerMapLookup != g_SamplerPermutations.end() &&
+			samplerMapLookup->second.generation == samplerHeapGeneration;
+
+		// 若该采样器组合未缓存（或缓存来自上一代已被销毁的堆），则在采样器堆中重新分配并拷贝
+		if (!samplerCacheHit)
 		{
 			DescriptorHandle SamplerHandles = Renderer::s_SamplerHeap.Alloc(kNumTextures);
 			uint32_t SamplerDescriptorTable = Renderer::s_SamplerHeap.GetOffsetOfHandle(SamplerHandles);
-			g_SamplerPermutations[addressModes] = SamplerDescriptorTable;
+			// 记录本次分配所属的代际；下一轮堆重建后该条目会自动失效。
+			// 注意必须写在下面那个循环之前 —— 循环会把 addressModes 逐槽右移消耗掉，
+			// 之后的 addressModes 已经不是缓存键了。
+			g_SamplerPermutations[addressModes] = { samplerHeapGeneration, SamplerDescriptorTable };
 
 			model.m_Materials[matIdx].SRVTable = SRVDescriptorTable;
 			model.m_Materials[matIdx].SamplerTable = SamplerDescriptorTable;
@@ -163,7 +204,7 @@ void LoadMaterials(Scene::Model::Model& model,
 		else
 		{
 			model.m_Materials[matIdx].SRVTable = SRVDescriptorTable;
-			model.m_Materials[matIdx].SamplerTable = samplerMapLookup->second;
+			model.m_Materials[matIdx].SamplerTable = samplerMapLookup->second.offset;
 		}
 
       // Safely read material constants if available
@@ -208,9 +249,16 @@ std::shared_ptr<Scene::Model::Model> Scene::Model::LoadModel(const std::wstring&
 		forceRebuild = false;
 
 	// 原始文件和缓存文件双双丢失，直接报错退出。这也是最常见的运行时资源缺失崩溃原因。
+	// R0：错误信息必须能定位「哪个文件、在哪、该怎么修」。
+	// 原来只打印一个裸文件名，看不到搜索路径，也看不到后果，排查时几乎无用。
 	if (sourceFileMissing && miniFileMissing)
 	{
-		Utility::Printf("Error: Could not find %ws\n", fileName.c_str());
+		Utility::Printf(L"[Asset] 错误：模型加载失败 —— 源文件与缓存文件都不存在\n");
+		Utility::Printf(L"[Asset]   源文件 : %ws\n", filePath.c_str());
+		Utility::Printf(L"[Asset]   缓存   : %ws\n", miniFileName.c_str());
+		Utility::Printf(L"[Asset]   后果   : 该模型不会渲染（通常表现为画面中缺少对应物体）\n");
+		Utility::Printf(L"[Asset]   排查   : 确认上方 [Asset] AssetsRoot 是否指向本项目 Assets 目录；\n");
+		Utility::Printf(L"[Asset]            若模型尚未下载，请参考 docs/AI/ 中的资产说明补齐。\n");
 		return nullptr;
 	}
 
@@ -244,7 +292,8 @@ std::shared_ptr<Scene::Model::Model> Scene::Model::LoadModel(const std::wstring&
 		if (sourceFileMissing)
 		{
 			// 防御性编程：需要重建但源文件没了。
-			Utility::Printf("Error: Could not find %ws\n", fileName.c_str());
+			Utility::Printf(L"[Asset] 错误：需要重新烘焙，但源文件缺失 -> %ws\n", filePath.c_str());
+			Utility::Printf(L"[Asset]   提示：用 -RebuildModels 前请先确认源 .gltf/.glb 存在。\n");
 			return nullptr;
 		}
 

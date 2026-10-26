@@ -116,6 +116,20 @@ namespace Scene::Model
 		void GatherRenderables(::Renderer::MeshSorter& sorter) const;
 
 		void Resize(float newRadius);
+
+		// R4.6：设置/读取模型中心的世界坐标位置（支持 UI 里摆放多个模型）。
+		// ------------------------------------------------------------
+		// 为什么放在 ModelInstance 内部，而不是外部直接改矩阵：
+		//   m_Locator 是实例内部维护的**唯一变换真源**，Update() 用它算
+		//   MeshConstants。外部绕过去改矩阵，下一帧 Update 就覆盖回来了。
+		//
+		// 为什么必须 MarkDirty()：
+		//   Update() 有 IsDirty 门控（见 Model.cpp），不置脏的话位置改动
+		//   不会重新上传到 GPU —— 这是 R3 期间踩过的坑
+		//   （ModelInstance::operator= 忘置脏导致"赋了值但模型没动"）。
+		void SetWorldPosition(const Math::Vector3& position);
+		Math::Vector3 GetWorldPosition() const;
+
 		Math::Vector3 GetCenter() const;
 		Math::Scalar GetRadius() const;
 		Math::BoundingSphere GetBoundingSphere() const;

@@ -1,5 +1,8 @@
 #pragma once
 #include "02_RHI/Resource/GpuResource.h"
+// R3：Destroy 里要调用 Graphics::g_DescriptorAllocator.Free 归还描述符。
+// 与 ColorBuffer.h 的做法一致（GraphicsCore.h 不包含任何 Resource 头，无循环依赖）。
+#include "02_RHI/GraphicsCore.h"
 
 class CommandContext;
 class EsramAllocator;
@@ -11,6 +14,32 @@ class GpuBuffer : public GpuResource
 {
 public:
     virtual ~GpuBuffer() { Destroy(); }
+
+    // R3：Destroy 必须一并归还 SRV/UAV 描述符并复位。
+    // ------------------------------------------------------------------
+    // 原因与 ColorBuffer/DepthBuffer 在 R2 的修复完全同构：
+    // CreateDerivedViews 用 `if (m_SRV.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)`
+    // 判断「这块 buffer 还没分配过描述符」，只分配一次。如果不在这里复位，
+    // 同一个 GpuBuffer 对象第二次 Create（例如切换 Renderer 时重新
+    // InitializeResources）就会跳过分配，继续沿用上一轮指向已销毁资源的句柄：
+    //   (1) 每次重建泄漏一批描述符；
+    //   (2) 旧句柄位置被别的资源复用后，写入会覆盖别人的视图，
+    //       表现为随机贴图错乱 —— 这类 bug 极难复现。
+    // 句柄本身是 CPU 描述符（不属于 GpuResource），所以只能在这一层复位。
+    virtual void Destroy(void) override
+    {
+        if (m_SRV.ptr != D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+        {
+            Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV].Free(m_SRV, 1);
+            m_SRV.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
+        }
+        if (m_UAV.ptr != D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+        {
+            Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV].Free(m_UAV, 1);
+            m_UAV.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
+        }
+        GpuResource::Destroy();
+    }
     // 创建
         // 1. 基础型：全自动创建 (Committed Resource)
     void Create(const std::wstring& name, uint32_t NumElements, uint32_t ElementSize,

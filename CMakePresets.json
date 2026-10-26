@@ -1,86 +1,66 @@
 {
   "version": 3,
-
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "windows-base",
-      "description": "面向具有 Visual Studio 开发环境的 Windows。",
       "hidden": true,
-
+      "description": "Windows / MSVC / Ninja 基线。依赖根从仓库内 vcpkg_installed 解析，无需手工设置环境变量。",
       "generator": "Ninja",
-
       "binaryDir": "${sourceDir}/out/build/${presetName}",
       "installDir": "${sourceDir}/out/install/${presetName}",
-
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "F:/VS/rep/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "CMAKE_C_COMPILER": "cl.exe",
-        "CMAKE_CXX_COMPILER": "cl.exe"
+        "CMAKE_CXX_COMPILER": "cl.exe",
+        "VCPKG_ROOT": "$env{VCPKG_ROOT}"
       },
-
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       }
     },
-
     {
       "name": "x64-debug",
       "displayName": "x64 Debug",
-      "description": "使用 Visual Studio 开发环境定向到 Windows (64 位)。(Debug)",
-
+      "description": "Visual Studio 内可直接选用的 Debug 配置",
       "inherits": "windows-base",
-
       "architecture": {
         "value": "x64",
         "strategy": "external"
       },
-
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
     },
-
     {
       "name": "x64-release",
       "displayName": "x64 Release",
-      "description": "使用 Visual Studio 开发环境定向到 Windows (64 位)。(Release)",
-
-      "inherits": "x64-debug",
-
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
-      }
-    },
-
-    {
-      "name": "x86-debug",
-      "displayName": "x86 Debug",
-      "description": "用 Visual Studio 开发环境定向到 Windows (32 位)。(Debug)",
-
+      "description": "Visual Studio 内可直接选用的 Release 配置",
       "inherits": "windows-base",
-
       "architecture": {
-        "value": "x86",
+        "value": "x64",
         "strategy": "external"
       },
-
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
-    },
-
-    {
-      "name": "x86-release",
-      "displayName": "x86 Release",
-      "description": "用 Visual Studio 开发环境定向到 Windows (32 位)。(Release)",
-
-      "inherits": "x86-debug",
-
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build-debug",
+      "configurePreset": "x64-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "build-release",
+      "configurePreset": "x64-release",
+      "configuration": "Release"
     }
   ]
 }

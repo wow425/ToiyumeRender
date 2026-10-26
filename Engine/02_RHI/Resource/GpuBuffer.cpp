@@ -221,8 +221,13 @@ void TypedBuffer::CreateDerivedViews(void)
 	SRVDesc.Buffer.NumElements = m_ElementCount;
 	SRVDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 
-	//if (m_SRV.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
-	//    m_SRV = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	// R3：守卫必须保留。GpuBuffer::Destroy 现在会把 m_SRV/m_UAV 复位成 UNKNOWN，
+	// 若这里不判断就调用 CreateShaderResourceView，会把描述符写进
+	// (D3D12_CPU_DESCRIPTOR_HANDLE)-1 这个非法地址。
+	// （此前守卫被注释掉也不炸，是因为 Destroy 不复位、句柄一直是上一轮的合法值 ——
+	//  代价是描述符永不回收。两处必须成对修改。）
+	if (m_SRV.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+		m_SRV = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	g_Device->CreateShaderResourceView(m_pResource.Get(), &SRVDesc, m_SRV);
 
 	D3D12_UNORDERED_ACCESS_VIEW_DESC UAVDesc = {};
@@ -231,8 +236,8 @@ void TypedBuffer::CreateDerivedViews(void)
 	UAVDesc.Buffer.NumElements = m_ElementCount;
 	UAVDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
 
-	//if (m_UAV.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
-	//    m_UAV = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	if (m_UAV.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+		m_UAV = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	g_Device->CreateUnorderedAccessView(m_pResource.Get(), nullptr, &UAVDesc, m_UAV);
 }
 

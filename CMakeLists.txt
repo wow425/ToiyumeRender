@@ -18,19 +18,80 @@ set(CMAKE_CXX_EXTENSIONS OFF)
     add_compile_definitions(UNICODE _UNICODE) # <--- 新增这一行
 
 # ==========================================
-# Vcpkg 依赖管理
+# 构建类型：单配置生成器（Ninja）必须显式给出
 # ==========================================
-# 注意：确保在配置 CMake 时传入了 -DCMAKE_TOOLCHAIN_FILE=[vcpkg_root]/scripts/buildsystems/vcpkg.cmake
+# 之前 CMakePresets 里写死了 CMAKE_BUILD_TYPE，直接用 cmake -S . -B dir 时
+# 会得到空 build type，进而导致 Debug/Release 分支（shader flags、RELEASE 宏）
+# 全部落空。这里补一个明确默认值，并限制为已知取值。
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type (Debug/Release)" FORCE)
+endif()
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
+
+# ==========================================
+# 第三方依赖定位（R4.1：解除对 vcpkg toolchain 的硬依赖）
+# ==========================================
+# 背景：原实现要求先设 VCPKG_ROOT 环境变量、再走 vcpkg 的 toolchain 文件。
+# 这在 Visual Studio 里是致命的：VS 的 CMake 集成不读 shell 的 set 命令，
+# 于是"在 VS 里打开项目就无法配置"。而且 toolchain 会把清单重新解析一遍，
+# 把依赖装到 <binaryDir>/vcpkg_installed，与本仓库根目录已有的
+# vcpkg_installed/x64-windows 脱节。
+#
+# 现在改为双路径，优先级从高到低：
+#   A. 若调用方显式给了 CMAKE_TOOLCHAIN_FILE（或设了 VCPKG_ROOT）：
+#      尊重它，走标准 vcpkg manifest 流程（命令行/CI 用）。
+#   B. 否则：直接把仓库内的 vcpkg_installed/x64-windows 加进
+#      CMAKE_PREFIX_PATH。包的 *-config.cmake 已经用相对路径（_IMPORT_PREFIX）
+#      定位自身，因此不需要 toolchain 也能正常工作。
+#
+# 重要：B 路径**不会**自动安装缺失的包，缺包时给出可操作提示而不是让
+# find_package 抛出十几行 "not found"。已验证：完全无环境变量时，
+# 仅靠 CMAKE_PREFIX_PATH 即可解析 directxtex / directxmesh / DirectX-Headers。
+set(TOOIYUME_VCPKG_INSTALLED_DIR
+    "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-windows"
+    CACHE PATH "仓库内置的 vcpkg 安装目录（B 路径使用）")
+
+if(DEFINED CMAKE_TOOLCHAIN_FILE AND NOT CMAKE_TOOLCHAIN_FILE STREQUAL "")
+    message(STATUS "[deps] 使用调用方指定的 toolchain 文件: ${CMAKE_TOOLCHAIN_FILE}")
+elseif(DEFINED VCPKG_ROOT AND NOT VCPKG_ROOT STREQUAL "")
+    set(CMAKE_TOOLCHAIN_FILE "${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        CACHE FILEPATH "vcpkg toolchain file" FORCE)
+    message(STATUS "[deps] 由 VCPKG_ROOT 推导 toolchain: ${CMAKE_TOOLCHAIN_FILE}")
+else()
+    if(NOT EXISTS "${TOOIYUME_VCPKG_INSTALLED_DIR}")
+        message(FATAL_ERROR
+            "找不到仓库内的第三方依赖目录：${TOOIYUME_VCPKG_INSTALLED_DIR}\n"
+            "请任选其一：\n"
+            "  1) 把 vcpkg 的 x64-windows 安装结果放到该目录（推荐，无需联网）\n"
+            "  2) 设 VCPKG_ROOT 让 CMake 走标准 vcpkg manifest 流程\n"
+            "  3) cmake -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake")
+    endif()
+    list(APPEND CMAKE_PREFIX_PATH "${TOOIYUME_VCPKG_INSTALLED_DIR}")
+    message(STATUS "[deps] 使用仓库内依赖目录: ${TOOIYUME_VCPKG_INSTALLED_DIR}")
+endif()
 
 find_package(directxtex CONFIG REQUIRED)
 find_package(directxmesh CONFIG REQUIRED)
 find_package(DirectX-Headers CONFIG REQUIRED)
+
+# R4.1：运行时 DLL 部署函数。定义在 Engine/20_cmake 下，供各 Demo 在
+# 自己的 CMakeLists 里调用（add_custom_command(TARGET) 要求同目录）。
+include(${CMAKE_SOURCE_DIR}/Engine/20_cmake/DeployRuntimeDlls.cmake)
 # directx-dxc 通常会被 vcpkg 下载到环境路径中，稍后可以在 Engine 中直接链接 dxcompiler
 
 # ==========================================
 # 添加子目录
 # ==========================================
+# 三方库先于 Engine / Demos 加入：
+#   - Demos（真正 link imgui 的消费方）在最后，顺序天然满足；
+#   - 放在 Engine 之前是为了让 Engine 里任何以后想 include 到 imgui 的目标
+#     在配置阶段就能看到 `imgui` 这个目标名（target 是全局可见的，
+#     但先定义先可用，避免「先 link 后定义」这种隐式依赖链）。
+add_subdirectory(ThirdParty/imgui)
+
 add_subdirectory(Engine)
 add_subdirectory(Demos/ForwardApp)
 add_subdirectory(Demos/DeferredApp)
 add_subdirectory(Demos/RayTracingApp)
+# R3：统一入口 Demo（RendererRegistry 运行时切换 + ImGui）
+add_subdirectory(Demos/RendererDemoApp)

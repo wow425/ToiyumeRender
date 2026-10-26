@@ -164,6 +164,7 @@ void Graphics::Initialize(bool RequireDXRSupport)
 	}
 
 	Utility::Printf(L"Selected GPU:  %s (%u MB)\n", desc.Description, desc.DedicatedVideoMemory >> 20);
+	LOG_INFO(L"[Boot] Graphics: device OK, RequireDXRSupport=%d\n", (int)RequireDXRSupport);
 
 	//
 	// ===================== DXR Feature Check =====================
@@ -208,6 +209,8 @@ void Graphics::Initialize(bool RequireDXRSupport)
 	}
 
 
+	LOG_TRACE(L"[Boot] Graphics: after feature query\n");
+
 	//
 	// ===================== InfoQueue（精简版） =====================
 	//
@@ -216,9 +219,15 @@ void Graphics::Initialize(bool RequireDXRSupport)
 		Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
 		if (SUCCEEDED(g_Device->QueryInterface(TY_IID_PPV_ARGS(&infoQueue))))
 		{
+			// R0：WARNING 级别默认不中断。
+			// 原因：Debug Layer 会对大量「不影响结果但会刷屏」的情况报 WARNING
+			// （如优化提示、资源重叠），一旦设为 break 会让程序在合法路径上被调试器打断，
+			// 反而掩盖真正的 ERROR / CORRUPTION。
 			infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
 			infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
-			infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+			infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, false);
+			LOG_INFO(L"[Boot] Graphics: InfoQueue break on ERROR/CORRUPTION only\n");
+
 		}
 	}
 #endif
@@ -257,12 +266,16 @@ void Graphics::Initialize(bool RequireDXRSupport)
 	}
 
 	// 创建命令管理器
+	LOG_TRACE(L"[Boot] Graphics: CommandManager.Create\n");
 	g_CommandManager.Create(g_Device);
 
 	// 初始化全局渲染状态
+	LOG_TRACE(L"[Boot] Graphics: InitializeCommonState\n");
 	InitializeCommonState();
 	// 初始化显示模块 （交换链，后台缓冲区及描述符)
+	LOG_TRACE(L"[Boot] Graphics: Display::Initialize\n");
 	Display::Initialize();
+	LOG_TRACE(L"[Boot] Graphics: Display::Initialize done\n");
 	/*初始化GPU时间戳模块
 	GpuTimeManager::Initialize(4096);
 	 初始化TAA模块
@@ -289,11 +302,16 @@ void Graphics::Shutdown(void)
 	// GpuTimeManager::Shutdown();
 	PSO::DestroyAll();
 	RootSignature::DestroyAll();
-	DescriptorAllocator::DestroyAll();
 
 	DestroyCommonState();
+	// R2：顺序修正 —— BufferManager 的 DestroyAll 会通过
+	// ColorBuffer::Destroy 归还 RTV/SRV 描述符，这要求堆池仍然存在。
+	// 原顺序把 DescriptorAllocator::DestroyAll() 放在前面，堆池已被清空，
+	// 之后的 Free 定位不到任何堆（ASSERT 在 Release 下被忽略，
+	// 直接静默失败）。必须先释放资源，最后拆分配器。
 	BufferManager::DestroyAll();
 	Display::Shutdown();
+	DescriptorAllocator::DestroyAll();
 
 
 	// 显存泄漏检测 (VRAM Leak Detection / ビデオメモリリーク検出)。扫描并打印出所有尚未被正确释放的 COM 对象

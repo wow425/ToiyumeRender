@@ -169,8 +169,21 @@ CommandContext::CommandContext(D3D12_COMMAND_LIST_TYPE Type) :
 
 CommandContext::~CommandContext(void)
 {
-	if (m_CommandList != nullptr)
-		m_CommandList->Release();
+	// ============================================================
+	// R2 修复：双重释放崩溃
+	// ------------------------------------------------------------
+	// m_CommandList 是 Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4>，
+	// 它自己会在析构时调用一次 Release()。
+	// 这里若再手动 Release 一次，引用计数会从 1 被减到 0 再减到 -1，
+	// 对象随即被销毁，ComPtr 析构时访问已释放的 vtable，
+	// 触发 0xC0000005（实测崩溃地址 0xFEEEFEEE，即已释放堆内存）。
+	//
+	// 实测现象：进程在 Graphics::Shutdown -> CommandContext::DestroyAllContexts
+	// 处必定崩溃（exit 139），但所有渲染与压力测试日志都已正常打印完毕，
+	// 因此长期被误认为「只是退出时的小问题」。
+	//
+	// 正确做法：什么都不做，交给 ComPtr 的析构体 Release。
+	// ============================================================
 }
 
 void CommandContext::Initialize(void)
@@ -190,6 +203,32 @@ void CommandContext::Reset(void)
 	m_CurComputeRootSignature = nullptr;
 	m_CurPipelineState = nullptr;
 	m_NumBarriersToFlush = 0;
+
+	// ============================================================
+	// R3 修复：切换 Renderer 时的悬空描述符堆崩溃
+	// ------------------------------------------------------------
+	// m_CurrentDescriptorHeaps 是「本 Context 已经绑过哪些堆」的裸指针缓存，
+	// 用来避免重复调用 SetDescriptorHeaps。问题在于它的生命周期比堆长：
+	// ContextManager 把 CommandContext 放进池子复用，而堆（s_TextureHeap /
+	// s_SamplerHeap）归各个 Renderer 所有，Shutdown 时会 Destroy。
+	//
+	// 于是 Deferred -> Forward 的顺序变成：
+	//   1. Deferred 用过 Context，缓存里存着 s_TextureHeap.GetHeapPointer()
+	//   2. Deferred::Shutdown -> s_TextureHeap.Destroy()：堆对象被释放，
+	//      但 Context 里那个裸指针还指着已释放的内存（内存被标记 0xFEEEFEEE）
+	//   3. Forward::Initialize -> LightingSystem::InitializeResources
+	//      -> CommandContext::Begin -> Reset() -> BindDescriptorHeaps()
+	//      -> 把悬空指针塞给 ID3D12CommandList::SetDescriptorHeaps
+	//   实测崩溃点：D3D12Core!CGraphicsCommandList::SetDescriptorHeapsInternal
+	//   读 [rbx+0E8h] 得到 ds:feeefeee，0xC0000005。
+	//
+	// 修法：命令列表 Reset 之后，之前的任何堆绑定都已经随着旧命令列表失效，
+	// 缓存必须无条件作废。清空之后再 BindDescriptorHeaps 是空操作，
+	// 下一次 SetDescriptorHeap 会用新的指针重新绑定。
+	// 注意不能在 Finish 里清：Finish 之后命令列表还带着绑定语义，
+	// 且真正的危险窗口就是「堆被销毁 -> 下一次 Begin」这一段。
+	// ============================================================
+	ZeroMemory(m_CurrentDescriptorHeaps, sizeof(m_CurrentDescriptorHeaps));
 
 	BindDescriptorHeaps();
 }
@@ -371,6 +410,33 @@ void GraphicsContext::SetScissor(const D3D12_RECT& rect)
 
 void CommandContext::TransitionResource(GpuResource& Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate)
 {
+	// R3 修复（RESOURCE_BARRIER_INVALID_HEAP）：
+	// ------------------------------------------------------------------
+	// UPLOAD / READBACK 堆上的资源，状态在**创建时**就固定了，DX12 不允许转换：
+	//   UPLOAD   -> 恒为 D3D12_RESOURCE_STATE_GENERIC_READ
+	//   READBACK -> 恒为 D3D12_RESOURCE_STATE_COPY_DEST
+	// 对它们发 Transition 屏障时，Debug Layer 先报
+	//   RESOURCE_MANIPULATION ERROR #741 RESOURCE_BARRIER_INVALID_HEAP，
+	// 顶层 D3D12Core 还会 RemoveCommandListAndThrow（异常 e06d7363 / 0x80000003），
+	// 整个进程当场终止 —— 不是「只是警告」。
+	//
+	// 触发路径（本次实测）：CommandContext::CopyBufferRegion（CommandContext.h:784）
+	// 无条件对**源**资源发 COPY_SOURCE 转换；而 WriteBuffer/FillBuffer 的源
+	// 是 LinearAllocator 的上传堆页面（LinearAllocator.cpp:113-116），
+	// 于是每帧第一次 WriteBuffer（LightingSystem::ApplyParams 写灯光 CB）就炸。
+	//
+	// 语义上也不需要转换：上传堆资源本来就随时可被 GPU 读（COPY_SOURCE 允许），
+	// 回读堆资源本来就随时可写（COPY_DEST）。所以这里把跟踪状态校正回固定值后直接返回。
+	const D3D12_HEAP_TYPE heapType = Resource.GetHeapType();
+	if (heapType == D3D12_HEAP_TYPE_UPLOAD || heapType == D3D12_HEAP_TYPE_READBACK)
+	{
+		Resource.m_UsageState = (heapType == D3D12_HEAP_TYPE_UPLOAD)
+			? D3D12_RESOURCE_STATE_GENERIC_READ
+			: D3D12_RESOURCE_STATE_COPY_DEST;
+		Resource.m_TransitioningState = (D3D12_RESOURCE_STATES)-1;
+		return;
+	}
+
 	D3D12_RESOURCE_STATES OldState = Resource.m_UsageState;
 	// 若为计算命令列表，则验证类型是否合法
 	if (m_Type == D3D12_COMMAND_LIST_TYPE_COMPUTE) // &按位与，同1为1
@@ -577,6 +643,12 @@ uint32_t CommandContext::ReadbackTexture(ReadbackBuffer& DstBuffer, PixelBuffer&
 
 	DstBuffer.Create(L"Readback", (uint32_t)CopySize, 1);
 
+	// R2 修复：记录源资源的原状态，回读结束后恢复。
+	// 原实现把源切到 COPY_SOURCE 后就不再恢复，而 TransitionResource
+	// 会把「当前状态」记进资源的状态跟踪器。于是后续帧再把这个 RT 绑成
+	// 渲染目标时，跟踪器认为它仍处于 COPY_SOURCE，光栅化写入被丢弃 ——
+	// 表现为 GBuffer 一片空白、画面只剩天空盒。
+	const D3D12_RESOURCE_STATES prevState = SrcBuffer.m_UsageState;
 	TransitionResource(SrcBuffer, D3D12_RESOURCE_STATE_COPY_SOURCE, true);
 
 	auto dst = CD3DX12_TEXTURE_COPY_LOCATION(DstBuffer.GetResource(), PlacedFootprint);
@@ -584,6 +656,8 @@ uint32_t CommandContext::ReadbackTexture(ReadbackBuffer& DstBuffer, PixelBuffer&
 	m_CommandList->CopyTextureRegion(
 		&dst, 0, 0, 0,
 		&res, nullptr);
+
+	TransitionResource(SrcBuffer, prevState, true);
 
 	return PlacedFootprint.Footprint.RowPitch;
 }

@@ -1,7 +1,8 @@
-﻿
+
 // 直接套用，还没啃
 
 #include "00_Core/PCH.h"
+#include "00_Core/Utility/Utility.h"
 #include "GameCore.h"
 #include "GameInput.h"
 
@@ -50,11 +51,31 @@ namespace
     IDirectInput8A* s_DI;
     IDirectInputDevice8A* s_Keyboard;
     IDirectInputDevice8A* s_Mouse;
+    // R0：DirectInput 是否真正初始化成功。失败时置 false，
+    // 所有键鼠读取路径都应提前返回，避免对空指针调用。
+    bool s_KbmReady = false;
 #endif
 
     DIMOUSESTATE2 s_MouseState;
     unsigned char s_Keybuffer[256];
-    unsigned char s_DXKeyMapping[GameInput::kNumKeys]; // map DigitalInput enum to DX key codes 
+
+    // R4.5：DirectInput 不可用时的鼠标后备来源基准点（见 KbmUpdate）。
+    POINT s_LastCursorPos = { 0, 0 };
+    bool  s_LastCursorPosValid = false;
+
+    // 注意区分两张表 —— 这是 R4.3 修复的核心：
+    //   s_DXKeyMapping : DigitalInput -> **DirectInput 扫描码 (DIK)**
+    //                    只用于索引 s_Keybuffer（DirectInput 的原生格式），
+    //                    以及 NotifyWin32Key 那条通路的换算。
+    //   s_VKMapping    : DigitalInput -> **Windows 虚拟键码 (VK)**
+    //                    只用于 GetAsyncKeyState。
+    //
+    // 历史 bug：原实现只有一张 DIK 表，却把它直接塞给 GetAsyncKeyState。
+    // DIK 与 VK 的数值完全不同（DIK_ESCAPE=0x01 vs VK_ESCAPE=0x1B），
+    // 于是 0x01 被当成了 VK_LBUTTON —— **按下鼠标左键等于按下 Escape**，
+    // IsDone() 立刻返回 true，程序静默退出。表现为"点一下就闪退"。
+    unsigned char s_DXKeyMapping[GameInput::kNumKeys]; // DigitalInput -> DIK (扫描码)
+    unsigned char s_VKMapping[GameInput::kNumKeys];    // DigitalInput -> VK  (虚拟键码)
 
 #endif
 
@@ -196,6 +217,131 @@ namespace
         s_DXKeyMapping[GameInput::kKey_lwin] = 219;
         s_DXKeyMapping[GameInput::kKey_rwin] = 220;
         s_DXKeyMapping[GameInput::kKey_apps] = 221;
+
+        // ============================================================
+        // R4.3：VK（虚拟键码）映射表 —— 供 GetAsyncKeyState 使用。
+        // ------------------------------------------------------------
+        // 为什么必须与上面的 DIK 表分开：
+        //   DIK 是 DirectInput 的**扫描码**（物理按键位置）
+        //   VK  是 Windows 的**虚拟键码**（逻辑按键含义）
+        //   两者数值体系完全不同，例如：
+        //       DIK_ESCAPE = 0x01     VK_ESCAPE = 0x1B
+        //       DIK_W      = 0x11     VK_W      = 0x57
+        //       DIK_Q      = 0x10     VK_Q      = 0x51
+        //
+        // 历史 bug（R4.3 修复）：GetAsyncKeyState 被喂了 DIK 值。
+        //   最致命的是 DIK_ESCAPE = 0x01，而 0x01 在 VK 里是 **VK_LBUTTON**。
+        //   于是「按下鼠标左键」被判定为「按下 Escape」，
+        //   IGameApp::IsDone() 立刻返回 true，主循环正常退出 ——
+        //   用户看到的就是「点一下就闪退」，而且没有任何错误日志。
+        //
+        // 未列出的键保持 0；调用处用 `vk != 0` 跳过，
+        // 这样不会把 VK_LBUTTON(0x01) 这类**有效**值误当成"未映射"。
+        // ============================================================
+        s_VKMapping[GameInput::kKey_escape]     = VK_ESCAPE;
+        s_VKMapping[GameInput::kKey_1]          = '1';
+        s_VKMapping[GameInput::kKey_2]          = '2';
+        s_VKMapping[GameInput::kKey_3]          = '3';
+        s_VKMapping[GameInput::kKey_4]          = '4';
+        s_VKMapping[GameInput::kKey_5]          = '5';
+        s_VKMapping[GameInput::kKey_6]          = '6';
+        s_VKMapping[GameInput::kKey_7]          = '7';
+        s_VKMapping[GameInput::kKey_8]          = '8';
+        s_VKMapping[GameInput::kKey_9]          = '9';
+        s_VKMapping[GameInput::kKey_0]          = '0';
+        s_VKMapping[GameInput::kKey_minus]      = VK_OEM_MINUS;
+        s_VKMapping[GameInput::kKey_equals]     = VK_OEM_PLUS;
+        s_VKMapping[GameInput::kKey_back]       = VK_BACK;
+        s_VKMapping[GameInput::kKey_tab]        = VK_TAB;
+        s_VKMapping[GameInput::kKey_q]          = 'Q';
+        s_VKMapping[GameInput::kKey_w]          = 'W';
+        s_VKMapping[GameInput::kKey_e]          = 'E';
+        s_VKMapping[GameInput::kKey_r]          = 'R';
+        s_VKMapping[GameInput::kKey_t]          = 'T';
+        s_VKMapping[GameInput::kKey_y]          = 'Y';
+        s_VKMapping[GameInput::kKey_u]          = 'U';
+        s_VKMapping[GameInput::kKey_i]          = 'I';
+        s_VKMapping[GameInput::kKey_o]          = 'O';
+        s_VKMapping[GameInput::kKey_p]          = 'P';
+        s_VKMapping[GameInput::kKey_lbracket]   = VK_OEM_4;
+        s_VKMapping[GameInput::kKey_rbracket]   = VK_OEM_6;
+        s_VKMapping[GameInput::kKey_return]     = VK_RETURN;
+        s_VKMapping[GameInput::kKey_lcontrol]   = VK_LCONTROL;
+        s_VKMapping[GameInput::kKey_a]          = 'A';
+        s_VKMapping[GameInput::kKey_s]          = 'S';
+        s_VKMapping[GameInput::kKey_d]          = 'D';
+        s_VKMapping[GameInput::kKey_f]          = 'F';
+        s_VKMapping[GameInput::kKey_g]          = 'G';
+        s_VKMapping[GameInput::kKey_h]          = 'H';
+        s_VKMapping[GameInput::kKey_j]          = 'J';
+        s_VKMapping[GameInput::kKey_k]          = 'K';
+        s_VKMapping[GameInput::kKey_l]          = 'L';
+        s_VKMapping[GameInput::kKey_semicolon]  = VK_OEM_1;
+        s_VKMapping[GameInput::kKey_apostrophe] = VK_OEM_7;
+        s_VKMapping[GameInput::kKey_grave]      = VK_OEM_3;
+        s_VKMapping[GameInput::kKey_lshift]     = VK_LSHIFT;
+        s_VKMapping[GameInput::kKey_backslash]  = VK_OEM_5;
+        s_VKMapping[GameInput::kKey_z]          = 'Z';
+        s_VKMapping[GameInput::kKey_x]          = 'X';
+        s_VKMapping[GameInput::kKey_c]          = 'C';
+        s_VKMapping[GameInput::kKey_v]          = 'V';
+        s_VKMapping[GameInput::kKey_b]          = 'B';
+        s_VKMapping[GameInput::kKey_n]          = 'N';
+        s_VKMapping[GameInput::kKey_m]          = 'M';
+        s_VKMapping[GameInput::kKey_comma]      = VK_OEM_COMMA;
+        s_VKMapping[GameInput::kKey_period]     = VK_OEM_PERIOD;
+        s_VKMapping[GameInput::kKey_slash]      = VK_OEM_2;
+        s_VKMapping[GameInput::kKey_rshift]     = VK_RSHIFT;
+        s_VKMapping[GameInput::kKey_multiply]   = VK_MULTIPLY;
+        s_VKMapping[GameInput::kKey_lalt]       = VK_LMENU;
+        s_VKMapping[GameInput::kKey_space]      = VK_SPACE;
+        s_VKMapping[GameInput::kKey_capital]    = VK_CAPITAL;
+        s_VKMapping[GameInput::kKey_f1]         = VK_F1;
+        s_VKMapping[GameInput::kKey_f2]         = VK_F2;
+        s_VKMapping[GameInput::kKey_f3]         = VK_F3;
+        s_VKMapping[GameInput::kKey_f4]         = VK_F4;
+        s_VKMapping[GameInput::kKey_f5]         = VK_F5;
+        s_VKMapping[GameInput::kKey_f6]         = VK_F6;
+        s_VKMapping[GameInput::kKey_f7]         = VK_F7;
+        s_VKMapping[GameInput::kKey_f8]         = VK_F8;
+        s_VKMapping[GameInput::kKey_f9]         = VK_F9;
+        s_VKMapping[GameInput::kKey_f10]        = VK_F10;
+        s_VKMapping[GameInput::kKey_numlock]    = VK_NUMLOCK;
+        s_VKMapping[GameInput::kKey_scroll]     = VK_SCROLL;
+        s_VKMapping[GameInput::kKey_numpad7]    = VK_NUMPAD7;
+        s_VKMapping[GameInput::kKey_numpad8]    = VK_NUMPAD8;
+        s_VKMapping[GameInput::kKey_numpad9]    = VK_NUMPAD9;
+        s_VKMapping[GameInput::kKey_subtract]   = VK_SUBTRACT;
+        s_VKMapping[GameInput::kKey_numpad4]    = VK_NUMPAD4;
+        s_VKMapping[GameInput::kKey_numpad5]    = VK_NUMPAD5;
+        s_VKMapping[GameInput::kKey_numpad6]    = VK_NUMPAD6;
+        s_VKMapping[GameInput::kKey_add]        = VK_ADD;
+        s_VKMapping[GameInput::kKey_numpad1]    = VK_NUMPAD1;
+        s_VKMapping[GameInput::kKey_numpad2]    = VK_NUMPAD2;
+        s_VKMapping[GameInput::kKey_numpad3]    = VK_NUMPAD3;
+        s_VKMapping[GameInput::kKey_numpad0]    = VK_NUMPAD0;
+        s_VKMapping[GameInput::kKey_decimal]    = VK_DECIMAL;
+        s_VKMapping[GameInput::kKey_f11]        = VK_F11;
+        s_VKMapping[GameInput::kKey_f12]        = VK_F12;
+        s_VKMapping[GameInput::kKey_numpadenter]= VK_RETURN;
+        s_VKMapping[GameInput::kKey_rcontrol]   = VK_RCONTROL;
+        s_VKMapping[GameInput::kKey_divide]     = VK_DIVIDE;
+        s_VKMapping[GameInput::kKey_sysrq]      = VK_SNAPSHOT;
+        s_VKMapping[GameInput::kKey_ralt]       = VK_RMENU;
+        s_VKMapping[GameInput::kKey_pause]      = VK_PAUSE;
+        s_VKMapping[GameInput::kKey_home]       = VK_HOME;
+        s_VKMapping[GameInput::kKey_up]         = VK_UP;
+        s_VKMapping[GameInput::kKey_pgup]       = VK_PRIOR;
+        s_VKMapping[GameInput::kKey_left]       = VK_LEFT;
+        s_VKMapping[GameInput::kKey_right]      = VK_RIGHT;
+        s_VKMapping[GameInput::kKey_end]        = VK_END;
+        s_VKMapping[GameInput::kKey_down]       = VK_DOWN;
+        s_VKMapping[GameInput::kKey_pgdn]       = VK_NEXT;
+        s_VKMapping[GameInput::kKey_insert]     = VK_INSERT;
+        s_VKMapping[GameInput::kKey_delete]     = VK_DELETE;
+        s_VKMapping[GameInput::kKey_lwin]       = VK_LWIN;
+        s_VKMapping[GameInput::kKey_rwin]       = VK_RWIN;
+        s_VKMapping[GameInput::kKey_apps]       = VK_APPS;
 #else
 #define WinRTKey(name) (unsigned char)Windows::System::VirtualKey::name
         s_DXKeyMapping[GameInput::kKey_escape] = WinRTKey(Escape);
@@ -313,34 +459,80 @@ namespace
 
     void KbmInitialize()
     {
+        LOG_TRACE(L"[Boot] GameInput: KbmBuildKeyMapping\n");
         KbmBuildKeyMapping();
+        LOG_TRACE(L"[Boot] GameInput: KbmBuildKeyMapping done\n");
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-        if (FAILED(DirectInput8Create(GetModuleHandle(nullptr), DIRECTINPUT_VERSION, IID_IDirectInput8, (void**)&s_DI, nullptr)))
-            ASSERT(false, "DirectInput8 initialization failed.");
+        // R0 修复（两处）：
+        // 1. 接口类型不一致：原来用 IID_IDirectInput8（宽字符版）却把结果存进
+        //    IDirectInput8A*（窄字符版）。两者是不同的 COM 接口，指针不能互换，
+        //    后续 s_DI->CreateDevice 会走到错误的虚表槽。改用 IID_IDirectInput8A。
+        // 2. 失败不致命：DirectInput 在某些环境（服务会话、远程桌面、或被安全软件
+        //    拦截）下会返回 E_FAIL。原来这里直接 ASSERT + __debugbreak，导致
+        //    程序在「输入不可用」这种非核心问题上直接退出，无法继续渲染验证。
+        //    现在改为记录警告 + 关闭键鼠输入，渲染链路继续运行。
+        LOG_TRACE(L"[Boot] GameInput: DirectInput8Create\n");
+        HRESULT hrDI = DirectInput8Create(GetModuleHandle(nullptr), DIRECTINPUT_VERSION,
+                                          IID_IDirectInput8A, (void**)&s_DI, nullptr);
+        LOG_TRACE(L"[Boot] GameInput: DirectInput8Create hr=0x%08X\n", (unsigned)hrDI);
 
-        if (FAILED(s_DI->CreateDevice(GUID_SysKeyboard, &s_Keyboard, nullptr)))
-            ASSERT(false, "Keyboard CreateDevice failed.");
-        if (FAILED(s_Keyboard->SetDataFormat(&c_dfDIKeyboard)))
-            ASSERT(false, "Keyboard SetDataFormat failed.");
-        if (FAILED(s_Keyboard->SetCooperativeLevel(GameCore::g_hWnd, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE)))
-            ASSERT(false, "Keyboard SetCooperativeLevel failed.");
+        bool kbmReady = SUCCEEDED(hrDI) && s_DI != nullptr;
+        if (!kbmReady)
+        {
+            LOG_TRACE(L"[Boot] GameInput: DirectInput 不可用，键鼠输入已禁用（渲染不受影响）\n");
+            s_DI = nullptr;
+        }
 
-        DIPROPDWORD dipdw;
-        dipdw.diph.dwSize = sizeof(DIPROPDWORD);
-        dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
-        dipdw.diph.dwObj = 0;
-        dipdw.diph.dwHow = DIPH_DEVICE;
-        dipdw.dwData = 10;
-        if (FAILED(s_Keyboard->SetProperty(DIPROP_BUFFERSIZE, &dipdw.diph)))
-            ASSERT(false, "Keyboard set buffer size failed.");
+        if (kbmReady && FAILED(s_DI->CreateDevice(GUID_SysKeyboard, &s_Keyboard, nullptr)))
+        {
+            LOG_TRACE(L"[Boot] GameInput: Keyboard CreateDevice failed\n");
+            kbmReady = false;
+        }
+        if (kbmReady && FAILED(s_Keyboard->SetDataFormat(&c_dfDIKeyboard)))
+        {
+            LOG_TRACE(L"[Boot] GameInput: Keyboard SetDataFormat failed\n");
+            kbmReady = false;
+        }
+        if (kbmReady && FAILED(s_Keyboard->SetCooperativeLevel(GameCore::g_hWnd, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE)))
+        {
+            LOG_TRACE(L"[Boot] GameInput: Keyboard SetCooperativeLevel failed\n");
+            kbmReady = false;
+        }
 
-        if (FAILED(s_DI->CreateDevice(GUID_SysMouse, &s_Mouse, nullptr)))
-            ASSERT(false, "Mouse CreateDevice failed.");
-        if (FAILED(s_Mouse->SetDataFormat(&c_dfDIMouse2)))
-            ASSERT(false, "Mouse SetDataFormat failed.");
-        if (FAILED(s_Mouse->SetCooperativeLevel(GameCore::g_hWnd, DISCL_FOREGROUND | DISCL_EXCLUSIVE)))
-            ASSERT(false, "Mouse SetCooperativeLevel failed.");
+        if (kbmReady)
+        {
+            DIPROPDWORD dipdw;
+            dipdw.diph.dwSize = sizeof(DIPROPDWORD);
+            dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+            dipdw.diph.dwObj = 0;
+            dipdw.diph.dwHow = DIPH_DEVICE;
+            dipdw.dwData = 10;
+            if (FAILED(s_Keyboard->SetProperty(DIPROP_BUFFERSIZE, &dipdw.diph)))
+            {
+                LOG_TRACE(L"[Boot] GameInput: Keyboard set buffer size failed\n");
+                kbmReady = false;
+            }
+        }
+
+        if (kbmReady && FAILED(s_DI->CreateDevice(GUID_SysMouse, &s_Mouse, nullptr)))
+        {
+            LOG_TRACE(L"[Boot] GameInput: Mouse CreateDevice failed\n");
+            kbmReady = false;
+        }
+        if (kbmReady && FAILED(s_Mouse->SetDataFormat(&c_dfDIMouse2)))
+        {
+            LOG_TRACE(L"[Boot] GameInput: Mouse SetDataFormat failed\n");
+            kbmReady = false;
+        }
+        if (kbmReady && FAILED(s_Mouse->SetCooperativeLevel(GameCore::g_hWnd, DISCL_FOREGROUND | DISCL_EXCLUSIVE)))
+        {
+            LOG_TRACE(L"[Boot] GameInput: Mouse SetCooperativeLevel failed\n");
+            kbmReady = false;
+        }
+
+        s_KbmReady = kbmReady;
+        LOG_TRACE(L"[Boot] GameInput: Kbm ready = %s\n", kbmReady ? L"yes" : L"no");
 #endif
 
         KbmZeroInputs();
@@ -372,6 +564,70 @@ namespace
     void KbmUpdate()
     {
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+        // ============================================================
+        // DirectInput 不可用时的处理（R1 修正）
+        // ------------------------------------------------------------
+        // R0 的写法是「直接 KbmZeroInputs() 然后 return」，
+        // 想避免空指针，但副作用是：**每帧都把整个 s_Keybuffer 清零**，
+        // 连带把 WndProc 通过 NotifyWin32Key 写入的键位也擦掉，
+        // 结果就是 WASD 完全无响应（这是 R1 期间发现的真实回归）。
+        //
+        // 正确做法：只跳过 DirectInput 自己的读取，不要清空共享状态。
+        // 键位由 Win32 消息通路维护（NotifyWin32Key）。
+        // ============================================================
+        if (!s_KbmReady)
+        {
+            // ============================================================
+            // R4.5：DirectInput 不可用时的鼠标后备来源（修复「鼠标无法转视角」）
+            // ------------------------------------------------------------
+            // 原实现直接 memset(s_MouseState, 0) 然后 return：键盘因为有
+            // Win32 消息通路还能用，但**鼠标位移彻底变成 0**，
+            // 表现为「鼠标左右拖动，视角完全不动」。
+            //
+            // 本机实测 DirectInput8Create 失败，走的正是这条分支 ——
+            // 所以这个"后备"其实是唯一通路。
+            //
+            // 后备方案：用 GetCursorPos 求相邻两帧的差分。
+            //   - 只在窗口是前台时采样，避免在后台误转视角
+            //   - 每次算完更新 s_LastCursorPos 作为下一次基准
+            //   - 不改变 s_MouseState 的语义（lX/lY 仍是相对位移）
+            // 缺点：光标会跑到屏幕边缘后不再产生位移（没有独占捕获）。
+            // 这是无 DirectInput 时的固有限制，可在后续用 ClipCursor 改进。
+            // ============================================================
+            memset(&s_MouseState, 0, sizeof(s_MouseState));
+
+            HWND fg = ::GetForegroundWindow();
+            if (fg == GameCore::g_hWnd && ::IsWindowVisible(fg))
+            {
+                POINT pt = {};
+                if (::GetCursorPos(&pt))
+                {
+                    if (s_LastCursorPosValid)
+                    {
+                        s_MouseState.lX = (LONG)(pt.x - s_LastCursorPos.x);
+                        s_MouseState.lY = (LONG)(pt.y - s_LastCursorPos.y);
+                    }
+                    s_LastCursorPos = pt;
+                    s_LastCursorPosValid = true;
+                }
+
+                // 鼠标按键：DirectInput 不可用时同样要补
+                // 用 GetAsyncKeyState 的 VK_LBUTTON / VK_RBUTTON / VK_MBUTTON 系列
+                for (int b = 0; b < 8; ++b)
+                {
+                    // VK_LBUTTON=0x01, VK_RBUTTON=0x02, VK_MBUTTON=0x04, VK_XBUTTON1=0x05, VK_XBUTTON2=0x06
+                    static const int kMouseVK[8] = { 0x01, 0x02, 0x04, 0x05, 0x06, 0, 0, 0 };
+                    if (kMouseVK[b] != 0 && (::GetAsyncKeyState(kMouseVK[b]) & 0x8000) != 0)
+                        s_MouseState.rgbButtons[b] = 0x80;
+                }
+            }
+            else
+            {
+                s_LastCursorPosValid = false;
+            }
+            return;
+        }
+
         HWND foreground = GetForegroundWindow();
         bool visible = IsWindowVisible(foreground) != 0;
 
@@ -412,6 +668,28 @@ void GameInput::Initialize()
 
 #ifdef USE_KEYBOARD_MOUSE
     KbmInitialize();
+#endif
+}
+
+// ============================================================
+// Win32 键盘消息注入（R1）
+// ------------------------------------------------------------
+// DirectInput 在本机不可用（DirectInput8Create 返回 E_FAIL），
+// 而 GetAsyncKeyState 对合成输入（SendKeys / 远程桌面 / 自动化测试）
+// 也经常返回 0，导致 WASD 完全无响应。
+//
+// 最可靠的通路是 Win32 的 WM_KEYDOWN/WM_KEYUP 消息：
+// 无论输入来自真实键盘还是 SendInput/SendKeys，窗口都会收到。
+// WndProc 收到消息后调用本函数写入 s_Keybuffer，
+// 与 KbmUpdate 读取的是同一份状态，因此相机等上层逻辑无需改动。
+// ============================================================
+void GameInput::NotifyWin32Key(UINT vkCode, bool isDown)
+{
+#ifdef USE_KEYBOARD_MOUSE
+    if (vkCode < 256)
+    {
+        s_Keybuffer[vkCode] = isDown ? 0x80 : 0x00;
+    }
 #endif
 }
 
@@ -492,9 +770,52 @@ void GameInput::Update(float frameDelta)
 #ifdef USE_KEYBOARD_MOUSE
     KbmUpdate();
 
+    // ============================================================
+    // 键位聚合（R1 修复：DirectInput 不可用时 WASD 完全失效）
+    // ------------------------------------------------------------
+    // 原实现只从 s_Keybuffer（DirectInput 的键盘状态）取键，
+    // 而某些环境（本机实测）DirectInput8Create 直接返回 E_FAIL，
+    // 于是 s_Keybuffer 恒为 0 —— 相机无法用 WASD 移动，
+    // 但程序本身还能正常渲染，问题很隐蔽。
+    //
+    // 现在改用 Win32 的 GetAsyncKeyState 作为键位来源：
+    //   - 不依赖 DirectInput，COM 初始化失败也不受影响
+    //   - 语义等价（都返回"当前是否按下"）
+    //   - 只在窗口是前台时读取，避免在后台误响应
+    // DirectInput 仍保留用于鼠标（相对位移需要独占读取），
+    // 若 DirectInput 可用则鼠标部分照常工作。
+    // ============================================================
+    const HWND fg = ::GetForegroundWindow();
+    const bool windowActive = (fg == GameCore::g_hWnd);
+
     for (uint32_t i = 0; i < kNumKeys; ++i)
     {
-        s_Buttons[0][i] = (s_Keybuffer[s_DXKeyMapping[i]] & 0x80) != 0;
+        // 三条通路取「或」，任一可用即可：
+        //   1) Win32 消息（NotifyWin32Key 写入 s_Keybuffer）—— 最可靠
+        //   2) GetAsyncKeyState —— 真实键盘
+        //   3) DirectInput 的 s_Keybuffer（若可用）
+        // 之所以不做互斥选择，是因为不同环境（本机/远程/自动化）下
+        // 三种来源的可用性不同，取并集最稳。
+        bool down = false;
+
+        // 通路 1/3：DirectInput 的 s_Keybuffer 与 NotifyWin32Key 通路。
+        // 两者都用 **DIK 扫描码** 作为下标，所以这里取 s_DXKeyMapping。
+        const unsigned char dik = s_DXKeyMapping[i];
+        if (dik < 256 && (s_Keybuffer[dik] & 0x80) != 0)
+            down = true;
+
+        // 通路 2：GetAsyncKeyState —— 必须用 **VK 虚拟键码**。
+        // R4.3 修复：原实现这里传的是 dik，导致两个后果：
+        //   1) 几乎所有字母键都读错位置（DIK_W=0x11 vs VK_W=0x57），
+        //      这也是"WASD 时灵时不灵"的根源；
+        //   2) 最致命的是 DIK_ESCAPE=0x01 恰好等于 VK_LBUTTON ——
+        //      **点击鼠标左键 = 按下 Escape**，IsDone() 立即为真，
+        //      主循环正常退出，表现为"点一下就闪退"且无任何错误日志。
+        const unsigned char vk = s_VKMapping[i];
+        if (!down && windowActive && vk != 0)
+            down = (::GetAsyncKeyState(vk) & 0x8000) != 0;
+
+        s_Buttons[0][i] = down;
     }
 
     for (uint32_t i = 0; i < 8; ++i)

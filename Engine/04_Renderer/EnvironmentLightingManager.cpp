@@ -14,6 +14,7 @@
 #include "03_AssetSystem/Importers/Texture/TextureManager.h"
 #include "03_AssetSystem/Importers/Texture/TextureConvert.h"
 #include "04_Renderer/BufferManager.h"
+#include "04_Renderer/RenderParams.h"
 #include "05_Scene/Camera/Camera.h"
 
 #include "SkyboxVS.h"
@@ -32,6 +33,20 @@ namespace Renderer::EnvironmentLighting
 		// 生成线性采样器
 		CreateSamplerDesc();
 
+		// R3：切 renderer 必须重新烘焙。
+		// InitializeToCubemap() 每次都会重建 4 张 ColorBuffer（EnvironmentCube / Irradiance /
+		// Prefilter / BRDFLUT），这是全新的 GPU 资源、内容为空。但 m_Baked / m_Ready /
+		// m_HDRLoaded 若不跟着复位，就会带着上一轮 renderer 的状态进来：
+		//   - Deferred -> Forward -> Deferred：第二次 Initialize 后 m_Baked 仍是 true，
+		//     BakeEnvironmentTextures（:150）会因 m_Baked==true 直接早退，
+		//     于是 Skybox / IBL 采样的永远是刚建出来、从未写入内容的空 cubemap（画面垃圾）。
+		//   - m_HDRLoaded 同理：它参与 :150 的早退判断，且语义是「HDR 已加载」，
+		//     复位后才能接受新一轮的 LoadHDR。
+		// 复位必须放在 InitializeToCubemap() 之前 —— 先有干净的标志，再有干净的资源。
+		m_Baked = false;
+		m_Ready = false;
+		m_HDRLoaded = false;
+
 		InitializeToCubemap();
 		CreateEquirectangularToCubemapPipeline();
 
@@ -42,6 +57,24 @@ namespace Renderer::EnvironmentLighting
 
 	void EnvironmentLightingManager::Shutdown()
 	{
+		// R3：切 renderer 必须重新烘焙（见 Initialize 开头的说明）。
+		// 先把 4 张烘焙产物（cubemap / irradiance / prefilter / BRDF LUT）真正释放掉：
+		// 它们是 shared_ptr<ColorBuffer>，仅靠 m_Textures = {} 是清不掉的（那是 TextureRef 表），
+		// 下一轮 InitializeToCubemap 里的 make_shared 只是覆盖指针，旧 GPU 资源会拖到
+		// 引用计数归零才释放，而且 GetEnvironmentCube()/GetIrradianceCube() 等访问器
+		// 在 Shutdown 之后仍会返回上一轮的悬空视图（DeferredRenderer 的 Lighting Pass
+		// 与 SkyboxPass 都直接用这些访问器）。
+		m_EnvironmentCubeMap.reset();
+		m_IrradianceCubeMap.reset();
+		m_PrefilterCubeMap.reset();
+		m_BRDFLUT.reset();
+
+		// 再复位三个状态标志：否则 Forward -> Deferred 的第二轮 Initialize 会因
+		// m_Baked == true 跳过烘焙，留下永不填充的空 cubemap。
+		m_Baked = false;
+		m_Ready = false;
+		m_HDRLoaded = false;
+
 		m_Textures = {};
 		m_RootSigAndPSOs.reset();
 	}
@@ -147,7 +180,18 @@ namespace Renderer::EnvironmentLighting
 	void EnvironmentLightingManager::BakeEnvironmentTextures(GraphicsContext& gfxContext)
 	{
 		(void)gfxContext;
-		if (m_Baked || m_HDRLoaded || !m_Textures.HDRTexture.IsValid()) return;
+		// R4：早退条件修正。
+		// ------------------------------------------------------------
+		// 旧写法是 `if (m_Baked || m_HDRLoaded || !HDRTexture.IsValid()) return;`
+		// 把 m_HDRLoaded 当成了"禁止烘焙"的理由 —— 语义正好反了：
+		// 「HDR 已加载」恰恰是**可以烘焙**的前提，而不是不能烘焙的原因。
+		// 这个错误一直没暴露，只因为 m_HDRLoaded 从来没人置 true（死标志），
+		// 整条 `|| m_HDRLoaded` 恒为假。一旦有人按字面意思补上赋值，
+		// 烘焙就会被永久跳过、Skybox 与 IBL 全部退回空 cubemap。
+		//
+		// 现在改为：已经烘焙过就跳过；没有可用的 HDR 也跳过；
+		// 「加载过 HDR」不再参与短路判断，只作为 LoadHDR 的成功标志。
+		if (m_Baked || !m_Textures.HDRTexture.IsValid()) return;
 
 		ComputeContext& computeContext = ComputeContext::Begin(L"Environment IBL Bake");
 
@@ -172,9 +216,14 @@ namespace Renderer::EnvironmentLighting
 		// 1. 加载环境贴图hdr,生成dds
 		CompileTextureOnDemand(HDRPath, kDefaultBC | kQualityBC);
 		m_Textures.HDRTexture = TextureManager::LoadDDSFromFile(HDRPath);
+		// R4：m_HDRLoaded 现在有真实语义 —— "本轮的 HDR 加载成功"。
+		// 它不再参与烘焙的短路判断（见 BakeEnvironmentTextures），只用于诊断与状态查询。
+		m_HDRLoaded = m_Textures.HDRTexture.IsValid();
 		if (m_Textures.HDRTexture.IsValid() == false)
 		{
-			Utility::Printf(L"HDRTexture Load Is Failed");
+			// R0.2：原信息既没有路径也没有后果，排查时无法区分「路径错」和「解码失败」。
+			Utility::Printf(L"[Asset] 错误：环境图加载失败 -> %ws\n", HDRPath.c_str());
+			Utility::Printf(L"[Asset]   请确认文件存在且为可读的 .dds/.hdr；Skybox 与 IBL 将跳过。\n");
 		}
 	}
 
@@ -320,7 +369,8 @@ namespace Renderer::EnvironmentLighting
 	}
 
 
-	void EnvironmentLightingManager::SkyboxPass(GraphicsContext& gfxcontext, const Scene::Camera::Camera& camera)
+	void EnvironmentLightingManager::SkyboxPass(GraphicsContext& gfxcontext, const Scene::Camera::Camera& camera,
+	                                            const Renderer::RenderParams& params)
 	{
 		// TODO:
 		// 1) 设置深度状态：DepthFunc = LessEqual，DepthWrite = Off
@@ -332,11 +382,21 @@ namespace Renderer::EnvironmentLighting
 
 		if (!m_Ready || m_EnvironmentCubeMap == nullptr) return;
 
+		// R4：DisplayParams 追加在第 128 字节之后，必须与 SkyboxPS.hlsl 的
+		// cbuffer CameraCB 逐字段一致（InvView @0, InvProj @64, gDisplayParams @128）。
 		struct alignas(16) SkyboxCameraCB
 		{
 			Math::Matrix4 InvView;
 			Math::Matrix4 InvProj;
-		} cameraCB = { Math::Invert(camera.GetViewMatrix()), Math::Invert(camera.GetProjMatrix()) };
+			DirectX::XMFLOAT4 DisplayParams;   // x=Exposure y=EnableTonemap z=EnableSRGBEncode w=unused
+		} cameraCB = {};
+		cameraCB.InvView = Math::Invert(camera.GetViewMatrix());
+		cameraCB.InvProj = Math::Invert(camera.GetProjMatrix());
+		cameraCB.DisplayParams = DirectX::XMFLOAT4(
+			params.Exposure,
+			params.EnableTonemap ? 1.0f : 0.0f,
+			params.EnableSRGBEncode ? 1.0f : 0.0f,
+			0.0f);
 
 		gfxcontext.SetRootSignature(m_RootSigAndPSOs->m_SkyboxRootSig); // skybox要点
 		gfxcontext.SetPipelineState(m_RootSigAndPSOs->m_SkyboxPSO);		//  skybox要点

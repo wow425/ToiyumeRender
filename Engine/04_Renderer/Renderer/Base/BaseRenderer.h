@@ -69,12 +69,20 @@ namespace Renderer
 		uint32_t height = 0;
 	};
 
+	// R3：渲染参数的唯一 CPU 真源（定义见 04_Renderer/RenderParams.h）。
+	// 只做前向声明，避免 BaseRenderer.h 把 UI 层的数据结构拖进来。
+	struct RenderParams;
+
 	struct RenderFrameDesc
 	{
 		// const Scene* scene = nullptr;
 		const Scene::Camera::Camera* Camera = nullptr;
 		std::vector<Scene::Model::ModelInstance*> Models;
 		float delatT = 0;
+
+		// R3：本帧要应用的渲染参数。nullptr 表示「沿用上一次应用的参数」，
+		// 这样三个旧 Demo 不改一行也能编译并保持原有画面。
+		const RenderParams* Params = nullptr;
 	};
 
 	enum class RendererFeature : uint32_t

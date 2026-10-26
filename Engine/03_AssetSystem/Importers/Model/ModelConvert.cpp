@@ -122,6 +122,13 @@ void Scene::Model::CompileMesh(
 		uint32_t drawIdx = 0;
 		uint32_t curVertOffset = 0;
 		uint32_t curIndexOffset = 0;
+		// R1.3：深度顶点缓冲同样需要按 draw 递增的字节偏移。
+		// 原实现三行 memcpy 里，VB 用 curVertOffset、IB 用 curIndexOffset，
+		// 唯独 DepthVB 固定写 curDepthVBOffset —— 同一 Mesh 含多个 draw 时，
+		// 后一个 draw 会覆盖前一个的深度顶点，导致深度预通道读到错误几何。
+		// 这里统一成「字节偏移」语义（与 VB/IB 那两个是元素偏移不同，
+		// 因为深度流只被整块 memcpy，不参与 baseVertex 计算）。
+		uint32_t curDepthVertOffset = 0;
 		for (auto& draw : iter.second)
 		{
 			Scene::Model::Mesh::Draw& d = mesh->draw[drawIdx++];
@@ -130,7 +137,12 @@ void Scene::Model::CompileMesh(
 			d.startIndex = curIndexOffset;
 			std::memcpy(uploadMem + curVBOffset + curVertOffset, draw->VB->data(), draw->VB->size());
 			curVertOffset += (uint32_t)draw->VB->size() / draw->vertexStride;
-			std::memcpy(uploadMem + curDepthVBOffset, draw->DepthVB->data(), draw->DepthVB->size());
+			if (draw->DepthVB && !draw->DepthVB->empty())
+			{
+				std::memcpy(uploadMem + curDepthVBOffset + curDepthVertOffset,
+					draw->DepthVB->data(), draw->DepthVB->size());
+				curDepthVertOffset += (uint32_t)draw->DepthVB->size();
+			}
 			std::memcpy(uploadMem + curIBOffset + curIndexOffset, draw->IB->data(), draw->IB->size());
 			curIndexOffset += (uint32_t)draw->IB->size() >> (draw->index32 + 1);
 		}
@@ -337,18 +349,31 @@ void BuildMaterials(ModelData& model, const glTF::Asset& asset)
 			}
 		}
 
-		// 收集需要按需编译的纹理选项
-		// BaseColor 贴图：false（不使用SRGB），PBR工作流在线性空间进行计算，只有最后输出才进行SRGB转换
-		// 如果启用了 alpha blend / alpha test，则保留alpha通道
-		SetTextureOptions(textureOptions, srcMat.textures[kBaseColor], TextureOptions(false, srcMat.alphaBlend | srcMat.alphaTest));  // false = Linear
-		// 金属度/粗糙度贴图：false 表示通常不需要特殊 alpha 处理
-		SetTextureOptions(textureOptions, srcMat.textures[kMetallicRoughness], TextureOptions(false));
-		// 遮蔽贴图：false
-		SetTextureOptions(textureOptions, srcMat.textures[kOcclusion], TextureOptions(false));
-		// 自发光贴图：true（使用SRGB），在线性空间处理
-		SetTextureOptions(textureOptions, srcMat.textures[kEmissive], TextureOptions(true));
-		// 法线贴图：false
-		SetTextureOptions(textureOptions, srcMat.textures[kNormal], TextureOptions(false));
+		// ============================================================
+		// 收集需要按需编译的纹理选项（R1.1）
+		// ------------------------------------------------------------
+		// 统一槽位顺序后，这里显式用 glTF::Material:: 限定名：
+		// 即使将来 ConstantBuffers.h 的顺序再变，本处也不会被静默带偏。
+		//
+		// 色彩空间规则（glTF 2.0 规范）：
+		//   颜色贴图（BaseColor / Emissive）→ sRGB 编码，采样时硬件解码到线性
+		//   数据贴图（Normal / Occlusion / MetallicRoughness）→ 必须保持线性，
+		//   若被当作 sRGB 解码，法线与粗糙度会整体偏移
+		//
+		// R1 修正：BaseColor 原先编译为 Linear（TextureOptions(false)），
+		// 而磁盘上的 PNG 是 sRGB 编码的，等于把 sRGB 值直接当线性值用，画面偏暗。
+		// ============================================================
+		const bool bAlpha = (srcMat.alphaBlend || srcMat.alphaTest) != 0;
+		SetTextureOptions(textureOptions, srcMat.textures[glTF::Material::kBaseColor],
+			TextureOptions(true, bAlpha));    // 颜色贴图 → sRGB；有 alpha 时保留
+		SetTextureOptions(textureOptions, srcMat.textures[glTF::Material::kMetallicRoughness],
+			TextureOptions(false));           // 数据贴图 → 线性
+		SetTextureOptions(textureOptions, srcMat.textures[glTF::Material::kOcclusion],
+			TextureOptions(false));           // 数据贴图 → 线性
+		SetTextureOptions(textureOptions, srcMat.textures[glTF::Material::kEmissive],
+			TextureOptions(true));            // 颜色贴图 → sRGB
+		SetTextureOptions(textureOptions, srcMat.textures[glTF::Material::kNormal],
+			TextureOptions(false));           // 数据贴图 → 线性
 	}
 
 	// 清空模型原有的纹理选项表

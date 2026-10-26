@@ -13,6 +13,9 @@
 #include "00_Core/Utility/FileUtility.h"
 #include "02_RHI/Pipeline/GraphicsCommon.h"
 #include "02_RHI/Command/CommandContext.h"
+// R3：~ManagedTexture 要调用 Graphics::g_DescriptorAllocator 归还纹理 SRV。
+// 这里显式包含，不依赖 CommandContext.h 的传递包含。
+#include "02_RHI/GraphicsCore.h"
 #include <map>
 #include <thread>
 
@@ -34,6 +37,22 @@ class ManagedTexture : public Texture
 public:
     ManagedTexture(const wstring& FileName);
 
+    // ============================================================
+    // R3：析构必须自己归还纹理 SRV 描述符
+    // ------------------------------------------------------------
+    // 为什么非得在这儿做：GpuResource::Destroy 只清 ID3D12Resource 等
+    // 成员，Texture::Destroy（02_RHI/Resource/Texture.h:33-37）也只是把
+    // m_hCpuDescriptorHandle.ptr 置 UNKNOWN —— 两者都不碰全局
+    // g_DescriptorAllocator。而 CreateFromMemory 是「从全局
+    // CBV_SRV_UAV 分配器拿一个槽」的唯一地方，不在这里归还就没有
+    // 任何归还路径：ManagedTexture::Unload 只把自身从 s_TextureCache
+    // 摘掉，TextureManager::Shutdown 只 clear map。
+    // 后果（实测于 R3 切 renderer 场景）：每轮 Initialize→LoadModel→
+    // Shutdown 都让 CPU 描述符池涨一批；反复切换即持续泄漏，
+    // 最终耗尽 256 槽/堆的池并不断新建堆。
+    // ============================================================
+    ~ManagedTexture() override;
+
     void WaitForLoad(void) const;
     void CreateFromMemory(ByteArray memory, eDefaultTexture fallback, bool sRGB);
 
@@ -46,6 +65,17 @@ private:
     bool m_IsValid;
     bool m_IsLoading;
     size_t m_ReferenceCount;
+
+    // ============================================================
+    // R3：「这个 SRV 槽是我自己从全局分配器分配的」
+    // ------------------------------------------------------------
+    // 只有 CreateFromMemory 真正走了 AllocateDescriptor 时才为 true。
+    // ba->size()==0 的分支拿的是 GraphicsCommon 的公共默认纹理
+    // （GetDefaultTexture），那是全局共享资源，绝不能归还；
+    // 加载失败分支虽然退化成默认纹理的内容，但槽位确实是自己分配的，
+    // 所以仍然保持 true。
+    // ============================================================
+    bool m_OwnsDescriptor = false;
 };
 
 namespace TextureManager
@@ -122,12 +152,19 @@ void ManagedTexture::CreateFromMemory(ByteArray ba, eDefaultTexture fallback, bo
 {
     if (ba->size() == 0)
     {
+        // R3：这里拿的是 GraphicsCommon 的公共默认纹理描述符，
+        // 不属于本对象，m_OwnsDescriptor 保持 false（析构时绝不能 Free）。
         m_hCpuDescriptorHandle = GetDefaultTexture(fallback);
     }
     else
     {
         // We probably have a texture to load, so let's allocate a new descriptor
         m_hCpuDescriptorHandle = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+        // R3：从这一行起，槽位归本对象所有，析构时负责归还。
+        // 下面两条分支（加载成功 / 退化成默认纹理内容）用的都是同一个槽，
+        // 因此标志在分支之前就置 true。
+        m_OwnsDescriptor = true;
 
         if (SUCCEEDED(CreateDDSTextureFromMemory(g_Device, (const uint8_t*)ba->data(), ba->size(),
             0, forceSRGB, m_pResource.GetAddressOf(), m_hCpuDescriptorHandle)))
@@ -141,12 +178,31 @@ void ManagedTexture::CreateFromMemory(ByteArray ba, eDefaultTexture fallback, bo
         }
         else
         {
+            // 槽位仍是自己分配的，只是内容换成了默认纹理，m_OwnsDescriptor 保持 true。
             g_Device->CopyDescriptorsSimple(1, m_hCpuDescriptorHandle, GetDefaultTexture(fallback),
                 D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         }
     }
 
     m_IsLoading = false;
+}
+
+// ============================================================
+// R3：ManagedTexture 析构 —— 归还纹理 SRV
+// ------------------------------------------------------------
+// 与 Texture::Destroy 的分工：那一边只负责 GPU 资源与句柄成员复位，
+// 这一边负责把槽位还给全局描述符分配器（Free 内部自带
+// 「Graphics::Shutdown 之后 g_Device==nullptr / 堆池已清」的保护，
+// 所以静态析构期调用也安全）。
+// ============================================================
+ManagedTexture::~ManagedTexture()
+{
+    if (m_OwnsDescriptor)
+    {
+        Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV].Free(m_hCpuDescriptorHandle, 1);
+        m_OwnsDescriptor = false;
+        m_hCpuDescriptorHandle.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
+    }
 }
 
 void ManagedTexture::WaitForLoad(void) const

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // 直接套用，还没啃
 
@@ -177,6 +177,11 @@ namespace GameInput
 
     float GetAnalogInput(AnalogInput ai);
     float GetTimeCorrectedAnalogInput(AnalogInput ai);
+
+    // 由 WndProc 转发：把 Win32 键盘消息写入内部键位状态。
+    // 当 DirectInput 不可用（DirectInput8Create 返回 E_FAIL）时，
+    // 这是键鼠输入唯一可靠的来源；对合成输入（SendKeys/远程桌面）同样有效。
+    void NotifyWin32Key(unsigned int vkCode, bool isDown);
 
 #if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_TV_TITLE | WINAPI_PARTITION_DESKTOP)
     void SetKeyState(Windows::System::VirtualKey key, bool IsDown);

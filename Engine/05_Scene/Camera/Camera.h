@@ -10,10 +10,26 @@
 
 namespace Scene::Camera
 {
+	// ============================================================
+	// Lighting Pass 的 Camera 常量缓冲（b1）—— 必须与 LightingPS.hlsl 逐字段一致
+	// ------------------------------------------------------------
+	// R1.5 / R1.7：新增 RenderTargetSize / InvRenderTargetSize。
+	// 原先 LightingPS 用 float2(1920,1080) 反推屏幕 UV，窗口一改尺寸就全错位；
+	// 现在分辨率由 CPU 侧真实渲染目标尺寸传入。
+	//
+	// 布局（HLSL 默认 packing）：
+	//   offset  0 : float4   CameraPos
+	//   offset 16 : float4x4 InvViewProj     (16 字节对齐)
+	//   offset 80 : float2   RenderTargetSize
+	//   offset 88 : float2   InvRenderTargetSize
+	// 合计 96 字节。CameraData 用 Vector4/Matrix4 构建，对齐天然满足。
+	// ============================================================
 	struct CameraData
 	{
-		Math::Vector4 CameraPos;
-		Math::Matrix4 InvViewProj;
+		Math::Vector4 CameraPos;             // xyz = 世界空间相机位置
+		Math::Matrix4 InvViewProj;           // 逆视图投影（行主序，与全工程一致）
+		DirectX::XMFLOAT2 RenderTargetSize;    // 当前渲染目标像素尺寸 (w, h)
+		DirectX::XMFLOAT2 InvRenderTargetSize; // 1/w, 1/h
 	};
 	
 	
