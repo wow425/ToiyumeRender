@@ -2,6 +2,7 @@
 
 > 用途：**跨会话复用**。新会话直接读本文件即可恢复全部上下文，无需重读长对话。
 > 最后更新：2026-10-28 ｜ 当前进度：**R0 ✅ R1 ✅ R2 ✅ R3 ✅ R4 ✅ R5 ✅ VS 环境验证 ✅ R6（D3 光线效果）✅ R7（D4 接材质）✅ → 待定（DXR IBL/点光源 / Soft Shadow / alpha test / 多模型）**
+> 📘 **想从零读懂整条光追管线**：先读 `docs/TooiyumeRender_光追管线教程.md`（14 章 / 2484 行，面向初学者，`路径:行号` 全部相对仓库根且已核对）。本文件偏「施工档案 + 交接清单」，教程偏「因果解释 + 动手练习」，两者互补。
 
 ---
 
@@ -783,12 +784,14 @@ scripts\run.bat Debug RendererDemo -StartRenderer RayTracingRenderer -R7Test D:\
 | `docs/AI/R7test2/` | 11 步 2×2 验收证据（A5a/A5b/A5c/A5d/A7 对照） | **新增**（R7） |
 | `docs/AI/R7test_rel/` | Release 版 `-R7Test`：9 张渲染图 md5 与 Debug 相同（已去重只留 README + 唯一不同的 `r7_09_imgui_panel.png`） | **新增**（R7） |
 | `docs/AI/R7/`、`docs/AI/R7ctl/` | DXR 最终着色 / 光栅对照（各 1 张，已按 md5 去重） | **新增**（R7） |
+| `docs/TooiyumeRender_光追管线教程.md` | **面向初学者的光追管线「设计 + 实现」教程**（14 章 / 2484 行 / 77 小节）：观念转换 → DXR 六个核心概念 → 架构分层 → R5/R6/R7 逐阶段实现 → **陷阱大全（按症状索引 12 条零报错坑）** → 取舍记录 → 6 个动手练习 → 源码地图（含 22 行关键行号速查表）。`路径:行号` 全部相对仓库根、已逐条核对 | **新增**（R7 后补） |
 
 ---
 
 ## 11. 新会话如何恢复
 
 1. 读本文件 `docs/AI/R_执行表.md`
+1b. **想系统理解光追管线本身**（而不是只想接着施工）：读 `docs/TooiyumeRender_光追管线教程.md` —— 第 1–3 章建立世界观与架构，第 4–6 章按 R5/R6/R7 顺序讲实现，第 7 章按「症状」索引 12 条零报错陷阱，第 9 章 6 个动手练习，第 10 章源码阅读顺序 + 关键行号速查表
 2. 需要细节时再读对应阶段文档：`R0_*.md` / `R1_*.md` / `R2/R2_生命周期与窗口稳定性.md` / `R3/R3_统一入口与交互工作台.md`
 3. **R5、VS 环境验证、R6（D3 光追算法）、R7（D4 光追接材质）均已完成**（R5/R6 于 2026-10-27，R7 于 2026-10-28）。R6 细节见 §6e（日志 `docs/AIWorkLogs/TR-20261027-03_R6-光追算法.md`）；**R7 细节见 §6f**（日志 `docs/AIWorkLogs/TR-20261028-01_R7-材质接驳.md`、方案 `docs/AI/R7_材质接驳_设计方案.md`）。**接手前必看两条**：① `scripts/build.bat` 的代码页修复（否则所有「改了代码没生效」都会被误判成代码 bug）；② `ByteAddressBuffer::Load<T>` 不做格式转换（R7 因此把 UV 读成 denormal，整张贴图退化成纯色且不报错）。VS 侧：`out/build/vs2022`（VS 2022 生成器）Debug+Release 双配置构建通过、MSBuild 直构 `.sln` 通过、运行通过、画面与 Ninja 版逐字节一致、Debug Layer 零 ERROR。详见 §6d
 4. 施工日志模板：`docs/AIWorkLogs/_TEMPLATE_WP_施工日志.md`；最近示例：`docs/AIWorkLogs/TR-20261027-01_R5-DXR最小闭环.md`（含 17 条 R5 教训）、`docs/AIWorkLogs/TR-20261027-02_R5-VS环境验证.md`（含 VS 环境 6 条教训）、`docs/AIWorkLogs/TR-20261028-01_R7-材质接驳.md`（含 9 条 R7 踩坑）
