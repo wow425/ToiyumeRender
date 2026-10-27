@@ -462,7 +462,7 @@ DEF  base mean [177.52, 177.90, 204.75]
 mean|diff|  2.9      median 1.0      identical(<=2) 81.9%      diff>30 2.1%
 亮度相关系数 0.993
 ```
-修复前是 `mean|diff| 67.2 / corr 0.52` → **提升 23 倍**。人工判读（`_cmp4.png` 三栏 2× 放大）两张图肉眼几乎不可区分。
+修复前是 `mean|diff| 67.2 / corr 0.52` → **提升 23 倍**。人工判读（`docs/AI/R7test2/a7_compare_3way.png` 三栏 2× 放大）两张图肉眼几乎不可区分。
 残留 2.1% 已归因：R7 用 `SampleLevel(...,0)` 强制 mip0，光栅用 `Sample` 自动 LOD（含各向异性）；且 R7 写 alpha=1，光栅写 alpha=ao。
 
 **③ A6：光栅零回归（通过）**
