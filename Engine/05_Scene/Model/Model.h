@@ -112,6 +112,22 @@ namespace Scene::Model
 
 		bool IsNull(void) const { return m_Model == nullptr; }
 
+		// R5：只读访问底层 Model。
+		// ------------------------------------------------------------------
+		// 光追路径需要遍历 Mesh 表来建 BLAS（m_NumMeshes / m_MeshData /
+		// m_DataBuffer 都是 Model 的公开成员），但 ModelInstance 一直把
+		// m_Model 藏在 private 里。这里只暴露 const 指针，不暴露可变句柄，
+		// 保证外部无法绕过 m_Locator 去改实例状态（那是 R3/R4 踩过的坑）。
+		const Model* GetModel(void) const { return m_Model.get(); }
+
+		// R5：实例的 local-to-world 矩阵（TLAS 的 InstanceTransform 来源）。
+		// ------------------------------------------------------------------
+		// m_Locator 是实例变换的唯一真源，Update() 也是用它算 MeshConstants。
+		// 光追的 TLAS 必须与光栅的 MeshConstants.World 完全一致，
+		// 否则两条路径的几何会错位（诊断画面里表现为「模型不在原位」）。
+		// 这里只读地暴露同一份变换，不提供 setter。
+		Math::Matrix4 GetLocalToWorld(void) const { return Math::Matrix4((Math::AffineTransform)m_Locator); }
+
 		void Update(GraphicsContext& gfxContext, float deltaTime);
 		void GatherRenderables(::Renderer::MeshSorter& sorter) const;
 

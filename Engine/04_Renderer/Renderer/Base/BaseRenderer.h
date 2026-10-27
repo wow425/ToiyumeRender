@@ -95,6 +95,9 @@ namespace Renderer
 		TAA = 1u << 4,
 		Transparent = 1u << 5,
 		PostProcess = 1u << 6,
+		// R5：DXR 光追（硬件加速射线遍历）。与上面几项不同，它依赖设备能力，
+		// 因此「声明了该位」≠「一定能跑」，还需要 Graphics::g_bRaytracingSupported。
+		Raytracing = 1u << 7,
 	};
 
 	inline RendererFeature operator| (RendererFeature a, RendererFeature b)

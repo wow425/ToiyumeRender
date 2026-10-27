@@ -51,23 +51,53 @@ set(TOOIYUME_VCPKG_INSTALLED_DIR
     "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-windows"
     CACHE PATH "仓库内置的 vcpkg 安装目录（B 路径使用）")
 
-if(DEFINED CMAKE_TOOLCHAIN_FILE AND NOT CMAKE_TOOLCHAIN_FILE STREQUAL "")
+# 判定仓库内置依赖是否**真的可用**（存在 directxtex 的 config 文件）：
+# 只判目录存在是不够的 —— 空目录、或只有部分包都会让 find_package 失败。
+set(_TOOI_REPO_DEPS_OK FALSE)
+if(EXISTS "${TOOIYUME_VCPKG_INSTALLED_DIR}/share/directxtex")
+    set(_TOOI_REPO_DEPS_OK TRUE)
+endif()
+
+if(_TOOI_REPO_DEPS_OK)
+    # ── B 路径优先（2026-10-27 修正优先级）──────────────────────────────
+    # 原来 B 路径排在 VCPKG_ROOT 之后，导致「Visual Studio 打开文件夹」必然失败：
+    # VS 的 CMake 集成**总会**把 VCPKG_ROOT 注入成它自带的
+    #   F:\VS\Community\VC\vcpkg
+    # 而那个 vcpkg 的 installed/ 是空的（它只是个未初始化的壳），
+    # 于是走到 A 路径、加载一个空 toolchain，find_package(directxtex) 直接报
+    #   Could not find a package configuration file provided by "directxtex"。
+    #
+    # 现在区分两种 toolchain：
+    #   - 用户/脚本显式指定（如 scripts/build.bat 传的 F:/VS/rep/vcpkg）→ 尊重它
+    #   - VS 自动注入的空壳 vcpkg（路径含 /VC/vcpkg）→ 忽略并清除
+    if(DEFINED CMAKE_TOOLCHAIN_FILE
+       AND NOT CMAKE_TOOLCHAIN_FILE STREQUAL ""
+       AND NOT CMAKE_TOOLCHAIN_FILE MATCHES "[/\\\\][Vv][Cc][/\\\\]vcpkg[/\\\\]")
+        message(STATUS "[deps] 尊重调用方显式指定的 toolchain: ${CMAKE_TOOLCHAIN_FILE}")
+    else()
+        if(DEFINED CACHE{CMAKE_TOOLCHAIN_FILE})
+            get_property(_tc CACHE CMAKE_TOOLCHAIN_FILE PROPERTY VALUE)
+            message(STATUS "[deps] 忽略 VS 注入的空壳 vcpkg toolchain: ${_tc}")
+            unset(CMAKE_TOOLCHAIN_FILE CACHE)
+        endif()
+        list(APPEND CMAKE_PREFIX_PATH "${TOOIYUME_VCPKG_INSTALLED_DIR}")
+        message(STATUS "[deps] 使用仓库内依赖目录（优先于 VCPKG_ROOT）: ${TOOIYUME_VCPKG_INSTALLED_DIR}")
+    endif()
+elseif(DEFINED CMAKE_TOOLCHAIN_FILE AND NOT CMAKE_TOOLCHAIN_FILE STREQUAL "")
     message(STATUS "[deps] 使用调用方指定的 toolchain 文件: ${CMAKE_TOOLCHAIN_FILE}")
 elseif(DEFINED VCPKG_ROOT AND NOT VCPKG_ROOT STREQUAL "")
     set(CMAKE_TOOLCHAIN_FILE "${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
         CACHE FILEPATH "vcpkg toolchain file" FORCE)
     message(STATUS "[deps] 由 VCPKG_ROOT 推导 toolchain: ${CMAKE_TOOLCHAIN_FILE}")
 else()
-    if(NOT EXISTS "${TOOIYUME_VCPKG_INSTALLED_DIR}")
-        message(FATAL_ERROR
-            "找不到仓库内的第三方依赖目录：${TOOIYUME_VCPKG_INSTALLED_DIR}\n"
-            "请任选其一：\n"
-            "  1) 把 vcpkg 的 x64-windows 安装结果放到该目录（推荐，无需联网）\n"
-            "  2) 设 VCPKG_ROOT 让 CMake 走标准 vcpkg manifest 流程\n"
-            "  3) cmake -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake")
-    endif()
-    list(APPEND CMAKE_PREFIX_PATH "${TOOIYUME_VCPKG_INSTALLED_DIR}")
-    message(STATUS "[deps] 使用仓库内依赖目录: ${TOOIYUME_VCPKG_INSTALLED_DIR}")
+    message(FATAL_ERROR
+        "找不到第三方依赖，且没有可用的 vcpkg：\n"
+        "  仓库内置目录不存在或无内容：${TOOIYUME_VCPKG_INSTALLED_DIR}\n"
+        "  VCPKG_ROOT 也未设置。\n"
+        "请任选其一：\n"
+        "  1) 把 vcpkg 的 x64-windows 安装结果放到该目录（推荐，无需联网）\n"
+        "  2) 设 VCPKG_ROOT 让 CMake 走标准 vcpkg manifest 流程\n"
+        "  3) cmake -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake")
 endif()
 
 find_package(directxtex CONFIG REQUIRED)

@@ -9,26 +9,30 @@
     {
       "name": "windows-base",
       "hidden": true,
-      "description": "Windows / MSVC / Ninja 基线。依赖根从仓库内 vcpkg_installed 解析，无需手工设置环境变量。",
+      "description": "Windows / MSVC / Ninja 基线。依赖从仓库内 vcpkg_installed 解析，不依赖任何环境变量（VS 会注入它自带的空壳 VCPKG_ROOT，详见根 CMakeLists.txt 的 [deps] 分支）。",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/out/build/${presetName}",
       "installDir": "${sourceDir}/out/install/${presetName}",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "cl.exe",
-        "CMAKE_CXX_COMPILER": "cl.exe",
-        "VCPKG_ROOT": "$env{VCPKG_ROOT}"
+        "CMAKE_CXX_COMPILER": "cl.exe"
       },
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
+      },
+      "environment": {
+        "VCPKG_ROOT": ""
       }
     },
     {
       "name": "x64-debug",
       "displayName": "x64 Debug",
-      "description": "Visual Studio 内可直接选用的 Debug 配置",
+      "description": "Debug 构建。产物目录与 scripts/build.bat Debug 完全一致（out/build/Debug），避免双树并存。",
       "inherits": "windows-base",
+      "binaryDir": "${sourceDir}/out/build/Debug",
+      "installDir": "${sourceDir}/out/install/Debug",
       "architecture": {
         "value": "x64",
         "strategy": "external"
@@ -40,8 +44,10 @@
     {
       "name": "x64-release",
       "displayName": "x64 Release",
-      "description": "Visual Studio 内可直接选用的 Release 配置",
+      "description": "Release 构建。产物目录与 scripts/build.bat Release 完全一致（out/build/Release），避免双树并存。",
       "inherits": "windows-base",
+      "binaryDir": "${sourceDir}/out/build/Release",
+      "installDir": "${sourceDir}/out/install/Release",
       "architecture": {
         "value": "x64",
         "strategy": "external"

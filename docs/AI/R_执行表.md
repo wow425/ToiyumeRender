@@ -1,13 +1,13 @@
 # TooiyumeRender 升级执行表（交接文档）
 
 > 用途：**跨会话复用**。新会话直接读本文件即可恢复全部上下文，无需重读长对话。
-> 最后更新：2026-10-26 ｜ 当前进度：**R0 ✅ R1 ✅ R2 ✅ R3 ✅ R4 ✅ → R5 待开工**
+> 最后更新：2026-10-27 ｜ 当前进度：**R0 ✅ R1 ✅ R2 ✅ R3 ✅ R4 ✅ R5 ✅ VS 环境验证 ✅ → R6（D3 光线效果）待开工**
 
 ---
 
 ## 0. 一句话状态
 
-项目是 DX12 渲染器（C++20 / HLSL / CMake / vcpkg）。R0 建立了可重复构建与资产基线，R1 修复了确定性渲染错误。**Deferred 路径现已正确渲染模型**（修复前模型完全不可见）。R2 已修复 Resize/最小化/相机宽高比/资源重建/backbuffer 索引 7 个缺陷并完成长宽比遍历验证。R3 已建成统一入口 `RendererDemoApp`：渲染器注册表可运行时切换 Forward/Deferred、Dear ImGui 六面板、`RenderParams` 成为参数唯一真源，并顺带修掉 Forward 全黑与一批 RHI 生命周期缺陷。**R4 已打通显示编码链**：Exposure→ACES→sRGB 成为 Lighting 与 Skybox 共用的唯一实现（修复前 Skybox 完全绕过曝光，天空 52% 像素硬截断）；Prefilter mip 上界改取真实值（4，原写死 8.0）；`m_HDRLoaded` 死标志语义修正；glTF MASK 材质接通 AlphaTest。模型区截断 23.0%→0.1%，天空 52.0%→0.0%。下一步 R5：DXR 最小闭环。
+项目是 DX12 渲染器（C++20 / HLSL / CMake / vcpkg）。R0 建立了可重复构建与资产基线，R1 修复了确定性渲染错误。**Deferred 路径现已正确渲染模型**（修复前模型完全不可见）。R2 已修复 Resize/最小化/相机宽高比/资源重建/backbuffer 索引 7 个缺陷并完成长宽比遍历验证。R3 已建成统一入口 `RendererDemoApp`：渲染器注册表可运行时切换 Forward/Deferred、Dear ImGui 六面板、`RenderParams` 成为参数唯一真源，并顺带修掉 Forward 全黑与一批 RHI 生命周期缺陷。**R4 已打通显示编码链**：Exposure→ACES→sRGB 成为 Lighting 与 Skybox 共用的唯一实现（修复前 Skybox 完全绕过曝光，天空 52% 像素硬截断）；Prefilter mip 上界改取真实值（4，原写死 8.0）；`m_HDRLoaded` 死标志语义修正；glTF MASK 材质接通 AlphaTest。模型区截断 23.0%→0.1%，天空 52.0%→0.0%。**R5 已把 DXR 接入统一入口**：设备能力查询与 App 请求解耦、`RequiresRaytracingSupport()` 补齐 `const override`、Shader 链支持 `lib_6_4`、BLAS/TLAS/RTPSO/SBT 全通、`DispatchRays` 输出法线色诊断画面并经统一 Present 上屏、`RayTracingRenderer` 可在 UI 切换且切回光栅无回归。**VS 环境验证已完成**：VS 2022 生成器树 Debug+Release 双配置构建通过、MSBuild 直构 `.sln` exit 0、DXR/光栅画面与 Ninja 版逐字节相同、Debug Layer（含 GPU-Based Validation）零 ERROR；过程中修掉 `DeployRuntimeDlls.cmake` 多配置选错 DLL 变体、MSBuild 被重复 proxy 环境变量打断两个真实缺陷。下一步：R6（D3 硬阴影射线 → 反射）。
 
 ---
 
@@ -35,7 +35,7 @@
 | **R2** 生命周期与窗口稳定性 | P0 | Resize、最小化、相机宽高比、资源重建、backbuffer 索引 | ✅ **完成** |
 | **R3** 统一入口与交互工作台 | P1 | RendererDemoApp、RendererRegistry 接通、ImGui、RenderParams | ✅ **完成** |
 | **R4** 光栅 PBR 闭环 | P1 | 曝光/ACES/sRGB 统一链、Prefilter mip 上界、IBL 状态机、AlphaTest | ✅ **完成** |
-| R5 DXR 最小闭环 | P1 | D0 设备能力 → D1 AS 构建 → D2 DispatchRays | ⬜ **下一步** |
+| R5 DXR 最小闭环 | P1 | D0 设备能力 → D1 AS 构建 → D2 DispatchRays | ✅ **完成**（含 VS 环境验证，见 §6d） |
 | R6 扩展与加固 | P2 | Shadow、透明、SSAO、TAA、热重载、文档清理 | ⬜ 未开始 |
 
 **硬性要求**：每个阶段必须通过「干净构建 + 实际运行 + 可观察证据」三项验收后才能进入下一阶段。每次施工完成后在 `docs/AI` 产出学习文档。
@@ -208,6 +208,129 @@
 
 ---
 
+## 6c. R5 已完成（✅）
+
+主题：**DXR 最小闭环 —— 设备能力 / 加速结构 / DispatchRays 统一入口**。详见 `docs/AIWorkLogs/TR-20261027-01_R5-DXR最小闭环.md`。
+
+### 6c.1 交付内容
+
+| ID | 内容 | 落点 |
+|---|---|---|
+| R5.1 (D0) | **能力查询与请求解耦**：`CheckFeatureSupport(OPTIONS5)` 从「仅在 App 请求时查」改为**无条件执行**并记录 `g_RaytracingTier` / `g_bRaytracingSupported`；只有 `RequireDXRSupport && !supported` 才中止。新增 `QueryRaytracingCapability()` 供 UI 使用 | `Engine/02_RHI/GraphicsCore.{h,cpp}` |
+| R5.2 (D0) | **`RequiresRaytracingSupport()` 补齐 `const override`**。旧写法 `virtual bool RequiresRaytracingSupport();` 少 const，与基类 `IGameApp::RequiresRaytracingSupport() const` 是**两个不同函数** → 请求被基类默认 `false` 静默吞掉 | `Demos/RayTracingApp/RayTracingApp.cpp:44/:74` |
+| R5.3 (D0) | `RendererFeature::Raytracing = 1u << 7`，UI 可读的能力位 | `Engine/04_Renderer/Renderer/Base/BaseRenderer.h:100` |
+| R5.4 (D1) | **Shader 链支持 DXIL library**：新增 `compile_raytracing_library()`（`lib_6_4`，**不传 `-E`**），一份 hlsl 里的 RayGen/Miss/ClosestHit 全编进同一库 | `Engine/20_cmake/ShaderCompiler.cmake:173`、`Engine/CMakeLists.txt:116` |
+| R5.5 (D1) | **`RaytracingPSO`**（State Object 独立封装，**不复用** GraphicsPSO 缓存）：DXIL_LIBRARY + HIT_GROUP + SHADER_CONFIG + PIPELINE_CONFIG + GLOBAL_ROOT_SIGNATURE，失败带 `GetLastError()` | `Engine/02_RHI/Pipeline/RaytracingPSO.{h,cpp}`（新增） |
+| R5.6 (D1) | **BLAS/TLAS 构建与生命周期**：GPU→GPU `CopyBufferRegion` 聚合几何；每 `(实例,mesh,draw)` 一个单几何 BLAS（`InstanceID` 即可定位，Tier 1.0 可用）；静态几何复用 BLAS，只在实例变化时重建 TLAS；scratch 各段互不重叠 | `Engine/04_Renderer/Renderer/RayTracing/RaytracingScene.{h,cpp}`（新增） |
+| R5.7 (D1) | **AS 资源正确创建**：`Flags = ALLOW_UNORDERED_ACCESS` + `InitialState = RAYTRACING_ACCELERATION_STRUCTURE`，全程不发 ResourceBarrier（三个 Debug Layer 错误的最终解） | `RaytracingScene.h:111`、`RaytracingScene.cpp:53` |
+| R5.8 (D2) | **`RayTracingRenderer`**：RayGen/Miss/ClosestHit + SBT；命中返回法线色、未命中返回深蓝背景；输出 `R8G8B8A8_UNORM` 经统一 Present 上屏；设备不支持时 `Initialize` 返回 false 而非崩溃 | `Engine/04_Renderer/Renderer/RayTracing/RayTracingRenderer.{h,cpp}`（新增） |
+| R5.9 (D2) | **注册与切换**：`RendererRegistry` 登记工厂（不检查能力）；`BindRendererOutput` 加 `dynamic_cast<RayTracingRenderer*>` 分支；UI 面板替换硬编码 `"Not implemented (R5)"` 为真实 Tier 显示 | `RendererRegistry.cpp:46`、`RendererDemoApp.cpp:418/:1410-1434` |
+| R5.10 | `CommandContext::GetCommandList4()` 暴露 CommandList4（内部本就是它） | `Engine/02_RHI/Command/CommandContext.h:147` |
+| R5.11 | `ModelInstance::GetModel()` / `GetLocalToWorld()` 只读访问器 | `Engine/05_Scene/Model/Model.h:121/:129` |
+
+### 6c.2 验收（✅ 全部通过）
+
+| 验收项 | 结果 |
+|---|---|
+| Debug + Release 构建 | ✅ 均 `[build] OK` |
+| DXR 能力日志 | ✅ `[DXR] capability: supported=1 tier=0.12 inline=1`（`0.12` 是打印格式问题，实为 Tier 1.2） |
+| BLAS 构建 | ✅ `RebuildGeometry 完成：模型=1 唯一几何=1 BLAS=15 三角=71803 scratch=1540096 B` |
+| SBT | ✅ `SBT 构建完成：RayGen=RayGen Miss=Miss HitGroup=HitGroup 记录=32 B` |
+| TLAS | ✅ `加速结构就绪：BLAS=15 TLAS实例=15 三角=71803` |
+| DispatchRays | ✅ `首帧 DispatchRays 已提交：1920x1080，SBT RayGen=0x337A91000` |
+| **DXR 画面** | ✅ GPU 回读 108371 B，非背景像素 bbox `x[752..1136] y[120..576]`，彩色法线着色模型 |
+| 切换链路 | ✅ DXR → Forward → Deferred 均成功，切回光栅画面正常 |
+| 光栅基线未回归 | ✅ Deferred 对照 1734511 B 画面正常 |
+| Debug Layer | ✅ **0 ERROR** |
+
+**证据**：`docs/AI/R5/screenshot_90.png`（DXR 画面）、`docs/AI/R5ctl/screenshot_90.png`（光栅对照）、`docs/AI/R5switch/`（切换链路 3 张）。
+
+### 6c.3 R5 踩到的四个「零报错」黑屏根因（按隐蔽程度排序）
+
+1. **`DispatchRays` 读的是计算根签名**，用 `SetGraphicsRootSignature` 绑定时根参数不生效 → 全黑无报错。
+2. **HLSL 默认 `column_major`**，`RayTracing.hlsl` 漏 `#pragma pack_matrix(row_major)` → `InvViewProj` 等价转置 → 射线全打空（画面是 miss 背景色而非纯黑）。
+3. **`shader_attach_header_dependency` 漏挂 `RayTracingRenderer.cpp`** → 改 HLSL 后 `.cpp` 不重编 → exe 里是旧字节码，**前几轮 shader 修改全部静默失效**。
+4. **`DispatchRays` 的 `Width/Height` 被 `RebuildTopLevel` 清成 0 后从未填回** → 派发 0 条射线。
+
+**这四条的共同点：D3D12 不报任何错误、日志全绿、程序正常退出。** 只能靠「GPU 回读 + 像素值反推阶段」定位。
+
+---
+
+## 6d. VS 环境排错与功能验证（✅ 2026-10-27 完成）
+
+### 6d.1 做了什么
+
+用 **VS 2022 生成器**（`Visual Studio 17 2022` + `-A x64`）在 `out/build/vs2022/` 建了第三条构建树，与 `build.bat` 的 Ninja 两条树并存，验证「VS 里点生成 / 按 F5」这条路径是否真的可用。
+
+| 验证项 | 命令 | 结果 |
+|---|---|---|
+| 配置 | `cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE=...` | ✅ `MSVC 19.38.33145.0`，Configuring/Generating done |
+| 构建（cmake 驱动） | `cmake --build out/build/vs2022 --config Debug` / `--config Release` | ✅ 两个配置全目标成功 |
+| **构建（VS 原生入口）** | `MSBuild.exe out/build/vs2022/TooiyumeRender.sln /p:Configuration=Debug /p:Platform=x64` | ✅ **exit 0**，与 VS 里 F7 完全等价 |
+| 运行 Debug | `out/build/vs2022/Demos/RendererDemoApp/Debug/RendererDemoApp.exe -StartRenderer RayTracingRenderer -Screenshot ...` | ✅ DXR 全链路日志齐全，截图 108371 B |
+| 运行 Release | 同上，Release 目录 | ✅ 同上 |
+| **画面等价性** | md5 对比 VS 树 vs Ninja 树 | ✅ **逐字节相同**：DXR `1bea89b2…`、Deferred `16c8aeec…`、切换 `r3_07`/`r3_08` 全一致 |
+| 调试器下运行 | `cdb -o -g -G -c 'sxe 87a; sxe av; g'`（等价 F5） | ✅ **零 `D3D12 ERROR`、零异常中断**（GPU-Based Validation 开启状态） |
+| 切换链路 | `-StartRenderer RayTracingRenderer -R3Test` | ✅ DXR→Forward→Deferred 全成功，`RayTracingRenderer 已关闭（累计 DispatchRays 帧数=70）` |
+| 光栅回归 | `-StartRenderer DeferredRenderer` | ✅ 画面与 Ninja 版 md5 相同，PBR+IBL 正常 |
+
+### 6d.2 修掉的两个真实缺陷
+
+**缺陷 1：`DeployRuntimeDlls.cmake` 在多配置生成器下选错 DLL 变体**
+
+- 位置：`Engine/20_cmake/DeployRuntimeDlls.cmake:34`（原代码）
+- 原代码：`if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND EXISTS "${_root}/debug/bin")`
+- 为什么错：VS 生成器是**多配置**生成器，`CMAKE_BUILD_TYPE` 在配置期是固定的单值（本项目 configure 时写的是 `Debug`），**与用户随后选的 `--config Release` 无关** → 判断恒真 → Release 产物目录里拷的一直是 `debug/bin` 的调试版 DLL。
+- 实测证据：修复前 `out/build/vs2022/Demos/RendererDemoApp/Release/DirectXTex.dll` md5 = `fb49132c`（= `vcpkg_installed/x64-windows/debug/bin`），而正确值应为 `e8622bdc`（= `bin`）。
+- 后果：Release exe 链接调试版 CRT 的第三方库（`/MTd` 与 `/MT` 混用），本机碰巧因为导出接口兼容而能跑，但这是 UB。
+- 修复：改用生成器表达式 `"$<IF:$<CONFIG:Debug>,${_root}/debug/bin,${_root}/bin>"` —— 单配置生成器（Ninja）下 `$<CONFIG>` 就是 `CMAKE_BUILD_TYPE`，多配置下取当前正在构建的配置，两种生成器都正确。
+- 修复后验证：VS Release → `e8622bdc` / `d7827b47`（正确）；VS Debug → `fb49132c` / `d6fa60ed`（正确）；Ninja 两条树不变（Debug 用 debug/bin、Release 用 bin）。
+
+**缺陷 2：重复 proxy 环境变量让 MSBuild 报假错「找不到编译器」**
+
+- 现象：`cmake -G "Visual Studio 17 2022"` 报 `No CMAKE_CXX_COMPILER could be found`，看起来像 VS 装错了。
+- 真实根因（藏在 `out/build/vs2022/CMakeFiles/CMakeConfigureLog.yaml` 里）：
+  ```
+  error MSB6001: "CL.exe" 的命令行开关无效。
+  System.ArgumentException: 已添加项。字典中的关键字:"NO_PROXY"所添加的关键字:"no_proxy"
+    在 System.Collections.Hashtable.Insert(Object key, Object nvalue, Boolean add)
+    在 System.Diagnostics.ProcessStartInfo.get_EnvironmentVariables()
+  ```
+- 机理：Windows 环境变量名**大小写不敏感**，但本机 shell 里同时存在大写与小写两套（`NO_PROXY`+`no_proxy`、`HTTP_PROXY`+`http_proxy`、`HTTPS_PROXY`+`https_proxy`）→ MSBuild 的 `ProcessStartInfo.EnvironmentVariables` 是大小写敏感的 `Hashtable` → 抛重复键 → 工具执行失败 → **被 CMake 误报为「找不到编译器」**。
+- 修复（会话级，不改系统环境）：PowerShell 里
+  ```powershell
+  foreach($n in @('no_proxy','http_proxy','https_proxy','all_proxy')){
+      [System.Environment]::SetEnvironmentVariable($n,$null,'Process')
+  }
+  ```
+- **注意**：`Get-ChildItem env:` 本身也会因重复键抛 `An item with the same key has already been added`；用 `[System.Environment]::GetEnvironmentVariables()` 枚举才安全。
+- **注意**：在 bash 里 `unset no_proxy` 对 MSBuild 无效 —— bash 只改自己的环境，`cmake --build` 派生的 MSBuild 继承的仍是父进程（这里是 DSH 宿主）的环境。必须在**同一个 PowerShell 进程**里清掉再调 MSBuild。
+
+### 6d.3 VS 里怎么用（已配好）
+
+`.vs/launch.vs.json` 已补 5 条配置（该文件被 `.gitignore:37` 忽略，属本机配置）：
+
+| 配置名 | 参数 | 用途 |
+|---|---|---|
+| `RendererDemoApp - Deferred (R5 统一入口)` | `-StartRenderer DeferredRenderer` | 光栅 PBR 基线 |
+| `RendererDemoApp - RayTracing (R5 DXR)` | `-StartRenderer RayTracingRenderer` | DXR 诊断画面 |
+| `RendererDemoApp - DXR + GPU 回读截图` | `-StartRenderer RayTracingRenderer -Screenshot ...\docs\AI\R5final` | 出证据图 |
+| `RendererDemoApp - R3 切换链路回归` | `-R3Test ...\docs\AI\R5switch` | 切换链路回归 |
+| `RayTracingApp.exe (...)` | — | 原 RayTracingApp（D0 的 `const override` 修复对象） |
+
+打开方式二选一：① `devenv.com out/build/vs2022/TooiyumeRender.sln`（VS 生成器工程，F7 生成 / F5 调试）；② VS 里「打开文件夹」→ 选 CMake 预设 `x64-debug`（走 `CMakePresets.json`，产物落 `out/build/x64-debug`，**与 `build.bat` 的 `out/build/Debug` 不同目录**，不要混用）。
+
+### 6d.4 未验证项（必须标注）
+
+| 项 | 状态 |
+|---|---|
+| 在真·VS IDE 图形界面里点 F5（而非 MSBuild/cdb 等价路径） | **未验证**（AI 无法操作 GUI；已用 MSBuild 直构 + cdb 调试器加载两条等价路径覆盖） |
+| VS 里「打开文件夹」CMake 预设 `x64-debug` 路径（`out/build/x64-debug`） | **未验证**（该树是历史遗物，按 AGENTS.md 规定禁用；本轮只验证 VS 生成器树） |
+| 多模型 DXR 场景（验证 TLAS 行列转置修复） | **未验证**（见 §7） |
+| VS 的 IntelliSense / 代码导航 | **未验证**（不属构建与运行正确性） |
+
+---
+
 ## 7. 已知遗留问题
 
 | 问题 | 说明 | 归属 |
@@ -220,6 +343,12 @@
 | `PipelineStateCache::s_PipelineDescs` 的 `Reset()` 无调用者 | 跨 Renderer 单调增长（仅 CPU 描述，含 `<0xffff` 断言） | R6 |
 | AlphaBlend（glTF BLEND） | 路线图 §7.1 明确与 AlphaTest 分开排期。R4 只做了 MASK | R6 |
 | 架构自检 6 项 RED | ai-check.ps1 报 R1/R2/R3/R4/R13/R9 红灯，**R4 之前即已存在**，属 WP0–WP8 排期债 | WP0–WP8 |
+| **VS 环境验证（R5）** | **✅ 已完成 2026-10-27**（详见 §6d）：VS 生成器树 `out/build/vs2022` 配置+构建成功、MSBuild 直构 `.sln` exit 0、Debug/Release 双配置运行通过、DXR 画面与 Ninja 版逐字节相同（md5 `1bea89b2…`）、Debug Layer + GPU-Based Validation 零 ERROR。**过程中修掉 2 个真实缺陷**：`DeployRuntimeDlls.cmake` 的 `CMAKE_BUILD_TYPE` 判断在多配置生成器下恒真（Release 误部署调试版 DLL）、MSBuild 被重复 proxy 环境变量（`NO_PROXY`/`no_proxy`）打断报假错「找不到编译器」 | ✅ 完成 |
+| DXR Tier 日志格式 | `GraphicsCore.cpp:219-220` 用 `tier=%d.%d`（`>>4` / `&0xF`），Tier 1.2 打印成 `0.12`。`QueryRaytracingCapability()` 返回原值，UI 不受影响 | R6（仅可读性） |
+| DXR 未接材质 | DXR 诊断画面只输出法线色，不采样贴图；`s_TextureHeap`/`s_SamplerHeap` 建了但未消费 | R6 / D3 |
+| BLAS 未去重 | BLAS 数量 = 实例数 × mesh 数 × draw 数；同一模型加载两次会重复建 | R6 |
+| 多模型 DXR 未视觉验证 | `Transform[i][j] = m[j][i]` 的行/列转置修复只在单模型下不显现（平移为 0），多模型场景尚未跑 | 待补测 |
+| 未用 `RAYTRACING_ACCELERATION_STRUCTURE` 资源标志 | 本机 `d3d12.dll` 10.0.19041 不认该标志（#719），只能用 `ALLOW_UNORDERED_ACCESS` + AS 初始状态 | 保持现状（已写注释） |
 
 ---
 
@@ -285,6 +414,48 @@
 
 
 14. **R4：A/B 取证要能证明缺陷存在，而不只是证明修复后好看**。AlphaTest 的验收特意做了一次「临时注释掉 `clip`」的对照构建：关闭时角色眼睛是实心黑块，开启后露出虹膜，差异只落在镂空 bbox（67 px）。**没有「缺陷态」的对照，就无法排除「本来就是这个样子」**。
+
+31. **R5：`DispatchRays` 读的是计算根签名，不是图形根签名。** 用 `SetGraphicsRootSignature` 绑定时根参数**不生效**，且 D3D12 **不报任何错** —— 状态对象能建、SBT 能建、DispatchRays 返回 void、日志全绿，就是整屏纯黑。必须 `context.GetComputeContext()` 后走 `SetComputeRootSignature` / `SetComputeRootShaderResourceView` / `SetComputeRootDescriptorTable` / `SetComputeRoot32BitConstants`。官方 `D3D12RaytracingHelloWorld` 同理。
+
+32. **R5：HLSL 默认 `column_major`，漏 `#pragma pack_matrix(row_major)` 会让 `float4x4` 等价转置。** 项目其余 shader 有 pragma 保护，`RayTracing.hlsl` 只 include 了纯函数头 `ColorPipeline.hlsli` 就漏了。现象：射线方向全错 → 全打空。**判据：整屏 `(26,38,69)` = miss 背景色 `(0.02,0.03,0.06)` 经 ACES+sRGB 的精确值，说明「RayGen 在跑、UAV 在写、射线全打空」；纯黑 `(0,0,0)` 才是「没派发」。**
+
+33. **R5：`BuildRaytracingAccelerationStructure` / `DispatchRays` 不会自动 `FlushResourceBarriers()`。** `CommandContext::TransitionResource` 只把屏障攒进 `m_ResourceBarrierBuffer[16]`，`DrawInstanced` 内部会 flush，这两个 DXR 入口不会。漏了报 `EXECUTION ERROR #538 INVALID_SUBRESOURCE_STATE`（几何还在 `COPY_DEST`）。
+
+34. **R5：加速结构资源必须创建时即为 AS 状态，之后永不发 ResourceBarrier。** 三个连环错误：① 事后 Transition 进 AS → `#526 RESOURCE_BARRIER_INVALID_COMBINATION`；② 用 `D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE`(0x100) → `#719 CREATERESOURCE_UNRECOGNIZEDLAYOUT`（本机 `d3d12.dll` 10.0.19041 不认，属 Agility SDK 1.7xx 后标志）；③ `RESOURCE_FLAG_NONE` + AS 初始状态 → `#524 MISMATCHING_MISC_FLAGS`。**正解：`Flags = ALLOW_UNORDERED_ACCESS` + `InitialState = RAYTRACING_ACCELERATION_STRUCTURE`。**
+
+35. **R5：生成头漏挂依赖 = shader 修改静默失效。** `shader_attach_header_dependency` 原本只挂了 3 个 `.cpp`，漏了 `RayTracingRenderer.cpp`。改 HLSL → `.cso/.h` 更新 → `.cpp` 不重编 → exe 里是旧字节码。**前几轮 row_major 与调试输出全部无效**，排查很久的黑屏其实是调试着色器根本没进 exe。验证：`ls -la out/build/<Cfg>/Engine/CMakeFiles/TooiyumeEngine.dir/<path>.obj` 看时间戳。
+
+36. **R5：`D3D12_RAYTRACING_INSTANCE_DESC.Transform` 是列向量约定，项目 `Matrix4` 是行向量约定。** 按行直拷 `Transform[i][j] = m[i][j]` 会丢平移（`m[i][3]` 对仿射矩阵恒 0）。正解 `Transform[i][j] = m[j][i]`、平移走 `Transform[i][3] = m[3][i]`。单模型平移为 0 时不显现，**多模型必现**。
+
+37. **R5：`ModelLoader` 无条件 `Alloc` 全局纹理/采样器堆。** 任何 Renderer 的 `Initialize` 都必须建 `s_TextureHeap` / `s_SamplerHeap`，否则切过去后加载模型在空堆上 `Alloc` → `ASSERT(HasAvailableSpace)` → `STATUS_BREAKPOINT`（exit `-2147483645`）。**DXR 不用材质也必须建。**
+
+38. **R5：`CommandContext::WriteBuffer` 要求源指针 16 字节对齐**（`ASSERT(Math::IsAligned(BufferData, 16))`），`std::vector::data()` 只保证 `alignof(T)`。每帧上传用 `UploadBuffer` + `Map` + `memcpy`，且上传缓冲必须是成员（局部变量会在命令列表提交前析构）。
+
+39. **R5：`SetBufferSRV` 的 ASSERT 会挡住加速结构。** AS 永远不处于 `*_SHADER_RESOURCE` 状态 → 绑 TLAS 必须直接 `GetCommandList()->SetComputeRootShaderResourceView(...)`。
+
+40. **R5：`DispatchRays` 的 `Width/Height/Depth` 必须每次派发前填。** `RebuildTopLevel` 会把 `D3D12_DISPATCH_RAYS_DESC` 清成 0；不填就是**派发 0 条射线** —— 不报错、不崩溃、日志照常、截图纯黑。
+
+41. **R5：根级 SRV（`D3D12_ROOT_PARAMETER_TYPE_SRV`）不携带 `StructureByteStride`。** HLSL 侧声明 `StructuredBuffer<T>` 会按错误跨距读。**改 `ByteAddressBuffer` + 手算字节偏移。**
+
+42. **R5：`D3D12_RAYTRACING_TIER_NONE` 不存在。** SDK 里是 `_NOT_SUPPORTED = 0` / `_1_0 = 10` / `_1_1 = 11` / `_1_2 = 12`。
+
+43. **R5：`DescriptorHandle` 有 `operator D3D12_CPU_DESCRIPTOR_HANDLE()` 与 `GetCpuPtr()` 两条转换路径**，直接当函数实参传会 C2664 歧义 → 必须先赋给局部变量。
+
+44. **R5：Windows 环境变量名大小写不敏感，但允许同时存在 `NO_PROXY` 与 `no_proxy`。** MSBuild 的 `ProcessStartInfo.EnvironmentVariables` 因此抛 `ArgumentException: 已添加了具有相同键的项`，`cmake -G "Visual Studio 17 2022"` 表现为 **`No CMAKE_CXX_COMPILER could be found`**（误导性极强，真因只在 `CMakeFiles/CMakeConfigureLog.yaml` 里）。`Get-ChildItem env:` 本身也会抛同样错，要用 `[System.Environment]::GetEnvironmentVariables()`。
+
+45. **R5：`lib_6_x` 与 `*_6_x` 的唯一区别是不传 `-E`。** 一份 `.hlsl` 里所有 `[shader("...")]` 入口编进同一 DXIL 库，由 State Object 的 `DXIL_LIBRARY` 子对象按导出名挑选。
+
+46. **R5-VS：`CMAKE_BUILD_TYPE` 在多配置生成器下是「配置期的固定单值」，不是「当前构建的配置」。** `DeployRuntimeDlls.cmake` 用它选 DLL 变体，在 VS 生成器下判断恒真 → **Release 构建把 `debug/bin` 的调试版 DLL 拷过去**（实测 md5 与 `debug/bin` 相同）。正解：`$<IF:$<CONFIG:Debug>,...debug/bin,...bin>` 生成器表达式，单配置/多配置都正确。**凡是用 `CMAKE_BUILD_TYPE` 做「按配置分支」的逻辑，在 VS 生成器下都要重新审视。**
+
+47. **R5-VS：`cmake -G "Visual Studio 17 2022"` 报「找不到编译器」时，先怀疑 proxy 环境变量。** 见第 44 条。**误判成本极高** —— 会去查 VS 安装、Windows SDK、工具集，实际是环境变量大小写重复。诊断入口：`out/build/<dir>/CMakeFiles/CMakeConfigureLog.yaml` 里的 `MSB6001` + `ArgumentException`。
+
+48. **R5-VS：`unset` 在 bash 里对 MSBuild 无效。** bash 只改自己进程的环境；`cmake --build` 派生的 MSBuild 继承的是**调用 bash 的那个父进程**（DSH 宿主）的环境。必须在同一个 PowerShell 进程里用 `[System.Environment]::SetEnvironmentVariable($n,$null,'Process')` 清掉，再调 MSBuild/cmake。
+
+49. **R5-VS：`add_custom_command(TARGET ... POST_BUILD)` 只在 target 真的重新链接时才跑。** 改了 `DeployRuntimeDlls.cmake` 的 DLL 路径后，如果 `.exe` 本身没变，POST_BUILD 不会执行、旧 DLL 留在原地。验证修复必须**手动删掉产物 DLL 或 touch 一个源文件强制重链接**。
+
+50. **R5-VS：「构建等价性」要拿渲染输出比，不是拿「能编译、能跑」比。** VS 树与 Ninja 树的 DXR 截图 md5 逐字节相同（`1bea89b2…`）、Deferred 相同（`16c8aeec…`）、切换链路相同 —— 这才排除了「能跑但画错」（例如 DLL 变体混用、宏不一致、优化等级差异）。
+
+51. **R5-VS：`--config` 与 `CMAKE_BUILD_TYPE` 是两套东西。** `cmake --build out/build/vs2022 --config Release` 里的 `--config` 是多配置生成器的配置选择；`CMAKE_BUILD_TYPE` 是配置期缓存变量。两者可以「不一致」（本项目就是 `CMAKE_BUILD_TYPE=Debug` + 跑 `--config Release`）。**不要指望它们联动。**
 
 ---
 
@@ -362,6 +533,18 @@ scripts\run.bat Debug RendererDemo -R3Test D:\CS-Self-Study\Computer_Graphics\DX
 | `CMakePresets.json` | VS/命令行 presets（R4.1 修复：删除非法字段） | R4.1 |
 | `Engine/20_cmake/DeployRuntimeDlls.cmake` | 运行时 DLL 统一部署函数 | **新增**（R4.1） |
 | `docs/AI/R4/R4.1_VisualStudio构建修复.md` | VS 构建问题诊断与修复记录 | **新增**（R4.1） |
+| `Engine/Shader/07_RayTracing/RayTracing.hlsl` | **DXR 着色器库**（RayGen/Miss/ClosestHit），`lib_6_4` 编译，含 `#pragma pack_matrix(row_major)` | **新增**（R5） |
+| `Engine/02_RHI/Pipeline/RaytracingPSO.{h,cpp}` | **RTPSO 独立封装**（State Object + Shader Identifier），不复用 GraphicsPSO 缓存 | **新增**（R5） |
+| `Engine/04_Renderer/Renderer/RayTracing/RaytracingScene.{h,cpp}` | **BLAS/TLAS/SBT/每实例数据** 的构建与生命周期 | **新增**（R5） |
+| `Engine/04_Renderer/Renderer/RayTracing/RayTracingRenderer.{h,cpp}` | **DXR Renderer**（DispatchRays + 输出缓冲 + 根签名） | **新增**（R5） |
+| `Engine/02_RHI/GraphicsCore.cpp:180-235` | **DXR 能力查询**（与 App 请求解耦）+ `QueryRaytracingCapability()` | R5（D0） |
+| `docs/AIWorkLogs/TR-20261027-01_R5-DXR最小闭环.md` | R5 施工日志（含 17 条踩坑教训） | **新增**（R5） |
+| `docs/AIWorkLogs/TR-20261027-02_R5-VS环境验证.md` | VS 环境排错与验证日志（含 6 条环境坑） | **新增**（R5） |
+| `docs/AI/R5/screenshot_90.png` | R5 DXR 画面证据（GPU 回读，法线色模型） | **新增**（R5） |
+| `out/build/vs2022/` | VS 2022 生成器树（Debug+Release 全目标构建成功，MSBuild 直构 `.sln` 通过） | **新增**（R5） |
+| `Engine/20_cmake/DeployRuntimeDlls.cmake:34-55` | DLL 变体选择改 `$<CONFIG>` 生成器表达式（修多配置 bug） | R5-VS 修复 |
+| `.vs/launch.vs.json` | VS 调试启动配置（6 条：Deferred / RayTracing / DXR+截图 / R3 回归 / 原 DeferredApp / RayTracingApp） | R5 更新（gitignored） |
+| `docs/AI/R5final/` | 四棵树构建等价性证据（`ninja_dbg`/`ninja_rel`/`vs_dbg`/`vs_rel`/`vs_rel_r`/`vs_switch`） | **新增**（R5） |
 
 ---
 
@@ -369,6 +552,6 @@ scripts\run.bat Debug RendererDemo -R3Test D:\CS-Self-Study\Computer_Graphics\DX
 
 1. 读本文件 `docs/AI/R_执行表.md`
 2. 需要细节时再读对应阶段文档：`R0_*.md` / `R1_*.md` / `R2/R2_生命周期与窗口稳定性.md` / `R3/R3_统一入口与交互工作台.md`
-3. R4 已完成，直接说「开始 R5」即可（R5 = DXR 最小闭环：D0 设备能力 → D1 AS 构建 → D2 DispatchRays）
-4. 施工日志模板：`docs/AIWorkLogs/_TEMPLATE_WP_施工日志.md`；已完成示例：`docs/AIWorkLogs/TR-20261026-01_R3-统一入口与交互工作台.md`
-5. 注意：**不要重复踩过的坑**（见 §8，R3 新增第 6–9 条）
+3. **R5 与 VS 环境验证均已完成**（2026-10-27）。VS 侧：`out/build/vs2022`（VS 2022 生成器）Debug+Release 双配置构建通过、MSBuild 直构 `.sln` 通过、运行通过、画面与 Ninja 版逐字节一致、Debug Layer 零 ERROR。详见 §6d
+4. 施工日志模板：`docs/AIWorkLogs/_TEMPLATE_WP_施工日志.md`；最近示例：`docs/AIWorkLogs/TR-20261027-01_R5-DXR最小闭环.md`（含 17 条 R5 教训）、`docs/AIWorkLogs/TR-20261027-02_R5-VS环境验证.md`（含 VS 环境 6 条教训）
+5. 注意：**不要重复踩过的坑**（见 §8，R5 新增第 31–45 条，其中「DispatchRays 用计算根签名」「HLSL 缺 row_major」「shader 头依赖漏挂」三条各花了数小时）

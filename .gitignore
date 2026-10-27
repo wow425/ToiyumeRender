@@ -387,3 +387,10 @@ vcpkg/
 
 # Local model assets - do not upload
 /Assets/Model/
+.git-backup/
+
+# === 资产目录整体排除（只上传工程，不上传模型/贴图/Skybox）===
+# 说明：GitHub 单文件硬限 100MB，Assets 内存在 341MB 的 dds；
+# 且 Assets 总大小 621M，不适合入库。本地文件不受影响，仅 stop tracking。
+/Assets/
+/Assets

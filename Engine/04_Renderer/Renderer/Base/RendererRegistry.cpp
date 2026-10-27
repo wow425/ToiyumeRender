@@ -16,6 +16,9 @@
 // 拉进来，静态初始化器也随之执行（重复注册只是覆盖同一个 key，无害）。
 #include "04_Renderer/Renderer/Deferred/DeferredRenderer.h"
 #include "04_Renderer/Renderer/Forward/ForwardRenderer.h"
+// R5：DXR 渲染器同样必须显式拉链接（理由同上：它的 TU 里除了自动注册
+// 静态对象外没有符号被 Demo 侧引用，dynamic_cast 只会 odr-use 类型信息）。
+#include "04_Renderer/Renderer/RayTracing/RayTracingRenderer.h"
 
 #include <memory>
 
@@ -36,6 +39,12 @@ namespace Renderer
 				[]() -> RendererPtr { return std::make_unique<Deferred::DeferredRenderer>(); });
 			s_Instance.RegisterRenderer(L"ForwardRenderer",
 				[]() -> RendererPtr { return std::make_unique<Forward::ForwardRenderer>(); });
+			// R5：DXR。注意这里只登记工厂，**不**检查设备能力 ——
+			// 能力判断放在 RayTracingRenderer::Initialize 里（返回 false 即拒绝）。
+			// 这样 UI 永远能看到 "RayTracingRenderer" 这一项，点击后若设备不支持
+			// 会得到一条明确的失败日志，而不是「名字不存在」这种误导性提示。
+			s_Instance.RegisterRenderer(L"RayTracingRenderer",
+				[]() -> RendererPtr { return std::make_unique<RayTracing::RayTracingRenderer>(); });
 		}
 
 		return s_Instance;

@@ -1,8 +1,0 @@
-﻿[Asset] AssetsRoot = D:\CS-Self-Study\Computer_Graphics\DX12\TooiyumeRender\Assets\
-Looking for a Nvidia GPU
-Selected GPU:  NVIDIA GeForce RTX 4060 Ti (16109 MB)
-[Boot] Graphics: device OK, RequireDXRSupport=0
-[Boot] Graphics: InfoQueue break on ERROR/CORRUPTION only
-[Boot] calling game.Startup()
-[Boot] game.Startup() returned
-Changing display resolution to 1920x1080

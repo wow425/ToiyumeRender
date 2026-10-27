@@ -36,7 +36,12 @@ public:
 	// R2：窗口尺寸变化 → 重建渲染目标
 	void OnResize(uint32_t width, uint32_t height) override;
 
-	virtual bool RequiresRaytracingSupport();
+	// R5 / D0：签名修复。
+	// 旧写法 `virtual bool RequiresRaytracingSupport();` 少了 const，
+	// 与基类 `IGameApp::RequiresRaytracingSupport() const` 是两个不同函数，
+	// 编译器不会报错，GameCore 调用基类版本永远得到 false —— 请求被静默吞掉。
+	// 加上 `const override` 后，若将来基类签名再变，编译期就会失败。
+	virtual bool RequiresRaytracingSupport() const override;
 
 private:
 	// Camera
@@ -66,7 +71,7 @@ static std::wstring ChosenSword() { return Asset::Resolve(L"Model/saberCaster/Ch
 
 static std::wstring KyomachiyaA() { return Asset::Resolve(L"Model/Kyomachiya/KyomachiyaA.gltf"); }
 
-bool Tooiyume::RequiresRaytracingSupport() { return true; }
+bool Tooiyume::RequiresRaytracingSupport() const { return true; }
 
 
 // R2：窗口尺寸变化。Display 保证调用时 swapchain 已重建完毕。

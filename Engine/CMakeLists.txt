@@ -107,6 +107,18 @@ compile_shader(
 )
 
 # ==========================================
+# R5 / D1：DXR 光追库（DXIL Library）
+# ==========================================
+# 与上面 12 个 compile_shader 的区别：lib profile **不带 -E**，
+# 一份文件里的 RayGen / Miss / ClosestHit / AnyHit 全部编进同一个 DXIL 库，
+# 再由 State Object 的 DXIL_LIBRARY 子对象按导出名挑选。
+# 产物同样是 ${CMAKE_BINARY_DIR}/ShaderCache/RayTracing.{cso,h}。
+compile_raytracing_library(
+    RayTracing
+    Shader/07_RayTracing/RayTracing.hlsl
+)
+
+# ==========================================
 # 链接Shader
 # ==========================================
 add_dependencies(TooiyumeEngine
@@ -122,6 +134,7 @@ add_dependencies(TooiyumeEngine
   IrradianceConvolutionCS_Shader
   SpecularPrefilterCS_Shader
   BRDFLUTCS_Shader
+  RayTracing_Shader
 )
 
 # R0：ShaderCache 必须是 PUBLIC include，且排在源码目录之前。
@@ -160,6 +173,14 @@ shader_attach_header_dependency(
     "${CMAKE_BINARY_DIR}/ShaderCache/IrradianceConvolutionCS.h"
     "${CMAKE_BINARY_DIR}/ShaderCache/SpecularPrefilterCS.h"
     "${CMAKE_BINARY_DIR}/ShaderCache/BRDFLUTCS.h"
+)
+# R5：RayTracingRenderer.cpp 里 #include "RayTracing.h" 拿 DXIL 库字节码。
+# 漏掉这一条会导致「改 HLSL → .cso/.h 更新 → 但 .cpp 不重编」，
+# exe 里嵌入的仍是旧字节码，所有 shader 侧修改静默失效（实测踩过：
+# 排查了很久的黑屏，其实是调试着色器根本没被编进 exe）。
+shader_attach_header_dependency(
+    "${CMAKE_CURRENT_SOURCE_DIR}/04_Renderer/Renderer/RayTracing/RayTracingRenderer.cpp"
+    "${CMAKE_BINARY_DIR}/ShaderCache/RayTracing.h"
 )
 # ==========================================
 # PCH (Precompiled Header)

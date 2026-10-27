@@ -151,6 +151,108 @@ add_custom_command(
 endfunction()
 
 # ==========================================================
+# compile_raytracing_library(
+#     TARGET_NAME
+#     SHADER_FILE
+#     [PROFILE lib_6_4]
+# )
+# ----------------------------------------------------------
+# R5 / D1：DXIL Library 编译（DXR State Object 专用）。
+#
+# 与 compile_shader 的两点关键差异：
+#   1) **不传 -E**：lib profile 的语义是「把文件里所有入口点都编进库」，
+#      由 State Object 的 DXIL_LIBRARY 子对象按导出名挑选。
+#      传了 -E 就退化成单个 entry，RayGen/Miss/ClosestHit 无法共存于一份库。
+#   2) 输出文件名固定为 <NAME_WE>.cso/.h，与普通 shader 同一套 BinToHeader 流程，
+#      因此 C++ 侧照样 #include "RayTracing.h" 拿到字节码数组。
+#
+# 注意：lib_6_4 要求 DXC 与设备都支持 SM 6.4；本项目 DXC 来自 vcpkg 的
+# directx-dxc，设备侧由 D3D12_RAYTRACING_TIER_1_0 保证（DXR 1.0 即要求 SM 6.3+）。
+# 这里默认 6_4 是为了能用 float16/最新内置，实际字节码仍向后兼容 Tier 1.0。
+# ==========================================================
+function(compile_raytracing_library TARGET_NAME SHADER_FILE)
+
+    set(options)
+    set(oneValueArgs PROFILE)
+    cmake_parse_arguments(ART "${options}" "${oneValueArgs}" "" ${ARGN})
+
+    if(NOT ART_PROFILE)
+        set(ART_PROFILE "lib_6_4")
+    endif()
+
+    get_filename_component(FILE_WE ${SHADER_FILE} NAME_WE)
+
+    set(SHADER_SOURCE "${CMAKE_SOURCE_DIR}/Engine/${SHADER_FILE}")
+    set(OUTPUT_DIR "${CMAKE_BINARY_DIR}/ShaderCache")
+
+    file(MAKE_DIRECTORY ${OUTPUT_DIR})
+
+    set(CSO_FILE "${OUTPUT_DIR}/${FILE_WE}.cso")
+    set(HEADER_FILE "${OUTPUT_DIR}/${FILE_WE}.h")
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(DXC_FLAGS -Zi -Qembed_debug -Od)
+    else()
+        set(DXC_FLAGS -O3)
+    endif()
+
+    include(${CMAKE_SOURCE_DIR}/Engine/20_cmake/ShaderDeps.cmake)
+    shader_collect_dependencies(
+        "${SHADER_SOURCE}"
+        "${CMAKE_SOURCE_DIR}/Engine/Shader"
+        SHADER_DEPENDS
+    )
+
+    # 关键：这里**没有 -E**。lib profile 会把所有 [shader("...")] 入口导出。
+    add_custom_command(
+        OUTPUT ${CSO_FILE}
+
+        COMMAND ${DXC_EXECUTABLE}
+        -T ${ART_PROFILE}
+        -I "${CMAKE_SOURCE_DIR}/Engine/Shader"
+        ${DXC_FLAGS}
+        -Fo ${CSO_FILE}
+        ${SHADER_SOURCE}
+
+        DEPENDS ${SHADER_DEPENDS}
+
+        COMMENT "Compiling Raytracing Library: ${SHADER_FILE} (${ART_PROFILE})"
+
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT ${HEADER_FILE}
+
+        COMMAND ${CMAKE_COMMAND}
+            -DINPUT_FILE=${CSO_FILE}
+            -DOUTPUT_FILE=${HEADER_FILE}
+            -P ${CMAKE_SOURCE_DIR}/Engine/20_cmake/BinToHeader.cmake
+
+        DEPENDS ${CSO_FILE}
+
+        COMMENT "Generating Header: ${HEADER_FILE}"
+
+        VERBATIM
+    )
+
+    add_custom_target(
+        ${TARGET_NAME}_Shader
+        DEPENDS ${HEADER_FILE}
+    )
+
+    set(${TARGET_NAME}_HEADER
+        ${HEADER_FILE}
+        PARENT_SCOPE
+    )
+    set(${TARGET_NAME}_HEADER_FILES
+        ${HEADER_FILE}
+        PARENT_SCOPE
+    )
+
+endfunction()
+
+# ==========================================================
 # shader_attach_header_dependency(<source_file> <header> [<header>...])
 # ----------------------------------------------------------
 # 把一个「构建期生成的头文件」变成指定 .cpp 的**编译依赖**。

@@ -135,6 +135,17 @@ public:
 	ComputeContext& GetComputeContext() { return reinterpret_cast<ComputeContext&>(*this); } // 计算命令列表不用验证类别，因为计算是图形的子集，包含完整功能
 	ID3D12GraphicsCommandList* GetCommandList() { return m_CommandList.Get(); }
 
+	// ============================================================
+	// R5：DXR 接口暴露
+	// ------------------------------------------------------------
+	// BuildRaytracingAccelerationStructure / SetPipelineState1 / DispatchRays
+	// 三个方法都在 ID3D12GraphicsCommandList4 上，而 GetCommandList() 返回的是
+	// 基接口 CommandList。内部成员本来就是 ComPtr<ID3D12GraphicsCommandList4>，
+	// 这里只是把已有指针换个更宽的静态类型暴露出去 —— 不新建资源、不改状态，
+	// 因此对现有光栅路径零影响（它们继续用 GetCommandList()）。
+	// ============================================================
+	ID3D12GraphicsCommandList4* GetCommandList4() { return m_CommandList.Get(); }
+
 	// 复制
 	void CopyBuffer(GpuResource& Dest, GpuResource& Src);
 	void CopyBufferRegion(GpuResource& Dest, size_t DestOffset, GpuResource& Src, size_t SrcOffset, size_t NumBytes);

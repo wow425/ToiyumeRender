@@ -1,4 +1,4 @@
-#include "00_Core/PCH.h"
+﻿#include "00_Core/PCH.h"
 #include "02_RHI/GraphicsCore.h"
 #include "01_Application/GameCore.h"
 #include "04_Renderer/BufferManager.h"
@@ -38,6 +38,7 @@ namespace Graphics
 	ID3D12Device* g_Device = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Device5> g_DeviceDXR;
 	bool g_bRaytracingSupported = false;
+	D3D12_RAYTRACING_TIER g_RaytracingTier = D3D12_RAYTRACING_TIER_NOT_SUPPORTED;
 	Microsoft::WRL::ComPtr<IDXGIFactory6> g_DXGIFactory;
 	CommandListManager g_CommandManager;
 	ContextManager g_ContextManager;
@@ -96,6 +97,15 @@ namespace Graphics
 	}
 
 	bool IsDeviceNvidia(ID3D12Device* pDevice) { return GetVendorIdFromDevice(pDevice) == vendorID_Nvidia; }
+
+	RaytracingCapability QueryRaytracingCapability()
+	{
+		RaytracingCapability cap;
+		cap.supported = g_bRaytracingSupported && (g_DeviceDXR != nullptr);
+		cap.tier = g_RaytracingTier;
+		cap.inlineRaytracing = (g_RaytracingTier >= D3D12_RAYTRACING_TIER_1_1);
+		return cap;
+	}
 }
 
 // 初始化DX运行所需的资源Initialize the DirectX resources required to run.
@@ -167,43 +177,60 @@ void Graphics::Initialize(bool RequireDXRSupport)
 	LOG_INFO(L"[Boot] Graphics: device OK, RequireDXRSupport=%d\n", (int)RequireDXRSupport);
 
 	//
-	// ===================== DXR Feature Check =====================
+	// ===================== DXR Feature Check（R5 / D0） =====================
 	//
-	if (RequireDXRSupport == true)
+	// 旧实现：整个查询包在 `if (RequireDXRSupport)` 里，且不支持时直接 return
+	// —— 于是「App 没请求」等于「设备能力完全没记录」，而「App 请求了但不支持」
+	// 等于「函数中途返回、CommandManager/Display 都没建，后续必然崩」。
+	//
+	// 新实现分两件事：
+	//   1) **无条件**查询并记录真实能力（日志 + g_RaytracingTier）；
+	//   2) 只有 App 显式 require 且设备不支持时才中止。
+	// 这样 RendererDemo 里可以「有 DXR 就列出 RayTracingRenderer，没有就禁用 UI 项」，
+	// 光栅路径与 DXR 支持完全解耦。
+	//
 	{
 		D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
+		const HRESULT hrFeature = g_Device->CheckFeatureSupport(
+			D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5));
 
-		if (SUCCEEDED(g_Device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5))))
+		if (SUCCEEDED(hrFeature))
 		{
-			if (options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0)
-			{
-				g_bRaytracingSupported = true;
-				//
-				// 获取 DXR Device Interface
-				//
-				ASSERT_SUCCEEDED(g_Device->QueryInterface(TY_IID_PPV_ARGS(&g_DeviceDXR)));
-				Utility::Print("DXR is supported.\n");
+			g_RaytracingTier = options5.RaytracingTier;
+			g_bRaytracingSupported = (options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0);
 
-				if (options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_1)
-				{
-					Utility::Print("Raytracing Tier: 1.1\n");
-				}
-				else
-				{
-					Utility::Print("Raytracing Tier: 1.0\n");
-				}
-			}
-			else
+			if (g_bRaytracingSupported)
 			{
-				g_bRaytracingSupported = false;
-				Utility::Print("DXR is not supported on this device.\n");
-				return;
+				// DXR Device Interface（CommandList4 / Device5 系列接口都靠它）
+				const HRESULT hrQI = g_Device->QueryInterface(TY_IID_PPV_ARGS(&g_DeviceDXR));
+				if (FAILED(hrQI))
+				{
+					// 理论上 Tier>=1.0 一定能拿到 Device5；拿到不了一律降级为不支持，
+					// 避免后面拿到空指针再崩。
+					g_bRaytracingSupported = false;
+					g_DeviceDXR.Reset();
+					LOG_INFO(L"[DXR] QueryInterface(ID3D12Device5) 失败 hr=0x%08X，按不支持处理\n", (unsigned)hrQI);
+				}
 			}
+
+			// 统一的能力日志：无论 App 是否请求，都能在 tooiyume_log.txt 里看到真实 Tier。
+			LOG_INFO(L"[DXR] capability: supported=%d tier=%d.%d inline=%d\n",
+				(int)g_bRaytracingSupported,
+				(int)(options5.RaytracingTier >> 4),
+				(int)(options5.RaytracingTier & 0xF),
+				(int)(options5.RaytracingTier >= D3D12_RAYTRACING_TIER_1_1));
 		}
 		else
 		{
 			g_bRaytracingSupported = false;
-			Utility::Print("Failed to query D3D12_OPTIONS5. DXR is unavailable.\n");
+			g_RaytracingTier = D3D12_RAYTRACING_TIER_NOT_SUPPORTED;
+			LOG_INFO(L"[DXR] CheckFeatureSupport(OPTIONS5) 失败 hr=0x%08X，DXR 不可用\n", (unsigned)hrFeature);
+		}
+
+		// App 显式要求 DXR 但设备给不了 —— 这时才中止（保持原有语义）。
+		if (RequireDXRSupport && !g_bRaytracingSupported)
+		{
+			LOG_INFO(L"[DXR] 本程序要求 DXR 支持，但当前设备不满足，启动中止。\n");
 			return;
 		}
 	}

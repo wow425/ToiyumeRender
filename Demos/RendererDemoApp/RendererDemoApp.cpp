@@ -58,6 +58,7 @@
 #include "04_Renderer/Renderer/Base/RendererRegistry.h"
 #include "04_Renderer/Renderer/Deferred/DeferredRenderer.h"
 #include "04_Renderer/Renderer/Forward/ForwardRenderer.h"
+#include "04_Renderer/Renderer/RayTracing/RayTracingRenderer.h"
 
 #include "05_Scene/Camera/Camera.h"
 #include "05_Scene/Camera/CameraController.h"
@@ -105,6 +106,7 @@ namespace
 		case RendererFeature::TAA:         return "TAA";
 		case RendererFeature::Transparent: return "Transparent";
 		case RendererFeature::PostProcess: return "PostProcess";
+		case RendererFeature::Raytracing:  return "Raytracing";
 		default:                           return "None";
 		}
 	}
@@ -118,7 +120,7 @@ namespace
 		const RendererFeature all[] = {
 			RendererFeature::Forward, RendererFeature::Deferred, RendererFeature::Shadow,
 			RendererFeature::SSAO, RendererFeature::TAA, RendererFeature::Transparent,
-			RendererFeature::PostProcess,
+			RendererFeature::PostProcess, RendererFeature::Raytracing,
 		};
 		for (RendererFeature feature : all)
 		{
@@ -412,6 +414,14 @@ void RendererDemoApp::BindRendererOutput(void)
 	{
 		// ForwardBuffer::SceneColorBuffer 是数组，[0] 才是实际渲染目标
 		Display::SceneColorBuffer = forward->GetForwardBuffer().SceneColorBuffer[0];
+	}
+	else if (auto* raytracing = dynamic_cast<Renderer::RayTracing::RayTracingRenderer*>(m_Renderer.get()))
+	{
+		// R5：DXR 输出。RayTracingRenderer 自己持有一张 R8G8B8A8_UNORM 的
+		// SceneColorBuffer（格式与 Deferred 相同），由 RayGen 通过 UAV 写入。
+		// 绑定到 Display::SceneColorBuffer 后就走 Display::PreparePresentSDR
+		// 的统一 Present 路径 —— 与光栅路径共用同一条上屏通道。
+		Display::SceneColorBuffer = raytracing->GetSceneColorBuffer();
 	}
 }
 
@@ -1388,13 +1398,42 @@ void RendererDemoApp::DrawRendererPanel(void)
 		ImGui::TextDisabled("No renderer instance");
 	}
 
-	// 路线图 §6.3 要求：DXR 尚不可用时必须**明确显示原因并禁用**，
-	// 而不是从列表里悄悄消失让人以为漏了。
-	// 现状：RendererRegistry 只注册了 Deferred / Forward（R3 范围），
-	// DXR 走的是 R5 的 D3D12 Raytracing 最小闭环。
+	// ============================================================
+	// R5：DXR 能力状态
+	// ------------------------------------------------------------
+	// 路线图 D0 验收：「无 DXR 支持时禁用相应 UI 项并继续运行光栅模式」，
+	// 并且要「日志显示真实查询到的 Raytracing Tier」。
+	// 这里把查询结果原样显示出来 —— 是硬件真实值，不是写死的文案。
+	// ============================================================
 	ImGui::Separator();
-	ImGui::TextDisabled("DXR renderer: Not implemented (R5)");
-	ImGui::TextDisabled("Registry has no DXR renderer; AS build + DispatchRays pending.");
+	{
+		const Graphics::RaytracingCapability cap = Graphics::QueryRaytracingCapability();
+
+		const bool isRaytracingRenderer =
+			m_Renderer && HasFeature(m_Renderer->GetFeatures(), Renderer::RendererFeature::Raytracing);
+
+		if (cap.supported)
+		{
+			const char* tierText = (cap.tier >= D3D12_RAYTRACING_TIER_1_1) ? "1.1" : "1.0";
+			ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f),
+				"DXR: supported (tier %s)", tierText);
+			ImGui::TextDisabled("inline raytracing: %s", cap.inlineRaytracing ? "yes" : "no");
+		}
+		else
+		{
+			ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f), "DXR: not supported on this device");
+			ImGui::TextDisabled("RayTracingRenderer will refuse to initialize.");
+		}
+
+		if (isRaytracingRenderer)
+		{
+			ImGui::TextDisabled("Active path: DispatchRays (normal-color diagnostic)");
+		}
+		else if (cap.supported)
+		{
+			ImGui::TextDisabled("Switch to RayTracingRenderer above to test DXR.");
+		}
+	}
 
 	ImGui::End();
 }
