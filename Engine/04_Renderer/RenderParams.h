@@ -60,11 +60,20 @@ namespace Renderer
 	// ============================================================
 	enum class RayTracingDebugView : uint32_t
 	{
-		Shaded = 0,      // Lambert + 硬阴影 + 反射的最终着色（D3 主画面）
+		Shaded = 0,      // Lambert/GGX + 硬阴影 + 反射的最终着色（主画面）
 		Normal = 1,      // 主射线命中的世界空间法线（*0.5+0.5）
 		Shadow = 2,      // 主光可见度：1=受光，0=被遮挡
 		Reflection = 3,  // 只显示反射射线颜色（未开反射时即天空色）
 		HitDistance = 4, // 主射线命中距离 / 32 米（超出为白）
+
+		// R7 / D4：基色通道。
+		//
+		// 这是**两条渲染路径之间唯一可逐像素比对的通道**：
+		//   Deferred 的 DebugView::BaseColor 直接输出 GBuffer0 的 albedo，
+		//   本通道直接输出命中点的 baseColorFactor * BaseColor 贴图采样。
+		// 两者若一致，说明"贴图寻址 + UV + 采样器 + 颜色因子"整条链路都对；
+		// 若不一致，差异一定出在这四者之一，而不是被光照掩盖。
+		BaseColor = 5,
 
 		Count
 	};
@@ -78,6 +87,7 @@ namespace Renderer
 		case RayTracingDebugView::Shadow:      return L"Shadow";
 		case RayTracingDebugView::Reflection:  return L"Reflection";
 		case RayTracingDebugView::HitDistance: return L"HitDistance";
+		case RayTracingDebugView::BaseColor:   return L"BaseColor";
 		default:                               return L"Unknown";
 		}
 	}
@@ -188,6 +198,29 @@ namespace Renderer
 
 		// DXR 专用调试通道（见上面的 RayTracingDebugView）。
 		RayTracingDebugView RTDebugView = RayTracingDebugView::Shaded;
+
+		// ============================================================
+		// R7 / D4：材质接驳的两个**正交**开关
+		// ------------------------------------------------------------
+		// 为什么要拆成两个而不是一个：
+		//   R7 P0 同时引入了「BaseColor 贴图」与「GGX/Cook-Torrance」两项改动。
+		//   若只有一个总开关，画面变了也无法判断是贴图生效还是光照模型变了。
+		//   拆成两个正交开关后可以做 2×2 对照（见 R7 设计方案 §5 A5a/A5b/A5c）：
+		//     全关      → 必须逐字节等于 R6 基线 md5 a43b6059…（回归锁）
+		//     只开 GGX  → 仍是白模，但出现高光与能量守恒
+		//     只开贴图  → 有颜色，但仍是 Lambert
+		//     全开      → P0 目标画面（角色应当出现真实的布料/皮肤/金属颜色）
+		// ============================================================
+
+		// 采样 BaseColor 贴图（HLSL 里是 t3 的无界 SRV 数组）+ 乘 baseColorFactor。
+		// 关闭时 albedo 恒为 (0.8, 0.8, 0.8)，与 R6 完全一致。
+		bool  EnableMaterialTextures = true;
+
+		// 用 GGX/Cook-Torrance 替换 Lambert 直射/环境项。
+		// 关闭时回到 R6 的 `diffuse + albedo * ambient` 表达式。
+		// 注意：R6 的单次反射（TraceReflectionRay + Schlick Fresnel）不受本开关影响 ——
+		// 那是 D3 已验证过、且与漫反射/镜面 BRDF 选择无关的部分。
+		bool  EnableGGX = true;
 
 		// 把全部参数恢复为默认值。
 		// 实现方式是"整体赋值一个默认构造的 RenderParams"，而不是逐字段手写 ——

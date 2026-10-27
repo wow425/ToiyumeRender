@@ -58,7 +58,7 @@ namespace Scene::Model
 namespace Renderer::RayTracing
 {
 	// ============================================================
-	//  与 HLSL 严格同构的每实例数据（stride = 48 字节）
+	//  与 HLSL 严格同构的每实例数据（stride = 96 字节）
 	//  改动任何字段都必须同步 Engine/Shader/07_RayTracing/RayTracing.hlsl
 	//  的 RaytracingInstanceData，否则命中着色器读到的是垃圾。
 	//
@@ -67,6 +67,15 @@ namespace Renderer::RayTracing
 	//    它返回的正是 TLAS instance desc 里那份 3x4 变换 —— 数据已经在
 	//    instance desc 里了，再存一份纯属冗余，而且容易两边不一致。
 	//    因此这里只放几何寻址信息。
+	//
+	//  R7 从 32 B 扩到 96 B：新增 UV 定位、材质索引、贴图描述符偏移
+	//  与材质标量。为什么要「烘进每实例数据」而不是让 shader 自己查：
+	//    * 一级数据（顶点）已经在合并几何缓冲里；
+	//    * 二级数据（材质标量）在 GPU 常量缓冲里，但 ray shader 无法
+	//      解引用运行时的 GPU 虚拟地址（与 R5 聚合 VB/IB 同一原因）；
+	//    * 三级数据（贴图）是描述符，必须在全局根签名里有一张表，
+	//      且索引要稳定 —— 用 CPU 侧算好的偏移最稳。
+	//  代价是每实例多 64 B × 15 实例 = 960 B，可忽略。
 	// ============================================================
 	struct RaytracingInstanceData
 	{
@@ -78,8 +87,31 @@ namespace Renderer::RayTracing
 		uint32_t BaseVertex;         // 顶点元素偏移（保留，来自 Mesh::Draw::baseVertex）
 		uint32_t PrimitiveCount;     // 三角形数
 		uint32_t InstanceId;
+
+		// ---- R7 / D4 追加 ----
+		uint32_t UvByteOffset;       // UV0 在顶点内的字节偏移；0xFFFFFFFF = 该 mesh 无 UV
+		uint32_t VertexFlags;        // Renderer::VertexLayoutFlags 原值（kVertex_UV0 等）
+		uint32_t MaterialIndex;      // 在 model->m_Materials 里的下标（调试用）
+		uint32_t SrvTableIndex;      // 本实例 5 张贴图在全局贴图表里的**相对**偏移
+		float    BaseColorFactor[4]; // glTF baseColorFactor
+		float    EmissiveFactor[3];  // glTF emissiveFactor
+		float    NormalTextureScale;
+		float    MetallicFactor;
+		float    RoughnessFactor;
+		uint32_t MaterialFlags;      // glTF MaterialConstants::flags 原值（UV 选择位等）
+		uint32_t _padding;
 	};
-	static_assert(sizeof(RaytracingInstanceData) == 32, "必须与 HLSL 的 RaytracingInstanceData 布局一致");
+	static_assert(sizeof(RaytracingInstanceData) == 96, "必须与 HLSL 的 RaytracingInstanceData 布局一致");
+
+	// 每个材质在全局贴图表里占几个槽位。顺序必须与
+	// Engine/03_AssetSystem/Assets/Constants/ConstantBuffers.h 的
+	// enum { kBaseColor, kMetallicRoughness, kOcclusion, kEmissive, kNormal,
+	//        kNumTextures } 以及 ModelLoader.cpp 的分配顺序一致。
+	constexpr uint32_t kTexturesPerMaterial = 5;
+
+	// 全局贴图表最多容纳多少个材质（表大小 = 该值 × kTexturesPerMaterial）。
+	// 512 个材质 × 5 = 2560 个描述符，远低于 D3D12 的堆上限。
+	constexpr uint32_t kMaxMaterialEntries = 512;
 
 	// ============================================================
 	//  纯资源持有型 buffer：不创建 SRV/UAV。

@@ -91,6 +91,17 @@ namespace Scene::Model
 
 		std::vector<Scene::Material::Material> m_Materials;  // 模型需在加载时一并构建逻辑材质实例数组，供渲染时查询。
 
+		// R7：材质标量的 CPU 侧副本（baseColorFactor / metallicFactor /
+		// roughnessFactor / emissiveFactor / normalTextureScale / flags）。
+		// ------------------------------------------------------------------
+		// 为什么需要它：光栅路径通过 MaterialCBV（256 字节步长的 GPU 常量缓冲）
+		// 在着色器里读这些标量，CPU 侧从不回读。但光追路径要在**建 BLAS 时**
+		// 把这些标量烘进每实例数据（RaytracingInstanceData 是 ByteAddressBuffer，
+		// 由 CPU 填），此时 GPU 常量缓冲所在的是 DEFAULT 堆，无法 Map。
+		// 因此加载时留一份 CPU 副本 —— 数据源与上行到 GPU 的是同一份
+		// materialConstantData，不会出现两处不一致。
+		std::vector<Scene::Material::MaterialConstantData> m_MaterialConstantData;
+
 	protected:
 		void Destroy();
 	};

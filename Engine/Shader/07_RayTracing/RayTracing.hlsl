@@ -57,7 +57,7 @@ RaytracingAccelerationStructure g_Scene : register(t0);
 // 用 ByteAddressBuffer 而不是 StructuredBuffer，因为顶点步长在不同模型间不同。
 ByteAddressBuffer g_SceneData : register(t1);
 
-// 每实例数据（stride = 32 字节 = 8 个 DWORD）
+// 每实例数据（R7 起 stride = 96 字节 = 24 个 DWORD）
 //
 // 为什么用 ByteAddressBuffer 而不是 StructuredBuffer：
 //   这里是通过**根级 SRV**（D3D12_ROOT_PARAMETER_TYPE_SRV）绑定的。
@@ -70,6 +70,27 @@ ByteAddressBuffer g_SceneData : register(t1);
 //   （Tier 1.0 起可用），数据本来就存在，没必要再冗余一份。
 ByteAddressBuffer g_InstanceData : register(t2);
 
+// ---------------------------------------------------------------------------
+//  R7 / D4：材质贴图
+// ---------------------------------------------------------------------------
+//  寄存器必须从 t3 起 —— t0/t1/t2 已经被 TLAS / SceneData / InstanceData
+//  占住，且这三个都是**根级 SRV**。这是接材质时最容易踩的坑：若把贴图也放到
+//  t0，根签名会创建失败；更糟的情况是创建成功但采样到 TLAS 的描述符上，
+//  表现为画面全黑或全白，且 Debug Layer 不报错。
+//
+//  为什么用无界数组 `Texture2D<float4> g_Textures[]` 而不是 5 个独立声明：
+//    15 个材质 × 5 张贴图 = 75 个描述符，且每个材质的 5 个槽位在全局
+//    s_TextureHeap 里是**连续分配**的（见 ModelLoader::LoadMaterials）。
+//    因此「基址 + 槽位下标」就能定位任意一张贴图，无需每个材质建一张表、
+//    更无需每个材质重新绑一次（DispatchRays 单次派发里做不到）。
+//    每实例数据里的 SrvTableIndex 就是这个基址（s_TextureHeap 的堆内偏移）。
+//
+//  NonUniformResourceIndex 是**必须**的：同一 wave 内的相邻像素会命中不同
+//  材质，索引逐线程不同。不加这个包装，驱动可以把索引当成"波内一致"来做
+//  描述符去重，只取其中一个 —— 表现为"部分区域整体颜色错乱"，且通常不报错。
+Texture2D<float4> g_Textures[] : register(t3);
+SamplerState      g_MaterialSampler : register(s0);
+
 // 每实例记录的字段偏移（与 C++ 侧 RaytracingInstanceData 严格对应）
 #define INSTANCE_VERTEX_OFFSET   0    // uint VertexOffset
 #define INSTANCE_INDEX_OFFSET    4    // uint IndexOffset
@@ -79,18 +100,43 @@ ByteAddressBuffer g_InstanceData : register(t2);
 #define INSTANCE_BASE_VERTEX    20    // uint BaseVertex
 #define INSTANCE_PRIM_COUNT     24    // uint PrimitiveCount
 #define INSTANCE_ID             28    // uint InstanceId
-#define INSTANCE_STRIDE_BYTES   32
+
+// ---- R7 / D4 追加（32..95）----
+#define INSTANCE_UV_OFFSET           32   // uint  UvByteOffset（0xFFFFFFFF = 无 UV0）
+#define INSTANCE_VERTEX_FLAGS        36   // uint  Renderer::kVertex_* 位图
+#define INSTANCE_MATERIAL_INDEX      40   // uint  语义/调试试用
+#define INSTANCE_SRV_TABLE_OFFSET    44   // uint  s_TextureHeap 堆内偏移（5 槽起始）
+#define INSTANCE_BASECOLOR_FACTOR    48   // float4
+#define INSTANCE_EMISSIVE_FACTOR     64   // float3（+4 字节对齐填充）
+#define INSTANCE_NORMAL_SCALE        76   // float
+#define INSTANCE_METALLIC            80   // float
+#define INSTANCE_ROUGHNESS           84   // float
+#define INSTANCE_MATERIAL_FLAGS      88   // uint  glTF MaterialConstants::flags 原值
+// 92..95：填充
+
+#define INSTANCE_STRIDE_BYTES   96
+
+// 贴图槽位（顺序必须与 ConstantBuffers.h 的
+// enum { kBaseColor, kMetallicRoughness, kOcclusion, kEmissive, kNormal } 一致）
+#define TEX_SLOT_BASECOLOR   0
+
+// 顶点布局位（与 Renderer::VertexLayoutFlags / PipelineDesc.h 一致）
+#define VERTEX_FLAG_UV0   8u
+
+// 无 UV 的哨兵值（C++ 侧写 0xFFFFFFFF）
+#define UV_OFFSET_NONE   0xFFFFFFFFu
 
 // 输出
 RWTexture2D<float4> g_OutputColor : register(u0);
 
 // ---------------------------------------------------------------------------
-//  根常量（b0）：**48** 个 DWORD
-//  必须与 C++ 侧 RootParameter::InitAsConstants(0, 48) 与
+//  根常量（b0）：**52** 个 DWORD
+//  必须与 C++ 侧 RootParameter::InitAsConstants(0, 52) 与
 //  RaytracingConstants 逐字段对齐（见 RayTracingRenderer.h 的 static_assert）。
 //
 //  R5 时是 32 个 DWORD；R6 追加 g_LightDirection / g_LightColor /
 //  g_RTParams / g_RTParams2 四个 float4（+16 DWORD）用于阴影与反射。
+//  R7 再追加 g_RTParams3（+4 DWORD）用于材质接驳的两个正交开关。
 //  追加只能放在**末尾**，否则前面所有字段整体错位。
 // ---------------------------------------------------------------------------
 cbuffer RaytracingConstants : register(b0)
@@ -118,7 +164,16 @@ cbuffer RaytracingConstants : register(b0)
     // z = RayTracingDebugView 通道编号
     // w = 备用
     float4   g_RTParams2;
-};                               // 共 48 个 DWORD
+
+    // ---- R7 / D4 追加 ----
+    // 两个**正交**开关（见 R7 设计方案 §4.7）：
+    //   x = EnableMaterialTextures (0/1)：0 → albedo 恒为 (0.8,0.8,0.8)，精确回到 R6
+    //   y = EnableGGX (0/1)：0 → 回退 R6 的 Lambert 表达式
+    // 两者都为 0 时，本 Shader 的着色路径必须与 R6 逐指令等价 ——
+    // 这是验收项 A5a（md5 必须等于 a43b6059…）成立的前提。
+    // z / w = 备用
+    float4   g_RTParams3;
+};                               // 共 52 个 DWORD
 
 // ---------------------------------------------------------------------------
 //  载荷与命中属性
@@ -184,6 +239,116 @@ uint LoadIndex(uint indexOffsetInScene, uint indexElement, uint indexFormat)
     const uint wordAddr = addr & ~3u;
     const uint word = g_SceneData.Load<uint>(wordAddr);
     return ((addr & 2u) != 0u) ? (word >> 16) : (word & 0xFFFFu);
+}
+
+// ---------------------------------------------------------------------------
+//  工具：读 UV0
+// ---------------------------------------------------------------------------
+//  R7 / D4。TEXCOORD0 是 R16G16_FLOAT（4 字节 = 2 个 half），位置由 C++ 侧按
+//  顶点布局推导后写进每实例数据（UvByteOffset）。
+//
+//  【必须手拆半字，不能用 Load<float2>】
+//  ByteAddressBuffer 的 Load<T> 是**按 T 的字节宽度做裸位拷贝**，不做格式转换。
+//  float2 是 8 字节，所以 `Load<float2>(addr)` 会读 8 字节并当成两个 32 位浮点
+//  —— 也就是把 (u_lo16, u_hi16, v_lo16, v_hi16) 拼成的两个 32 位字当 float 解释。
+//  对 R16G16_FLOAT 的顶点属性，这样读出来的两个数都是 ~1e-38 量级的 denormal，
+//  等于 uv ≈ (0,0)：整张贴图退化成"每个材质一片纯色"，细节（布料褶皱、脸上
+//  画好的眼睛）全部消失，但**不报任何错**——本轮就是靠这条才定位到的。
+//  正确做法与 LoadIndex 一致：取 32 位字后按半字拆，再 f16tof32 解码。
+float2 LoadVertexUv(uint vertexOffsetInScene, uint vertexIndex, uint vertexStride, uint uvByteOffset)
+{
+    const uint addr = vertexOffsetInScene + vertexIndex * vertexStride + uvByteOffset;
+    const uint packed = g_SceneData.Load<uint>(addr & ~3u);
+    return float2(f16tof32(packed & 0xFFFFu), f16tof32(packed >> 16));
+}
+
+// ---------------------------------------------------------------------------
+//  R7 / D4：GGX / Cook-Torrance
+// ---------------------------------------------------------------------------
+//  与光栅路径的关系：这里**刻意**保持与 Deferred 的 PBRShading 同形，
+//  但只消费标量 metallicFactor / roughnessFactor（D3 拍板只接 BaseColor 贴图）。
+//
+//  三个函数的分工（踩过的坑写在每处）：
+//    * DistributionGGX：法线分布，alpha = roughness^2（感知粗糙度平方是
+//      Disney/UE 的约定，直接用 roughness 会让高光过大过亮）。
+//    * VisibilitySmithGGXCorrelated：**已经含 1/(4·nDotV·nDotL)**，
+//      所以调用点直接乘，千万不要再除一次分母 —— 多除一次会让整个画面
+//      暗 4 倍且随视角变化，非常难归因。
+//    * FresnelSchlick：标量/向量两用，这里只用向量版。
+static const float kPI = 3.14159265359f;
+static const float kMinRoughness = 0.045f;   // 避免 alpha=0 → GGX 除零，与 UE 一致
+
+float DistributionGGX(float nDotH, float alpha)
+{
+    const float a2 = alpha * alpha;
+    const float d  = nDotH * nDotH * (a2 - 1.0f) + 1.0f;
+    return a2 / max(kPI * d * d, 1e-7f);
+}
+
+float VisibilitySmithGGXCorrelated(float nDotV, float nDotL, float alpha)
+{
+    const float a2 = alpha * alpha;
+    const float gv = nDotL * sqrt(nDotV * nDotV * (1.0f - a2) + a2);
+    const float gl = nDotV * sqrt(nDotL * nDotL * (1.0f - a2) + a2);
+    return 0.5f / max(gv + gl, 1e-7f);
+}
+
+float3 FresnelSchlick(float vDotH, float3 f0)
+{
+    return f0 + (1.0f - f0) * pow(saturate(1.0f - vDotH), 5.0f);
+}
+
+// ---------------------------------------------------------------------------
+//  R7 / D4：取本实例的 albedo（BaseColor 贴图 × baseColorFactor）
+// ---------------------------------------------------------------------------
+//  vertexFlags 里没有 UV0 的 mesh（本场景没有，但其它资产可能有）直接退回
+//  因子色，避免用一个无意义的 uv 去采样。
+float3 LoadInstanceAlbedo(in uint base, in uint vertexOffset, in uint vertexStride,
+    in uint index0, in uint baseVertex, in float2 barycentrics, in bool enableTextures)
+{
+    const float4 baseColorFactor = g_InstanceData.Load<float4>(base + INSTANCE_BASECOLOR_FACTOR);
+    float3 albedo = baseColorFactor.rgb;
+
+    // EnableMaterialTextures 是 CPU 侧的**正交开关**（R7 设计 §4.7）：
+    // 关闭时必须精确回到 R6 的中性灰，这样 A5a 的 md5 才能逐字节相等。
+    if (!enableTextures)
+        return float3(0.8f, 0.8f, 0.8f);
+
+    const uint vertexFlags = g_InstanceData.Load<uint>(base + INSTANCE_VERTEX_FLAGS);
+    const uint uvOffset    = g_InstanceData.Load<uint>(base + INSTANCE_UV_OFFSET);
+    if ((vertexFlags & VERTEX_FLAG_UV0) == 0u || uvOffset == UV_OFFSET_NONE)
+        return albedo;
+
+    // 重心插值：DXR 的 HitAttributes.Barycentrics 是 (b1, b2)，b0 = 1 - b1 - b2。
+    // 直接用这两个系数插值顶点属性 —— 与光栅的透视校正插值在数学上不同，
+    // 但本阶段只用于贴图坐标，视觉差异不可见（透视校正需要 w 分量，DXR 不提供）。
+    const uint i0 = LoadIndex(g_InstanceData.Load<uint>(base + INSTANCE_INDEX_OFFSET),
+        g_InstanceData.Load<uint>(base + INSTANCE_START_INDEX) + PrimitiveIndex() * 3u + 0u,
+        g_InstanceData.Load<uint>(base + INSTANCE_INDEX_FORMAT));
+    const uint i1 = LoadIndex(g_InstanceData.Load<uint>(base + INSTANCE_INDEX_OFFSET),
+        g_InstanceData.Load<uint>(base + INSTANCE_START_INDEX) + PrimitiveIndex() * 3u + 1u,
+        g_InstanceData.Load<uint>(base + INSTANCE_INDEX_FORMAT));
+    const uint i2 = LoadIndex(g_InstanceData.Load<uint>(base + INSTANCE_INDEX_OFFSET),
+        g_InstanceData.Load<uint>(base + INSTANCE_START_INDEX) + PrimitiveIndex() * 3u + 2u,
+        g_InstanceData.Load<uint>(base + INSTANCE_INDEX_FORMAT));
+
+    const float2 uv0 = LoadVertexUv(vertexOffset, baseVertex + i0, vertexStride, uvOffset);
+    const float2 uv1 = LoadVertexUv(vertexOffset, baseVertex + i1, vertexStride, uvOffset);
+    const float2 uv2 = LoadVertexUv(vertexOffset, baseVertex + i2, vertexStride, uvOffset);
+
+    const float b0 = 1.0f - barycentrics.x - barycentrics.y;
+    const float2 uv = uv0 * b0 + uv1 * barycentrics.x + uv2 * barycentrics.y;
+
+    const uint srvBase = g_InstanceData.Load<uint>(base + INSTANCE_SRV_TABLE_OFFSET);
+
+    // SampleLevel 而不是 Sample：光追里没有像素级 quad 导数，
+    // 用 Sample 会算出错误的 mip（通常是 0，偶发不是），必须显式给 LOD。
+    // P0 固定 LOD 0（与光栅近景一致）；将来需要时再按 RayCone 算。
+    const float4 sampled = g_Textures[NonUniformResourceIndex(srvBase + TEX_SLOT_BASECOLOR)]
+        .SampleLevel(g_MaterialSampler, uv, 0.0f);
+
+    albedo *= sampled.rgb;
+    return albedo;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,10 +476,28 @@ void RayGen()
         ? SkyColor(ray.Direction)
         : payload.Color;
 
-    const float3 display = EncodeDisplayColor(hdr,
-        g_DisplayParams.x,
-        g_DisplayParams.y > 0.5f,
-        g_DisplayParams.z > 0.5f);
+    // ---- 调试通道必须绕过显示编码链 ----------------------------------------
+    // DeferredRenderer 的调试通道在 LightingPS.hlsl 里是**在 EncodeDisplayColor
+    // 之前**就 return 的（注释：「调试通道要显示的是缓冲区的原始数值，若先过
+    // 曝光/ACES，数值会被压扁，看不出 GBuffer 的真实内容」）。
+    //
+    // R7 的 BaseColor 通道存在的唯一目的就是与 Deferred 的同名通道逐像素比对
+    // （验证「贴图寻址 + UV 插值 + 采样器 + baseColorFactor」整条链对不对）。
+    // 如果这里仍然过 ACES+sRGB，两边就是"一边原始值、一边编码后"，
+    // 比对立刻失去意义 —— 这会是 R7 最容易被漏掉的假通过点。
+    //
+    // 因此这里按 debugView 判断：非 Shaded 且**打到了几何**时跳过 EncodeDisplayColor。
+    // 未命中（背景）仍走编码链 —— 这样背景与 Deferred 的 skybox 背景一致
+    // （实测两边都是 (43,63,105)），只有模型像素是无编码的线性值，可比对。
+    const uint debugView = (uint)(g_RTParams2.z + 0.5f);
+    const bool bypassDisplay = (debugView != 0u) && (payload.HitDistance >= 0.0f);
+
+    const float3 display = bypassDisplay
+        ? hdr
+        : EncodeDisplayColor(hdr,
+            g_DisplayParams.x,
+            g_DisplayParams.y > 0.5f,
+            g_DisplayParams.z > 0.5f);
 
     // SceneColorBuffer 的 UAV 格式由 ColorBuffer::GetUAVFormat() 推导
     // （R8G8B8A8_UNORM → R8G8B8A8_UNORM），因此这里直接写 float4。
@@ -388,6 +571,13 @@ void ClosestHit(inout RayPayload payload, in HitAttributes attribs)
     const float3 hitPos = WorldRayOrigin() + incoming * RayTCurrent();
     const float  hitDistance = RayTCurrent();
 
+    // ---- R7 / D4：本实例材质 -----------------------------------------------
+    // 这些字段在 C++ 侧建 BLAS 时就烘进了每实例数据（见 RaytracingScene::RebuildGeometry）。
+    const bool  enableTextures = g_RTParams3.x > 0.5f;
+    const bool  enableGGX      = g_RTParams3.y > 0.5f;
+    const float metallic       = g_InstanceData.Load<float>(base + INSTANCE_METALLIC);
+    const float roughness      = saturate(g_InstanceData.Load<float>(base + INSTANCE_ROUGHNESS));
+
     // ---- 递归闸门（必须最先判断）-----------------------------------------
     // 反射射线的 ClosestHit 也走这个函数。如果这里不早退，它会再发一条反射射线
     // （深度 3），而 State Object 的 MaxTraceRecursionDepth = 2 —— 越界不会报错，
@@ -397,7 +587,8 @@ void ClosestHit(inout RayPayload payload, in HitAttributes attribs)
     {
         const float3 toLightSecondary = normalize(-g_LightDirection.xyz);
         const float  nDotLSecondary = saturate(dot(n, toLightSecondary));
-        const float3 albedoSecondary = float3(0.8f, 0.8f, 0.8f);
+        const float3 albedoSecondary = LoadInstanceAlbedo(base, vertexOffset, vertexStride,
+            indexOffset, baseVertex, attribs.Barycentrics, enableTextures);
         payload.Color = albedoSecondary * (g_LightColor.rgb * g_LightDirection.w * nDotLSecondary
             + SkyColor(n) * 0.35f);
         return;
@@ -423,18 +614,62 @@ void ClosestHit(inout RayPayload payload, in HitAttributes attribs)
         visibility = TraceShadowRay(shadowOrigin, toLight, g_RTParams.y);
     }
 
-    // ---- 基础着色：Lambert + 天空环境 --------------------------------------
-    const float  nDotL = saturate(dot(n, toLight));
-    const float3 albedo = float3(0.8f, 0.8f, 0.8f);   // D3 未接材质，用中性灰
-    const float3 ambient = SkyColor(n) * 0.35f;
-    const float3 diffuse = albedo * lightRadiance * nDotL * visibility;
+    // ---- 基础着色 ---------------------------------------------------------
+    // EnableMaterialTextures 关 → albedo 恒为中性灰 (0.8,0.8,0.8)，与 R6 一致。
+    const float3 albedo = LoadInstanceAlbedo(base, vertexOffset, vertexStride,
+        indexOffset, baseVertex, attribs.Barycentrics, enableTextures);
 
-    float3 shaded = diffuse + albedo * ambient;
+    const float  nDotL = saturate(dot(n, toLight));
+    const float3 viewDir = -incoming;
+    const float  nDotV = saturate(dot(n, viewDir));
+
+    float3 shaded;
+
+    if (!enableGGX)
+    {
+        // ---- 回退路径：R6 的 Lambert + 天空环境 ---------------------------
+        // 这一段必须与 R6 逐指令等价，否则 A5a 的 md5 无法回到 a43b6059…
+        const float3 ambient = SkyColor(n) * 0.35f;
+        const float3 diffuse = albedo * lightRadiance * nDotL * visibility;
+        shaded = diffuse + albedo * ambient;
+    }
+    else
+    {
+        // ---- R7：GGX / Cook-Torrance 直射 + 简易环境项 --------------------
+        const float alpha = max(roughness * roughness, kMinRoughness * kMinRoughness);
+
+        const float3 h     = normalize(toLight + viewDir);
+        const float  nDotH = saturate(dot(n, h));
+        const float  vDotH = saturate(dot(viewDir, h));
+
+        // F0：介电体 0.04，金属取 albedo（与 glTF/PBR 的 metallic 工作流一致）。
+        const float3 f0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
+        const float3 F  = FresnelSchlick(vDotH, f0);
+
+        const float  D = DistributionGGX(nDotH, alpha);
+        const float  V = VisibilitySmithGGXCorrelated(nDotV, nDotL, alpha);
+
+        // 注意 V 已含 1/(4·nDotV·nDotL)，此处不再除分母。
+        const float3 specular = (D * V) * F;
+
+        // 能量守恒：金属没有漫反射，介电体的漫反射被 (1-F) 削弱。
+        const float3 kd = (float3(1.0f, 1.0f, 1.0f) - F) * (1.0f - metallic);
+        const float3 diffuseBRDF = kd * albedo / kPI;
+
+        const float3 direct = (diffuseBRDF + specular) * lightRadiance * nDotL * visibility;
+
+        // 环境项（无 IBL 贴图，用 SkyColor 近似）：
+        //   漫反射取法线方向的天光，镜面取反射方向的天光并按粗糙度衰减。
+        //   粗糙度越高，环境镜面越弱 —— 否则粗糙表面会像镜子一样发亮。
+        const float3 ambientDiff = albedo * SkyColor(n) * 0.35f;
+        const float3 ambientSpec = SkyColor(reflect(-viewDir, n)) * F * (1.0f - roughness * 0.7f);
+
+        // 金属度把环境漫反射压掉（金属没有次表面散射意义上的漫反射）。
+        shaded = direct + lerp(ambientDiff, ambientSpec + ambientDiff, metallic);
+    }
 
     // ---- D3-2：单次反射 ---------------------------------------------------
     float3 reflectionColor = float3(0.0f, 0.0f, 0.0f);
-    const float3 viewDir = -incoming;
-    const float  nDotV = saturate(dot(n, viewDir));
 
     if (enableRefl)
     {
@@ -462,6 +697,10 @@ void ClosestHit(inout RayPayload payload, in HitAttributes attribs)
     else if (debugView == 4u) result = float3(saturate(hitDistance / 32.0f),
                                              saturate(hitDistance / 32.0f),
                                              saturate(hitDistance / 32.0f));
+    // R7 / D4：BaseColor 通道 —— 与 Deferred 的 DebugView::BaseColor 逐像素可比。
+    // 注意这里输出的是**线性** albedo，与 Deferred 的 GBuffer0 语义一致
+    // （两边都还没走 tonemap/sRGB，解码由 RayGen/Display 统一做）。
+    else if (debugView == 5u) result = albedo;
 
     payload.HitDistance = hitDistance;
     payload.Color       = result;

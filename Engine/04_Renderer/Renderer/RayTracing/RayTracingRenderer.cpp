@@ -38,7 +38,8 @@ namespace
 		kGlobalRootSceneData,        // t1：聚合几何（根级 SRV）
 		kGlobalRootInstanceData,     // t2：每实例数据（根级 SRV）
 		kGlobalRootOutputTable,      // u0：输出 UAV（描述符表，1 个）
-		kGlobalRootConstants,        // b0：根常量 48 DWORD（R6 从 32 扩到 48）
+		kGlobalRootConstants,        // b0：根常量 52 DWORD（R6 48 → R7 52）
+		kGlobalRootMaterialTextures, // t3：无界 SRV 表（BaseColor/MR/AO/Emissive/Normal）
 		kNumGlobalRootBindings
 	};
 
@@ -47,10 +48,25 @@ namespace
 	//   * RayTracingRenderer.h 的 RaytracingConstants（有 static_assert 挡着）
 	//   * Render() 里的 SetConstantArray 实参
 	// 三处任一漏改的后果都一样：后续字段整体错位，画面异常但**不报错**。
-	constexpr uint32_t kGlobalRootConstantDwords = 48;
+	constexpr uint32_t kGlobalRootConstantDwords = 52;
 
-	// 输出 UAV 在自有堆里的槽位
+	// 输出 UAV 在 s_TextureHeap 里的槽位。
+	// 【R7 关键改动】输出 UAV 与材质 SRV 现在共用同一个 shader-visible 堆：
+	//   D3D12 规定一个命令列表同时只能绑定**一个** CBV_SRV_UAV 堆，
+	//   而 DispatchRays 必须在同一份根签名下既写输出又采样贴图。
+	//   槽 0 留作输出 UAV，材质 SRV 从槽 1 起由 ModelLoader 的 Alloc 顺序占用。
 	constexpr uint32_t kOutputUavSlot = 0;
+
+	// 材质贴图 SRV 表的起始槽位。ModelLoader::LoadMaterials 每材质 Alloc(5)，
+	// 所以第一张表拿到的偏移就是 5（0 号被输出 UAV 占了）。
+	// 这里**不硬编码 5**：RefreshDescriptorHeap 只负责占住 0 号槽，
+	// 真正的基址由每实例数据里的 SrvTableIndex 传给 shader。
+	constexpr uint32_t kMaterialSrvsStartSlot = 1;
+
+	// 静态采样器的寄存器号。DXR 全局根签名里给材质贴图用 s0，
+	// 采样参数与光栅路径的 GetSampler 默认值一致（各向异性 16x / WRAP / LOD 全范围），
+	// 这样同一张贴图在两条路径下取到的是同一个纹素。
+	constexpr uint32_t kMaterialSamplerRegister = 0;
 }
 
 // ============================================================================
@@ -83,24 +99,35 @@ bool RayTracingRenderer::Initialize(const RendererCreateDesc& desc)
 	if (!BuildRootSignature())
 		return false;
 
-	// ---- 3. 输出 UAV 描述符堆 ------------------------------------------
-	m_DescriptorHeap.Create(L"RayTracingRenderer Output Descriptors",
-		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4);
-	RefreshDescriptorHeap();
-
-	// ---- 3b. 全局材质堆（看似与 DXR 无关，但**必须**建） ----------------
-	// ModelLoader::LoadModel 会无条件执行
-	//     Renderer::s_TextureHeap.Alloc(kNumTextures);
-	//     Renderer::s_SamplerHeap.Alloc(kNumTextures);
-	// 给每个材质分配 SRV/Sampler 描述符表（见 ModelLoader.cpp:103 / 185）。
+	// ---- 3. 全局材质堆（R7 起输出 UAV 也并入这里） ----------------------
+	// 为什么输出 UAV 和材质 SRV 必须共用同一个堆：
+	//   D3D12 规定一个命令列表同时只能绑定一个 CBV_SRV_UAV 堆。
+	//   DispatchRays 需要在同一份根签名下既写 SceneColor（UAV）又采样 BaseColor
+	//   贴图（SRV），若两者在不同的堆里就只能二选一 —— 表现为贴图全黑或输出不写。
+	//
+	// 槽位分配：0 号给输出 UAV，1 号起由 ModelLoader::LoadMaterials 的 Alloc(5)
+	// 顺序占用（每材质连续 5 个）。因此材质表的基址从 1*5 开始，
+	// 但 shader 侧不假设这个值 —— 每实例数据里带 SrvTableIndex。
+	//
+	// 顺带一提：ModelLoader 会无条件执行 s_TextureHeap.Alloc(kNumTextures) 与
+	// s_SamplerHeap.Alloc(kNumTextures)（见 ModelLoader.cpp:103 / 185），
 	// 这两个堆归 Renderer 所有，Deferred/Forward 在各自 Initialize 里 Create。
-	// 如果本渲染器不建，切换后 LoadModelByIndex 就会在已 Destroy 的空堆上
-	// Alloc —— HasAvailableSpace 断言失败，进程直接 STATUS_BREAKPOINT。
-	// DXR 路径本身不采样材质，但堆必须存在，模型才能加载成功。
+	// 若本渲染器不建，切换后 LoadModelByIndex 就会在已 Destroy 的空堆上 Alloc，
+	// HasAvailableSpace 断言失败 → STATUS_BREAKPOINT。
 	s_TextureHeap.Create(L"RayTracing Texture Descriptors",
 		D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4096);
 	s_SamplerHeap.Create(L"RayTracing Sampler Descriptors",
 		D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 2048);
+
+	// 占住 0 号槽作为输出 UAV。必须在模型加载（ModelLoader 的 Alloc）之前完成，
+	// 否则 0 号会被第一个材质的 BaseColor 抢走。
+	const DescriptorHandle outputUav = s_TextureHeap.Alloc(1);
+	m_OutputUavOffset = s_TextureHeap.GetOffsetOfHandle(outputUav);
+	RefreshDescriptorHeap();
+
+	// 采样器：材质采样走**根签名里的静态采样器** s0（见 BuildRootSignature），
+	// 因此不需要从 s_SamplerHeap 取描述符。s_SamplerHeap 仍然必须 Create ——
+	// ModelLoader 会无条件在里面 Alloc(kNumTextures)，堆不存在就会断言失败。
 
 	// ---- 4. State Object（RTPSO） --------------------------------------
 	if (!BuildStateObject())
@@ -133,11 +160,11 @@ void RayTracingRenderer::Shutdown()
 	m_GeometryReady = false;
 	m_GeometrySignature.clear();
 
-	m_DescriptorHeap.Destroy();
+	// R7 起输出 UAV 与材质 SRV 共用一个堆（s_TextureHeap），
+	// 因此这里只需要销毁那一个堆 —— 不再有独立的 m_DescriptorHeap。
+	m_OutputUavOffset = 0;
 
 	// 与 Deferred/Forward 对称：Shutdown 时销毁全局材质堆。
-	// 顺序上必须在模型卸载之后（SwitchRenderer 的步骤 3 先 UnloadModel，
-	// 那时 TextureRef 已经不再需要采样器偏移）。
 	s_TextureHeap.Destroy();
 	s_SamplerHeap.Destroy();
 
@@ -213,16 +240,22 @@ void RayTracingRenderer::RefreshDescriptorHeap()
 
 	// ColorBuffer::CreateDerivedViews 已经为 mip0 建过 UAV（存在 CPU 堆里），
 	// 但那是 CPU-only 描述符，不能直接给 shader 用。
-	// 这里在自有 shader-visible 堆里再建一份 UAV 描述符。
+	// 这里在 shader-visible 的 s_TextureHeap 的 kOutputUavSlot 槽位再建一份。
 	D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 	uavDesc.Format = m_SceneColorBuffer->GetFormat();
 	uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
 	uavDesc.Texture2D.MipSlice = 0;
 	uavDesc.Texture2D.PlaneSlice = 0;
 
+	// 用记录的偏移取槽位（不用裸指针 + 0，避免与 ModelLoader 的分配错位）。
+	// 注意：s_TextureHeap 可能尚未 Create（RefreshDescriptorHeap 在 Initialize 里
+	// 只被调用一次，那时堆刚建好；但 OnResize 会再调一次，堆仍在）。
+	if (s_TextureHeap.GetHeapPointer() == nullptr)
+		return;
+
 	// DescriptorHandle 有 operator D3D12_CPU_DESCRIPTOR_HANDLE()，但直接当实参传
 	// 会与 GetCpuPtr() 的 size_t 产生歧义，因此先显式转换到局部变量。
-	const DescriptorHandle handle = m_DescriptorHeap[kOutputUavSlot];
+	const DescriptorHandle handle = s_TextureHeap[m_OutputUavOffset];
 	const D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = handle;
 	g_Device->CreateUnorderedAccessView(
 		m_SceneColorBuffer->GetResource(), nullptr, &uavDesc, cpuHandle);
@@ -233,7 +266,10 @@ void RayTracingRenderer::RefreshDescriptorHeap()
 // ============================================================================
 bool RayTracingRenderer::BuildRootSignature()
 {
-	m_GlobalRootSig.Reset(kNumGlobalRootBindings, 0);
+	// 第二参数 = 静态采样器个数。R7 起需要 1 个（材质贴图 s0）。
+	// 注意 RootSignature::InitStaticSampler 会把 BorderColor 硬写成
+	// D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE（这是该类的既有实现）。
+	m_GlobalRootSig.Reset(kNumGlobalRootBindings, 1);
 
 	// 注意：DXR 的全局根签名里所有参数都是 ALL 可见性。
 	m_GlobalRootSig[kGlobalRootScene].InitAsBufferSRV(0, D3D12_SHADER_VISIBILITY_ALL);
@@ -243,6 +279,35 @@ bool RayTracingRenderer::BuildRootSignature()
 		D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 1, D3D12_SHADER_VISIBILITY_ALL);
 	m_GlobalRootSig[kGlobalRootConstants].InitAsConstants(0, kGlobalRootConstantDwords,
 		D3D12_SHADER_VISIBILITY_ALL);
+
+	// R7：材质贴图 SRV 表（t3 起，无界）。
+	// 【为什么必须无界】15 个材质 × 5 张贴图 = 75 个描述符，且数量随模型变化。
+	//   写成固定 5 会让 shader 里的下标越界（同一张表内只能访问前 5 个）。
+	// 【为什么用 D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND】表格起点由
+	//   SetDescriptorTable 传入的 GPU handle 决定，range 内部偏移从 0 起。
+	m_GlobalRootSig[kGlobalRootMaterialTextures].InitAsDescriptorRange(
+		D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, UINT_MAX, D3D12_SHADER_VISIBILITY_ALL);
+
+	// 静态采样器 s0。参数与 ModelLoader::GetSampler 的默认值保持一致
+	// （各向异性 16x / WRAP / LOD 全范围），保证两条路径取样同一纹素。
+	{
+		D3D12_SAMPLER_DESC samplerDesc = {};
+		samplerDesc.Filter = D3D12_FILTER_ANISOTROPIC;
+		samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		samplerDesc.MipLODBias = 0.0f;
+		samplerDesc.MaxAnisotropy = 16;
+		samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+		samplerDesc.BorderColor[0] = 1.0f;
+		samplerDesc.BorderColor[1] = 1.0f;
+		samplerDesc.BorderColor[2] = 1.0f;
+		samplerDesc.BorderColor[3] = 1.0f;
+		samplerDesc.MinLOD = 0.0f;
+		samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+		m_GlobalRootSig.InitStaticSampler(kMaterialSamplerRegister, samplerDesc,
+			D3D12_SHADER_VISIBILITY_ALL);
+	}
 
 	// DXR 全局根签名不需要 INPUT_ASSEMBLER 标志。
 	m_GlobalRootSig.Finalize(L"RayTracingRenderer Global Root Signature",
@@ -448,8 +513,11 @@ void RayTracingRenderer::Render(GraphicsContext& context, const RenderFrameDesc&
 	compute.SetRootSignature(m_GlobalRootSig);
 
 	// 描述符堆是命令列表级状态，图形/计算共用，仍通过 context 设置。
+	// R7：这个堆现在是 s_TextureHeap —— 它同时装着输出 UAV（槽 0）与所有材质
+	// BaseColor/MR/AO/Emissive/Normal 的 SRV，所以同一次 DispatchRays 里
+	// 既能写输出又能采样贴图。
 	context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
-		m_DescriptorHeap.GetHeapPointer());
+		s_TextureHeap.GetHeapPointer());
 
 	// ---- 3. 绑定资源 ---------------------------------------------------
 	// 根级 SRV 直接给 GPU 虚拟地址（不是描述符句柄）。
@@ -468,7 +536,24 @@ void RayTracingRenderer::Render(GraphicsContext& context, const RenderFrameDesc&
 
 	// 输出 UAV 走描述符表（RWTexture2D 必须用描述符，不能用根 UAV）
 	compute.SetDescriptorTable(kGlobalRootOutputTable,
-		(D3D12_GPU_DESCRIPTOR_HANDLE)m_DescriptorHeap[kOutputUavSlot]);
+		(D3D12_GPU_DESCRIPTOR_HANDLE)s_TextureHeap[m_OutputUavOffset]);
+
+	// ---- 3b. 材质贴图 SRV 表（R7）--------------------------------------
+	// 整张堆从槽 0 起一次性传给 shader，shader 侧用
+	//    g_Textures[NonUniformResourceIndex(每实例 SrvTableIndex + 槽位)]
+	// 定位任意材质的任意贴图。
+	//
+	// 【为什么整张堆而不是每材质一张表】DispatchRays 一次派发覆盖全屏，
+	// 相邻像素命中不同材质，无法在派发前为某个材质单独绑表。
+	// 这也是本方案选「无界数组 + 稳定下标」而不是「SBT 本地根签名」的原因
+	// （后者留作演进，见设计方案 §6 D6）。
+	//
+	// 注意：GetHeapPointer() 返回的是 ID3D12DescriptorHeap*（对象指针），
+	// **不是** GPU 描述符句柄。描述符表的起点必须用 operator[0] 取到的
+	// DescriptorHandle 再转成 GPU handle —— 两者强转能编译通过但值完全错，
+	// 运行时表现为所有贴图采样越界（返回 0 → 全黑模型）。
+	compute.SetDescriptorTable(kGlobalRootMaterialTextures,
+		(D3D12_GPU_DESCRIPTOR_HANDLE)s_TextureHeap[0]);
 
 	// ---- 4. 根常量 -----------------------------------------------------
 	RaytracingConstants constants = {};
@@ -513,6 +598,17 @@ void RayTracingRenderer::Render(GraphicsContext& context, const RenderFrameDesc&
 		params.EnableRTShadow ? 1.0f : 0.0f,
 		params.EnableRTReflection ? 1.0f : 0.0f,
 		(float)(uint32_t)params.RTDebugView,
+		0.0f);
+
+	// ---- R7 / D4：材质接驳的两个正交开关 --------------------------------
+	// x = EnableMaterialTextures：关掉后 HLSL 里 albedo 恒为 (0.8,0.8,0.8)，
+	//     于是着色路径逐指令回到 R6 —— 这是验收项 A5a（md5 必须等于
+	//     a43b6059…）能够成立的前提。
+	// y = EnableGGX：关掉后回退 R6 的 `diffuse + albedo * ambient` 表达式。
+	constants.RTParams3 = Vector4(
+		params.EnableMaterialTextures ? 1.0f : 0.0f,
+		params.EnableGGX ? 1.0f : 0.0f,
+		0.0f,
 		0.0f);
 
 	// 同上：根常量也必须走计算根参数槽位（SetComputeRoot32BitConstants）。
@@ -583,6 +679,20 @@ void RayTracingRenderer::Render(GraphicsContext& context, const RenderFrameDesc&
 			params.EnableRTReflection ? L"开" : L"关",
 			params.RTShadowNormalBias, params.RTShadowMaxDistance,
 			params.RTReflectionMaxDistance, params.RTReflectionIntensity);
+	}
+
+	// R7：材质开关同理。这两个开关是 2×2 对照的**唯一**变量来源，
+	// 所以必须在日志里留痕 —— 否则「A5a 的 md5 对不上」时无法判断
+	// 是开关没生效还是着色代码本身不等价。
+	if (params.EnableMaterialTextures != m_LastEnableMaterialTextures
+		|| params.EnableGGX != m_LastEnableGGX)
+	{
+		m_LastEnableMaterialTextures = params.EnableMaterialTextures;
+		m_LastEnableGGX = params.EnableGGX;
+		LOG_INFO(L"[DXR] 材质开关：贴图=%s GGX=%s（调试通道=%s）\n",
+			params.EnableMaterialTextures ? L"开" : L"关",
+			params.EnableGGX ? L"开" : L"关",
+			RayTracingDebugViewName(params.RTDebugView));
 	}
 
 	++m_DispatchedFrames;

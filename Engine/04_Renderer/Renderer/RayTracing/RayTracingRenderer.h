@@ -1,7 +1,7 @@
 #pragma once
 
 // ============================================================================
-//  RayTracingRenderer.h —— R6 / D3：DXR 光追渲染器（硬阴影 + 反射）
+//  RayTracingRenderer.h —— R7 / D4：DXR 光追渲染器（材质 + 阴影 + 反射）
 // ----------------------------------------------------------------------------
 //  设计定位（严格对齐路线图 §8 总纲）：
 //    「DXR 要作为新增 Renderer 接入，而不是让现有光栅路径依赖光追。
@@ -17,11 +17,16 @@
 //      与光栅路径共用 tonemap + sRGB 传递函数。
 //    * 灯光：方向光数据取自 RenderParams（与光栅路径同一真源），
 //      语义也一致（SunDirection 是**传播方向**，着色时取反）。
+//    * 材质：BaseColor 贴图取自 ModelLoader 建好的 s_TextureHeap，
+//      与光栅 GBufferPS 采样的是**同一批描述符**，因此颜色可比。
 //
 //  能力演进：
 //    R5 / D2 —— 最小闭环：主射线 → 面法线色。只是"证明 DXR 通了"。
-//    R6 / D3 —— 本文件：主射线 → 硬阴影射线 + 单次反射射线（递归深度 2），
+//    R6 / D3 —— 主射线 → 硬阴影射线 + 单次反射射线（递归深度 2），
 //               Lambert 着色、法线偏差、可开关、可调试通道、逐帧统计。
+//    R7 / D4 —— BaseColor 贴图 + GGX/Cook-Torrance 直射与环境项，
+//               两个正交开关（EnableMaterialTextures / EnableGGX）保证
+//               「全关」时逐字节等于 R6 基线，从而让贴图/光照两项改动可归因。
 // ============================================================================
 
 #include "04_Renderer/Renderer/Base/BaseRenderer.h"
@@ -43,7 +48,7 @@ namespace Renderer::RayTracing
 {
 	// ============================================================
 	//  根常量（b0）：必须与 HLSL 的 cbuffer RaytracingConstants 逐字段一致
-	//  R6 起共 48 个 DWORD = 192 字节（R5 是 32 个 DWORD = 128 字节）
+	//  R5 = 32 DWORD；R6 = 48 DWORD；R7 = **52 DWORD = 208 字节**
 	// ============================================================
 	struct RaytracingConstants
 	{
@@ -59,8 +64,14 @@ namespace Renderer::RayTracing
 		Math::Vector4 RTParams;       // 16 B：x = 阴影法线偏差, y = 阴影最大距离,
 		                              //       z = 反射最大距离, w = 反射强度
 		Math::Vector4 RTParams2;      // 16 B：x = 开阴影, y = 开反射, z = 调试通道
+
+		// ---- R7 / D4 追加 ----
+		// x = EnableMaterialTextures（0 时 albedo 恒为中性灰，精确回到 R6）
+		// y = EnableGGX（0 时回退 R6 的 Lambert 表达式）
+		// z / w = 备用
+		Math::Vector4 RTParams3;
 	};
-	static_assert(sizeof(RaytracingConstants) == 192, "必须与 HLSL 的 48 个 DWORD 根常量一致");
+	static_assert(sizeof(RaytracingConstants) == 208, "必须与 HLSL 的 52 个 DWORD 根常量一致");
 
 	// 每帧的射线统计。数值是**发射数**（不是命中数）：
 	//   主射线 = 输出像素数；阴影射线 = 主射线命中且开阴影的像素数；
@@ -129,7 +140,11 @@ namespace Renderer::RayTracing
 		RootSignature  m_GlobalRootSig;
 		RaytracingPSO  m_StateObject;
 
-		DescriptorHeap m_DescriptorHeap;   // 自有 shader-visible 堆（4 个描述符）
+		// R7：输出 UAV 不再单独建堆 —— 它被并入 s_TextureHeap 的 0 号槽。
+		// 原因（D3D12 硬约束）：一个命令列表同时只能绑定**一个** CBV_SRV_UAV 堆，
+		// 而贴图 SRV 也必须来自那个堆。若输出 UAV 留在独立堆里，就无法在同一次
+		// DispatchRays 里既写输出又采样贴图。
+		uint32_t m_OutputUavOffset = 0;
 
 		std::shared_ptr<ColorBuffer> m_SceneColorBuffer;
 
@@ -149,5 +164,7 @@ namespace Renderer::RayTracing
 		// 让「拨了没反应」这类问题在日志里立刻可见（而不是靠肉眼看画面差异）。
 		bool m_LastEnableShadow = false;
 		bool m_LastEnableReflection = false;
+		bool m_LastEnableMaterialTextures = false;
+		bool m_LastEnableGGX = false;
 	};
 }

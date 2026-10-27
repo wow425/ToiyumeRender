@@ -1,13 +1,13 @@
 # TooiyumeRender 升级执行表（交接文档）
 
 > 用途：**跨会话复用**。新会话直接读本文件即可恢复全部上下文，无需重读长对话。
-> 最后更新：2026-10-27 ｜ 当前进度：**R0 ✅ R1 ✅ R2 ✅ R3 ✅ R4 ✅ R5 ✅ VS 环境验证 ✅ R6（D3 光线效果）✅ → 待定（D4 接材质 / Soft Shadow / 多模型）**
+> 最后更新：2026-10-28 ｜ 当前进度：**R0 ✅ R1 ✅ R2 ✅ R3 ✅ R4 ✅ R5 ✅ VS 环境验证 ✅ R6（D3 光线效果）✅ R7（D4 接材质）✅ → 待定（DXR IBL/点光源 / Soft Shadow / alpha test / 多模型）**
 
 ---
 
 ## 0. 一句话状态
 
-项目是 DX12 渲染器（C++20 / HLSL / CMake / vcpkg）。R0 建立了可重复构建与资产基线，R1 修复了确定性渲染错误。**Deferred 路径现已正确渲染模型**（修复前模型完全不可见）。R2 已修复 Resize/最小化/相机宽高比/资源重建/backbuffer 索引 7 个缺陷并完成长宽比遍历验证。R3 已建成统一入口 `RendererDemoApp`：渲染器注册表可运行时切换 Forward/Deferred、Dear ImGui 六面板、`RenderParams` 成为参数唯一真源，并顺带修掉 Forward 全黑与一批 RHI 生命周期缺陷。**R4 已打通显示编码链**：Exposure→ACES→sRGB 成为 Lighting 与 Skybox 共用的唯一实现（修复前 Skybox 完全绕过曝光，天空 52% 像素硬截断）；Prefilter mip 上界改取真实值（4，原写死 8.0）；`m_HDRLoaded` 死标志语义修正；glTF MASK 材质接通 AlphaTest。模型区截断 23.0%→0.1%，天空 52.0%→0.0%。**R5 已把 DXR 接入统一入口**：设备能力查询与 App 请求解耦、`RequiresRaytracingSupport()` 补齐 `const override`、Shader 链支持 `lib_6_4`、BLAS/TLAS/RTPSO/SBT 全通、`DispatchRays` 输出法线色诊断画面并经统一 Present 上屏、`RayTracingRenderer` 可在 UI 切换且切回光栅无回归。**VS 环境验证已完成**：VS 2022 生成器树 Debug+Release 双配置构建通过、MSBuild 直构 `.sln` exit 0、DXR/光栅画面与 Ninja 版逐字节相同、Debug Layer（含 GPU-Based Validation）零 ERROR；过程中修掉 `DeployRuntimeDlls.cmake` 多配置选错 DLL 变体、MSBuild 被重复 proxy 环境变量打断两个真实缺陷。**R6 / D3 已完成**：`RayTracing.hlsl` 从「法线色诊断」升级为「硬阴影射线 + 单次反射」——独立 `ShadowPayload`（8 B）+ SBT miss 表第二条 `ShadowMiss`、`SKIP_CLOSEST_HIT_SHADER` 避免载荷类型错配、递归闸门 `Depth>=1` 早退（越界会移除设备）、唯一偏差为沿法线的 `RTShadowNormalBias`（0.002 m）、Schlick Fresnel 反射混合、4 条调试通道；`RenderParams` 新增 6 个 RT 字段并接到独立「Ray Tracing (R6)」面板（开关/偏差/通道/发射数统计）。`-R6Test` 12 步单变量 A/B 证明：阴影开关改像素 1.61%、反射强度 0 与关闭像素级等价、来回切换后精确复原、Debug/Release 11 张渲染图 md5 全同。**并修掉一个致命的构建系统缺陷**：`msvc_deps_prefix` 在 ACP≠控制台代码页时被双重编码 → `ninja -t deps` 全 `#deps 0` → 改任何 `.h` 都不重编（静默、编译全绿但运行时布局错位）。下一步：D4（接材质）/ Soft Shadow / 多模型 DXR 视觉验证。
+项目是 DX12 渲染器（C++20 / HLSL / CMake / vcpkg）。R0 建立了可重复构建与资产基线，R1 修复了确定性渲染错误。**Deferred 路径现已正确渲染模型**（修复前模型完全不可见）。R2 已修复 Resize/最小化/相机宽高比/资源重建/backbuffer 索引 7 个缺陷并完成长宽比遍历验证。R3 已建成统一入口 `RendererDemoApp`：渲染器注册表可运行时切换 Forward/Deferred、Dear ImGui 六面板、`RenderParams` 成为参数唯一真源，并顺带修掉 Forward 全黑与一批 RHI 生命周期缺陷。**R4 已打通显示编码链**：Exposure→ACES→sRGB 成为 Lighting 与 Skybox 共用的唯一实现（修复前 Skybox 完全绕过曝光，天空 52% 像素硬截断）；Prefilter mip 上界改取真实值（4，原写死 8.0）；`m_HDRLoaded` 死标志语义修正；glTF MASK 材质接通 AlphaTest。模型区截断 23.0%→0.1%，天空 52.0%→0.0%。**R5 已把 DXR 接入统一入口**：设备能力查询与 App 请求解耦、`RequiresRaytracingSupport()` 补齐 `const override`、Shader 链支持 `lib_6_4`、BLAS/TLAS/RTPSO/SBT 全通、`DispatchRays` 输出法线色诊断画面并经统一 Present 上屏、`RayTracingRenderer` 可在 UI 切换且切回光栅无回归。**VS 环境验证已完成**：VS 2022 生成器树 Debug+Release 双配置构建通过、MSBuild 直构 `.sln` exit 0、DXR/光栅画面与 Ninja 版逐字节相同、Debug Layer（含 GPU-Based Validation）零 ERROR；过程中修掉 `DeployRuntimeDlls.cmake` 多配置选错 DLL 变体、MSBuild 被重复 proxy 环境变量打断两个真实缺陷。**R6 / D3 已完成**：`RayTracing.hlsl` 从「法线色诊断」升级为「硬阴影射线 + 单次反射」——独立 `ShadowPayload`（8 B）+ SBT miss 表第二条 `ShadowMiss`、`SKIP_CLOSEST_HIT_SHADER` 避免载荷类型错配、递归闸门 `Depth>=1` 早退（越界会移除设备）、唯一偏差为沿法线的 `RTShadowNormalBias`（0.002 m）、Schlick Fresnel 反射混合、4 条调试通道；`RenderParams` 新增 6 个 RT 字段并接到独立「Ray Tracing (R6)」面板（开关/偏差/通道/发射数统计）。`-R6Test` 12 步单变量 A/B 证明：阴影开关改像素 1.61%、反射强度 0 与关闭像素级等价、来回切换后精确复原、Debug/Release 11 张渲染图 md5 全同。**并修掉一个致命的构建系统缺陷**：`msvc_deps_prefix` 在 ACP≠控制台代码页时被双重编码 → `ninja -t deps` 全 `#deps 0` → 改任何 `.h` 都不重编（静默、编译全绿但运行时布局错位）。**R7 / D4 已完成**：DXR 的 `ClosestHit` 从「中性灰 albedo + Lambert」升级为「真实 BaseColor 贴图 × 材质因子 + GGX/Cook-Torrance」——根签名扩 6 参数（t3 无界 SRV 表 + s0 静态采样器）、输出 UAV 与贴图 SRV 合并进同一张 `s_TextureHeap`、每实例数据 32 B → 96 B（UV 偏移/顶点标志/材质索引/SRV 表偏移/5 个材质标量）、`LoadVertexUv` 手拆半字 + `f16tof32`、`NonUniformResourceIndex` 动态索引。**两个正交开关 `EnableMaterialTextures` / `EnableGGX` 做出 2×2 可自我证伪矩阵**：全关（A5a）逐字节等于 R6 基线 `a43b6059…`，四个 md5 互不相同证明两变量可分离归因；**A7 对照通过**（DXR BaseColor vs Deferred BaseColor：`mean|diff| 2.9` / `corr 0.993` / `identical≤2 占 81.9%`，修复前是 67.2 / 0.52）；**A6 光栅零回归**（`16c8aeec…` 与 R5/R6ctl 完全相同）；Debug/Release 9 张渲染图 md5 全同。本轮最隐蔽的坑：`ByteAddressBuffer::Load<float2>` 读 4 字节 `R16G16_FLOAT` UV → 越界拼入下一属性、uv 变 denormal ≈(0,0)、整张贴图退化成纯色且**不报任何错**。下一步：DXR IBL/点光源（U1 观感偏暗的主因）、Soft Shadow、alpha test、多模型验证。
 
 ---
 
@@ -37,7 +37,9 @@
 | **R4** 光栅 PBR 闭环 | P1 | 曝光/ACES/sRGB 统一链、Prefilter mip 上界、IBL 状态机、AlphaTest | ✅ **完成** |
 | R5 DXR 最小闭环 | P1 | D0 设备能力 → D1 AS 构建 → D2 DispatchRays | ✅ **完成**（含 VS 环境验证，见 §6d） |
 | R6 / D3 光追算法 | P2 | 硬阴影射线、单次反射、偏差策略、性能统计、开关 | ✅ **完成**（见 §6e） |
+| R7 / D4 光追接材质 | P2 | BaseColor 贴图 + GGX/Cook-Torrance、2×2 正交开关、调试通道对照 | ✅ **完成**（见 §6f） |
 | R6 扩展与加固 | P2 | Shadow Map、透明、SSAO、TAA、热重载、文档清理 | ⬜ 未开始 |
+| P1 光追 IBL 与多光源 | P2 | IBL 预过滤接进 DXR、点光源、alpha test（R7 遗留 L1-L3） | ⬜ 未开始 |
 
 **硬性要求**：每个阶段必须通过「干净构建 + 实际运行 + 可观察证据」三项验收后才能进入下一阶段。每次施工完成后在 `docs/AI` 产出学习文档。
 
@@ -405,6 +407,98 @@
 
 ---
 
+## 6f. R7 / D4 光追接材质（✅ 2026-10-28 完成）
+
+**一句话**：DXR 的 `ClosestHit` 从「中性灰 albedo + Lambert」升级为「真实 BaseColor 贴图 × 材质因子 + GGX/Cook-Torrance」，并用**两个正交开关**做出 2×2 可自我证伪的验收矩阵。
+施工日志：`docs/AIWorkLogs/TR-20261028-01_R7-材质接驳.md`（527 行）。设计方案：`docs/AI/R7_材质接驳_设计方案.md`（576 行，含拍板记录）。
+
+### 6f.1 拍板结果（m03148）
+
+| 编号 | 决策 | 结果 |
+|---|---|---|
+| D1 | sRGB 采样语义 | **(a) 保持 linear** —— 与光栅现状一致（光栅也不走 sRGB，属既有缺陷，单独立项） |
+| D2 | 光照模型 | **(b) P0 就上 GGX/Cook-Torrance**（不是先 Lambert） |
+| D3 | 贴图范围 | **(a) 只做 BaseColor**，MR / AO / Emissive / Normal 留 P1 |
+| D4 | alpha test | **(a) 留到 P2** |
+| D5 | 调试通道 | **采纳** `RayTracingDebugView::BaseColor = 5` |
+| D6 | 贴图寻址 | **方案 A（无界 SRV 表）施工**，方案 B（SBT 本地根签名）留演进 |
+
+因为 D2 让 P0 同时改「接贴图」与「换光照模型」两个变量，为可归因必须拆出两个正交开关 —— 这是本轮设计的核心。
+
+### 6f.2 交付内容
+
+| # | 项 | 落点 |
+|---|---|---|
+| 1 | 两个正交开关 | `RenderParams.h`：`EnableMaterialTextures` / `EnableGGX`（默认均 true） |
+| 2 | 每实例数据 32 B → 96 B | `RaytracingScene.h`：+`UvByteOffset` / `VertexFlags` / `MaterialIndex` / `SrvTableIndex` / `BaseColorFactor[4]` / `EmissiveFactor[3]` / `NormalTextureScale` / `MetallicFactor` / `RoughnessFactor` / `MaterialFlags` / `_padding` |
+| 3 | 材质 CPU 副本 | `Model.h` 新增 `m_MaterialConstantData`（建 BLAS 时要烘进每实例数据，GPU 常量缓冲在 DEFAULT 堆无法 Map） |
+| 4 | UV 读取 | `RayTracing.hlsl::LoadVertexUv`：`Load<uint>` 取 32 位字 → 拆半字 → `f16tof32` |
+| 5 | 贴图采样 | `LoadInstanceAlbedo`：重心插值 3 个顶点 UV → `g_Textures[NonUniformResourceIndex(srvBase)]` → `SampleLevel(...,0)` × `baseColorFactor` |
+| 6 | GGX/Cook-Torrance | `DistributionGGX` + `VisibilitySmithGGXCorrelated`（已含 1/(4·nDotV·nDotL)）+ `FresnelSchlick`；`diffuseBRDF = kd*albedo/π` |
+| 7 | 根签名扩 6 参数 | `RayTracing.cpp:288`：`InitAsDescriptorRange(SRV, 3, UINT_MAX)` + `InitStaticSampler(0)`；b0 从 48 → 52 DWORD |
+| 8 | 描述符堆合并 | 输出 UAV 与贴图 SRV 同进 `s_TextureHeap`（D3D12 一个命令列表只能绑一个 CBV_SRV_UAV 堆）；0 号槽 = 输出 UAV |
+| 9 | 调试通道不过编码链 | `bypassDisplay = (debugView != 0) && (HitDistance >= 0)` → 与 Deferred 的调试通道同样是「原始缓冲区数值」 |
+| 10 | UI + 脚本化验收 | 面板加两个 Checkbox + 6 项通道下拉；`-R7Test` 11 步 |
+
+### 6f.3 三条硬证据
+
+**① A5a 逐字节回归（可自我证伪点）**
+
+| 对照 | md5 | 结论 |
+|---|---|---|
+| A5a（贴图关 + GGX 关） | **`a43b605977a626e747c91559dcb1bb7f`** | **== R6 基线，逐字节** |
+| A5b（贴图关 + GGX 开） | `fdd4d354135f4ba57316a15f93012c93` | ≠ 基线 → GGX 真的生效 |
+| A5c（贴图开 + GGX 关） | `3c952bcbe770b9b66e59b8b4889661da` | ≠ 基线 → 贴图真的生效 |
+| A5d（都开） | `2a52634f375a0d8bddc338e79c56e289` | ≠ 其余三者 → 两变量正交 |
+
+四个 md5 互不相同 + 全关等于 R6 → **两个开关各自独立生效且可分离归因**。
+
+**② A7：Deferred ↔ DXR 的 BaseColor 一致（通过）**
+
+模型 mask（`|defBase − Deferred最终画面| > 10`，81174 px）：
+```
+DXR  base mean [178.13, 178.53, 205.39]
+DEF  base mean [177.52, 177.90, 204.75]
+mean|diff|  2.9      median 1.0      identical(<=2) 81.9%      diff>30 2.1%
+亮度相关系数 0.993
+```
+修复前是 `mean|diff| 67.2 / corr 0.52` → **提升 23 倍**。人工判读（`_cmp4.png` 三栏 2× 放大）两张图肉眼几乎不可区分。
+残留 2.1% 已归因：R7 用 `SampleLevel(...,0)` 强制 mip0，光栅用 `Sample` 自动 LOD（含各向异性）；且 R7 写 alpha=1，光栅写 alpha=ao。
+
+**③ A6：光栅零回归（通过）**
+```
+docs/AI/R7ctl/screenshot_90.png  =  16c8aeec294844b9e3fedde4df78a349
+docs/AI/R6ctl/screenshot_90.png  =  16c8aeec294844b9e3fedde4df78a349   ← 相同
+docs/AI/R5ctl/screenshot_90.png  =  16c8aeec294844b9e3fedde4df78a349   ← 相同
+```
+R7 对光栅路径**零字节影响**。
+
+**④ 其他一致性**
+- `r7_00 == r7_08`（11 步来回切参数后精确复原）
+- `r7_06 == r7_04`（切 Deferred 再切回 DXR，描述符偏移重算正确，零漂移）
+- Debug / Release 9 张渲染图 md5 **全同**（见 `docs/AI/R7test_rel/README.md`）
+- `grep -c "D3D12 ERROR"` = **0**
+
+### 6f.4 本轮最隐蔽的坑（值得单独记）
+
+`ByteAddressBuffer::Load<T>` 是**按 T 的字节宽度裸位拷贝，不做格式转换**。
+`LoadVertexUv` 第一版写 `g_SceneData.Load<float2>(addr & ~3u)` 想读 4 字节的 `R16G16_FLOAT` UV —— 实际读了 8 字节，把**下一个属性的 4 字节**拼进来当第二个 float 解释 → uv 变成 ~1e-38 的 denormal，等价于 `(0,0)`。
+
+后果：整张贴图退化成「每个材质一片纯色」，布料褶皱与脸上画好的眼睛全部消失，**但不报任何错、不崩、日志正常、截图看起来"确实有颜色"**。极易误判为"已经接上了"。
+正确写法：`Load<uint>` → 拆半字 → `f16tof32`（与 `LoadIndex` 处理 16 位索引完全一致）。
+
+### 6f.5 未验证项
+
+| # | 项 | 说明 |
+|---|---|---|
+| U1 | **DXR 最终着色比 Deferred 暗** | 模型区中位亮度 DXR `47` vs Deferred `211`（0-255）。三条原因已定位：无 IBL 预过滤贴图、无点光源、无 BRDF LUT。是 D3「只做 BaseColor」的合成结果，不是 bug，归 **P1** |
+| U2 | alpha test 未做 | D4 拍板留 P2，`GEOMETRY_FLAG_OPAQUE` 恒真 |
+| U3 | 单模型 / 单 draw 未验证 | `StartIndex` / `BaseVertex` 填充时恒 0；`LoadVertexUv` 里用 `baseVertex + iN`，若索引本身已是绝对索引会重复偏移 —— 单模型无影响，**多模型场景需复核** |
+| U4 | 真 VS GUI 里点 F5 | AI 无 GUI 能力 |
+| U5 | 仅 merlin 一个模型 | Saber 未跑 DXR 路径 |
+
+---
+
 ## 7. 已知遗留问题
 
 | 问题 | 说明 | 归属 |
@@ -419,15 +513,19 @@
 | 架构自检 6 项 RED | ai-check.ps1 报 R1/R2/R3/R4/R13/R9 红灯，**R4 之前即已存在**，属 WP0–WP8 排期债 | WP0–WP8 |
 | **VS 环境验证（R5）** | **✅ 已完成 2026-10-27**（详见 §6d）：VS 生成器树 `out/build/vs2022` 配置+构建成功、MSBuild 直构 `.sln` exit 0、Debug/Release 双配置运行通过、DXR 画面与 Ninja 版逐字节相同（md5 `1bea89b2…`）、Debug Layer + GPU-Based Validation 零 ERROR。**过程中修掉 2 个真实缺陷**：`DeployRuntimeDlls.cmake` 的 `CMAKE_BUILD_TYPE` 判断在多配置生成器下恒真（Release 误部署调试版 DLL）、MSBuild 被重复 proxy 环境变量（`NO_PROXY`/`no_proxy`）打断报假错「找不到编译器」 | ✅ 完成 |
 | **R6 光追算法（D3）** | **✅ 已完成 2026-10-27**（详见 §6e）：硬阴影射线 + 单次反射 + 4 条调试通道 + 独立「Ray Tracing (R6)」面板 + `-R6Test` 12 步 A/B。md5 证明阴影开关改像素 1.61%、反射强度 0 与关闭像素级等价、来回切换精确复原、Debug/Release 11 张渲染图全同、光栅对照 `16c8aeec…` 无回归。**同轮修掉致命构建缺陷**：`msvc_deps_prefix` 在 ACP≠控制台代码页时双重编码 → `ninja -t deps` 全 `#deps 0` → 改任何 `.h` 都不重编（静默，编译全绿但运行时布局错位） | ✅ 完成 |
-| DXR Tier 日志格式 | `GraphicsCore.cpp:219-220` 用 `tier=%d.%d`（`>>4` / `&0xF`），Tier 1.2 打印成 `0.12`。`QueryRaytracingCapability()` 返回原值，UI 不受影响。**R6 未修（仅可读性）** | 顺延（未修） |
-| DXR 未接材质 | **R6 仍未接**：D3 刻意用中性灰 albedo（`(0.8,0.8,0.8)`）+ 几何面法线，避免把材质失败面混进光追验证。`s_TextureHeap`/`s_SamplerHeap` 建了但未消费 → 观感是刻面。**反射/阴影算法本身已通** | **D4** |
-| BLAS 未去重 | BLAS 数量 = 实例数 × mesh 数 × draw 数；同一模型加载两次会重复建。**R6 未处理** | 顺延 D4+ |
-| 多模型 DXR 未视觉验证 | `Transform[i][j] = m[j][i]` 的行/列转置修复只在单模型下不显现（平移为 0），多模型场景尚未跑 | 待补测 |
+| **R7 光追接材质（D4）** | **✅ 已完成 2026-10-28**（详见 §6f）：BaseColor 贴图 + GGX/Cook-Torrance + 两个正交开关 + `RayTracingDebugView::BaseColor` 通道 + `-R7Test` 11 步。A5a 逐字节等于 R6 基线 `a43b6059…`、A5b/A5c/A5d 四 md5 互不相同、A7 对照 `mean|diff| 2.9 / corr 0.993`、A6 光栅 `16c8aeec…` 零回归、Debug/Release 9 张全同。**同轮修掉最隐蔽的 bug**：`Load<float2>` 读 4 字节 `R16G16_FLOAT` UV → uv 变 denormal ≈(0,0) → 整张贴图退化成纯色且不报错 | ✅ 完成 |
+| DXR Tier 日志格式 | `GraphicsCore.cpp:219-220` 用 `tier=%d.%d`（`>>4` / `&0xF`），Tier 1.2 打印成 `0.12`。`QueryRaytracingCapability()` 返回原值，UI 不受影响。**R6/R7 未修（仅可读性）** | 顺延（未修） |
+| ~~DXR 未接材质~~ | **✅ R7 已解决**：BaseColor 贴图 × `baseColorFactor` 已接进 `ClosestHit`，A7 对照与 Deferred 的 BaseColor 通道逐像素一致（`corr 0.993`）。**MR / AO / Emissive / Normal 贴图仍未采样**（D3 拍板只做 BaseColor），观感上 roughness 全 0.5 无空间变化 | ✅ BaseColor；其余 **P1** |
+| DXR 最终着色偏暗 | 模型区中位亮度 DXR `47` vs Deferred `211`（0-255）。三条原因已定位：无 IBL 预过滤贴图、无点光源、无 BRDF LUT。是 D3「只做 BaseColor」+ 无 IBL 的合成结果，**不是 bug**，但观感差距大 | **P1（DXR IBL）** |
+| BLAS 未去重 | BLAS 数量 = 实例数 × mesh 数 × draw 数；同一模型加载两次会重复建。**R6/R7 未处理** | 顺延 |
+| 多模型 DXR 未视觉验证 | `Transform[i][j] = m[j][i]` 的行/列转置修复只在单模型下不显现（平移为 0），多模型场景尚未跑。另 `LoadVertexUv` 里用 `baseVertex + iN`，若索引本身已是绝对索引会重复偏移 —— 单模型无影响 | 待补测（R7 U3） |
 | 未用 `RAYTRACING_ACCELERATION_STRUCTURE` 资源标志 | 本机 `d3d12.dll` 10.0.19041 不认该标志（#719），只能用 `ALLOW_UNORDERED_ACCESS` + AS 初始状态 | 保持现状（已写注释） |
-| DXR 反射噪点 | 每像素 1 条反射射线、无累积缓冲、无降噪 → 有可见噪点。**刻意的**：D3 只要求算法链路通；降噪需要时间累积，属 D4+ | D4+ |
-| DXR 阴影不做 alpha test | 阴影射线用 `SKIP_CLOSEST_HIT_SHADER`，不采样贴图 alpha → 镂空/叶片/布料会投实心影。接材质时一并做 | D4 |
-| DXR 不消费点光源与 IBL | HLSL 只有方向光 + 程序化 `SkyColor`。UI 上这两段在 DXR 下已 `BeginDisabled` 并注明原因，不放假控件 | D4+ |
-| R6 统计滞后一帧 | `RayTracingFrameStats` 在 `Render` 末尾写、`LogState` 在 `Update` 开头读 → 日志里射线数比当前帧参数晚一帧。读数现象非缺陷，已在日志与文档注明 | 保持现状 |
+| DXR 反射噪点 | 每像素 1 条反射射线、无累积缓冲、无降噪 → 有可见噪点。**刻意的**：只要求算法链路通；降噪需要时间累积 | 后续 |
+| DXR 阴影不做 alpha test | 阴影射线用 `SKIP_CLOSEST_HIT_SHADER`，不采样贴图 alpha → 镂空/叶片/布料会投实心影。**R7 仍未做**（D4 拍板留 P2） | **P2** |
+| DXR 不消费点光源与 IBL | HLSL 只有方向光 + 程序化 `SkyColor`。UI 上这两段在 DXR 下已 `BeginDisabled` 并注明原因，不放假控件。**R7 仍是只消费太阳** | **P1** |
+| R6/R7 统计滞后一帧 | `RayTracingFrameStats` 在 `Render` 末尾写、`LogState` 在 `Update` 开头读 → 日志里射线数比当前帧参数晚一帧。读数现象非缺陷，已在日志与文档注明 | 保持现状 |
+| `DrawDebugViewPanel()` 每帧无条件覆盖 `m_Params.Debug` | `RendererDemoApp.cpp:2062` 每帧执行 `m_Params.Debug = (DebugView)m_DebugViewIndex`。脚本化测试只设 `m_Params.Debug` 会被立刻覆盖回 `Final`（R7 曾因此拍出无效对照图）。**既有缺陷，R7 用「同时设两处」绕过，未修** | 记录，未修（R7 L8） |
+| sRGB 采样语义缺失 | `LoadDDSFromFile(ddsFile)` 从不传 `sRGB` 参数，`textureOptions` 里的 `kSRGB` 位被丢弃 → **光栅与光追都是 linear 读取 sRGB 编码的贴图数据**。R7 的 D1 拍板「保持 linear」是为了两边可比，缺陷本身仍在 | 独立立项 |
 
 ---
 
@@ -551,6 +649,15 @@
 58. **R6：ImGui 的 `imgui.ini` 会覆盖 `ImGuiCond_FirstUseEver`。** 改了 `SetNextWindowPos/SetNextWindowSize` 但画面没动 → 先删可执行文件目录下的 `imgui.ini`。另外 **ImGui 滑块标签画在控件右侧**，面板靠屏幕右缘时标签会被裁 → 用 `PushItemWidth()` 收窄控件。
 
 59. **R6：A/B 验证要挑「md5 必须相等」的对照组，而不只是「应该不同」的实验组。** 本轮最有说服力的三条里，两条是等价关系：`反射强度=0` 与 `反射关` 像素级等价（`a43b6059…`）、11 步来回切参数后 `r6_10_restored` 与基线完全相同。**「能改」只能证明参数传到了 shader，「能还原」才证明没有隐藏状态残留。**
+60. **R7：`ByteAddressBuffer::Load<T>` 是「按 T 的字节宽度裸位拷贝」，不做任何格式转换。** 想读 4 字节的 `R16G16_FLOAT` UV 却写 `Load<float2>`（8 字节）→ 把**下一个属性的 4 字节**拼进来当第二个 float 解释 → uv 变成 ~1e-38 的 denormal（≈`(0,0)`）。后果：整张贴图退化成「每个材质一片纯色」，布料褶皱与脸上画好的眼睛全部消失，**但不报错、不崩、日志正常、截图看起来"确实有颜色"**。正确做法与 `LoadIndex` 处理 16 位索引一致：`Load<uint>` → 拆半字 → `f16tof32`。**这类"通了一半"的错比全黑更难查**，因为全黑会立刻怀疑；"有颜色"会被当成已完成。**本轮花了最多时间的就是这一个 bug。**
+61. **R7：`DescriptorHeap::GetHeapPointer()` 返回 `ID3D12DescriptorHeap*`，不是 GPU 描述符句柄。** 写成 `(D3D12_GPU_DESCRIPTOR_HANDLE)heap.GetHeapPointer()` **编译通过但值完全错** → 采样越界 → 全黑。必须用 `heap[offset]`（`operator[]` 才返回正确的 `DescriptorHandle`）。凡是"编过了但画面全黑"的，优先怀疑这类句柄强转。
+62. **R7：D3D12 一个命令列表同时只能绑一个 CBV_SRV_UAV 堆 + 一个 SAMPLER 堆。** 所以「输出 UAV 用一张堆、贴图 SRV 用另一张堆」是不可能的 —— 必须合并。合并时要注意**分配顺序**：输出 UAV 必须在加载模型前占住 0 号槽，否则会被第一个材质的 BaseColor 抢走。这条约束是「先有 R5 的独立小堆、R7 才要接贴图」时最容易漏掉的架构债。
+63. **R7：`VisibilitySmithGGXCorrelated` 返回值里**已经含 `1/(4·nDotV·nDotL)`。再乘一遍分母会让高光暗 4 倍以上。同理，Lambert 漫反射必须 `/π`（`albedo/π`），漏了会亮 3.14 倍 —— R6 的 `albedo * radiance * nDotL` 就是漏了 `/π`，这也是 A5a 与 A5b/A5c 亮度差的一部分原因。
+64. **R7：调试通道必须在显示编码链（曝光/ACES/sRGB）之前 return。** 光栅侧 `LightingPS.hlsl:188-216` 一直如此（注释写明"要显示的是缓冲区的原始数值"），但 DXR 侧原先无条件过 `EncodeDisplayColor` → **同一个通道名在两条路径下画出的不是同一个东西**，A7 对照因此完全无效（比出来 `mean|diff| 67.2`，修完是 `2.9`）。**做跨路径比对前，先确认两边比的是同一个量。**
+65. **R7：`DrawDebugViewPanel()` 每帧无条件覆盖 `m_Params.Debug`。** 脚本化测试里只设 `m_Params.Debug = BaseColor` 会被下一帧 UI 覆盖回 `Final`。必须**同时**设 `m_DebugViewIndex` 与 `m_Params.Debug`。**凡是"UI 每帧重算"的参数，脚本化测试都要考虑覆盖问题** —— 这是自动化测试与"人点 UI"最大的差异。
+66. **R7：脚本化验收必须显式指定 `-StartRenderer`。** 忘了传 → 第 0–4 步全在 Deferred 下跑，5 张 PNG 全是同一个 Deferred 画面（1734511 B）。**日志里每步都打了 `renderer=...`，只要看一眼就能发现** —— 加这类"回声"日志的成本极低，收益极高。
+67. **R7：GPU-Based Validation 开启时加载 1 个模型约需 40 秒。** 35 秒杀进程会误判成"崩溃"（日志停在初始化完成）。正确等待 ≥ 75 秒。**判"崩没崩"要看 cdb 有没有 `sxe 87a` / `sxe av` 触发，不要看"日志停在哪"。**
+68. **R7：材质标量必须烘进 `ByteAddressBuffer`，不能指望 ray shader 读 GPU 常量缓冲。** ray shader 只能解引用描述符（CBV/SRV）或根级句柄；`Model::m_MaterialConstants` 的 GPU 地址是运行时 `uint64` 值，HLSL 无法把它当地址解引用。代价：每实例 96 B（+64 B × 15 实例 = 960 B，可忽略）。**这也正是"方案 B（SBT 本地根签名）"存在的理由** —— 它能把材质放进常量而不是每实例数据里。
 
 ---
 
@@ -596,7 +703,19 @@ DeferredApp.exe -Screenshot D:\shots
 
 rem R3 验收自测（11 步，自动退出）
 scripts\run.bat Debug RendererDemo -R3Test D:\CS-Self-Study\Computer_Graphics\DX12\TooiyumeRender\docs\AI\R3
+
+rem R6 验收自测（12 步，硬阴影/反射 A/B）
+scripts\run.bat Debug RendererDemo -StartRenderer RayTracingRenderer -R6Test D:\...\docs\AI\R6test
+
+rem R7 验收自测（11 步，贴图/GGX 2x2）
+rem   *** 必须与 -StartRenderer RayTracingRenderer 同用 ***
+rem   否则第 0-4 步全在 Deferred 下跑，5 张 PNG 全是同一个 Deferred 画面
+scripts\run.bat Debug RendererDemo -StartRenderer RayTracingRenderer -R7Test D:\...\docs\AI\R7test2
 ```
+
+> **R7 运行注意**：开启 GPU-Based Validation 时加载 1 个模型约需 **40 秒**，
+> 截图脚本的等待时间必须 ≥ 75 秒，否则会误判成"崩溃"（日志停在初始化完成）。
+> 判"崩没崩"看 cdb 的 `sxe 87a` / `sxe av` 有没有触发，不要看"日志停在哪"。
 
 ---
 
@@ -651,6 +770,19 @@ scripts\run.bat Debug RendererDemo -R3Test D:\CS-Self-Study\Computer_Graphics\DX
 | `docs/AI/R6test_rel/` | Release 版 `-R6Test`：11 张渲染图 md5 与 Debug 相同（已去重只留 README + 唯一不同的 `r6_11_imgui_panel.png`） | **新增**（R6） |
 | `docs/AI/R6ctl/` | 光栅对照（`16c8aeec…`，与 R5ctl 同 md5） | **新增**（R6） |
 | `docs/AI/R6switch/` | `-R3Test` 切换链路证据（`r3_00`~`r3_06` + README；`r3_07`/`r3_08` 与 R5 同 md5 故去重） | **新增**（R6） |
+| `Engine/Shader/07_RayTracing/RayTracing.hlsl` | **R7 再改**：`Texture2D<float4> g_Textures[] : register(t3)`（无界）、`SamplerState g_MaterialSampler : register(s0)`、`LoadVertexUv`（**手拆半字 + `f16tof32`**，不能用 `Load<float2>`）、`LoadInstanceAlbedo`、GGX 三函数、`ClosestHit` 双分支、`bypassDisplay` | R7（D4） |
+| `Engine/04_Renderer/Renderer/RayTracing/RaytracingScene.h:60-115` | `RaytracingInstanceData` **32 B → 96 B**（+UV 偏移/顶点标志/材质索引/SRV 表偏移/5 个材质标量）；`kTexturesPerMaterial=5` / `kMaxMaterialEntries=512` | R7 |
+| `Engine/04_Renderer/Renderer/RayTracing/RaytracingScene.cpp:300-360` | 填新字段（UV 偏移推导 `12+4+(hasTangent?4:0)`；用 `mesh.materialSlotIdx` 查 `m_Materials[]`，因为 `mesh.srvTable` 是死字段） | R7 |
+| `Engine/04_Renderer/Renderer/RayTracing/RayTracingRenderer.cpp:288` | 根签名 6 参数 + `InitAsDescriptorRange(SRV, 3, UINT_MAX)` + `InitStaticSampler(0)`；b0 48→52 DWORD | R7 |
+| `Engine/04_Renderer/Renderer/RayTracing/RayTracingRenderer.cpp:120-130` | **输出 UAV 与贴图 SRV 合并进同一张 `s_TextureHeap`**（D3D12 一个命令列表只能绑一个 CBV_SRV_UAV 堆），0 号槽 = 输出 UAV | R7 |
+| `Engine/04_Renderer/RenderParams.h` | 两个**正交开关** `EnableMaterialTextures` / `EnableGGX` + `RayTracingDebugView::BaseColor = 5` | R7 |
+| `Engine/05_Scene/Model/Model.h` | 新增 `m_MaterialConstantData`（材质 CPU 副本，建 BLAS 时烘进每实例数据） | R7 |
+| `Demos/RendererDemoApp/RendererDemoApp.cpp` | `RunR7Test()`（`-R7Test` 11 步 2×2 验收）+ 面板两个 Checkbox + 6 项调试通道 | R7 |
+| `docs/AI/R7_材质接驳_设计方案.md` | R7 设计方案（含拍板记录 D1-D6、三条硬约束、方案 A/B/C 对比） | **新增**（R7） |
+| `docs/AIWorkLogs/TR-20261028-01_R7-材质接驳.md` | R7 施工日志（13 节 + 9 条踩坑） | **新增**（R7） |
+| `docs/AI/R7test2/` | 11 步 2×2 验收证据（A5a/A5b/A5c/A5d/A7 对照） | **新增**（R7） |
+| `docs/AI/R7test_rel/` | Release 版 `-R7Test`：9 张渲染图 md5 与 Debug 相同（已去重只留 README + 唯一不同的 `r7_09_imgui_panel.png`） | **新增**（R7） |
+| `docs/AI/R7/`、`docs/AI/R7ctl/` | DXR 最终着色 / 光栅对照（各 1 张，已按 md5 去重） | **新增**（R7） |
 
 ---
 
@@ -658,6 +790,7 @@ scripts\run.bat Debug RendererDemo -R3Test D:\CS-Self-Study\Computer_Graphics\DX
 
 1. 读本文件 `docs/AI/R_执行表.md`
 2. 需要细节时再读对应阶段文档：`R0_*.md` / `R1_*.md` / `R2/R2_生命周期与窗口稳定性.md` / `R3/R3_统一入口与交互工作台.md`
-3. **R5、VS 环境验证、R6（D3 光追算法）均已完成**（2026-10-27）。R6 细节见 §6e，施工日志 `docs/AIWorkLogs/TR-20261027-03_R6-光追算法.md`。**接手前必看**：`scripts/build.bat` 的代码页修复（否则所有「改了代码没生效」都会被误判成代码 bug）。VS 侧：`out/build/vs2022`（VS 2022 生成器）Debug+Release 双配置构建通过、MSBuild 直构 `.sln` 通过、运行通过、画面与 Ninja 版逐字节一致、Debug Layer 零 ERROR。详见 §6d
-4. 施工日志模板：`docs/AIWorkLogs/_TEMPLATE_WP_施工日志.md`；最近示例：`docs/AIWorkLogs/TR-20261027-01_R5-DXR最小闭环.md`（含 17 条 R5 教训）、`docs/AIWorkLogs/TR-20261027-02_R5-VS环境验证.md`（含 VS 环境 6 条教训）
-5. 注意：**不要重复踩过的坑**（见 §8）。R5 新增第 31–45 条（其中「DispatchRays 用计算根签名」「HLSL 缺 row_major」「shader 头依赖漏挂」三条各花了数小时）；R6 新增第 52–59 条（**第 52 条 `msvc_deps_prefix` 最危险 —— 它让所有头文件改动静默失效**）。
+3. **R5、VS 环境验证、R6（D3 光追算法）、R7（D4 光追接材质）均已完成**（R5/R6 于 2026-10-27，R7 于 2026-10-28）。R6 细节见 §6e（日志 `docs/AIWorkLogs/TR-20261027-03_R6-光追算法.md`）；**R7 细节见 §6f**（日志 `docs/AIWorkLogs/TR-20261028-01_R7-材质接驳.md`、方案 `docs/AI/R7_材质接驳_设计方案.md`）。**接手前必看两条**：① `scripts/build.bat` 的代码页修复（否则所有「改了代码没生效」都会被误判成代码 bug）；② `ByteAddressBuffer::Load<T>` 不做格式转换（R7 因此把 UV 读成 denormal，整张贴图退化成纯色且不报错）。VS 侧：`out/build/vs2022`（VS 2022 生成器）Debug+Release 双配置构建通过、MSBuild 直构 `.sln` 通过、运行通过、画面与 Ninja 版逐字节一致、Debug Layer 零 ERROR。详见 §6d
+4. 施工日志模板：`docs/AIWorkLogs/_TEMPLATE_WP_施工日志.md`；最近示例：`docs/AIWorkLogs/TR-20261027-01_R5-DXR最小闭环.md`（含 17 条 R5 教训）、`docs/AIWorkLogs/TR-20261027-02_R5-VS环境验证.md`（含 VS 环境 6 条教训）、`docs/AIWorkLogs/TR-20261028-01_R7-材质接驳.md`（含 9 条 R7 踩坑）
+5. 注意：**不要重复踩过的坑**（见 §8）。R5 新增第 31–45 条（其中「DispatchRays 用计算根签名」「HLSL 缺 row_major」「shader 头依赖漏挂」三条各花了数小时）；R6 新增第 52–59 条（**第 52 条 `msvc_deps_prefix` 最危险 —— 它让所有头文件改动静默失效**）；**R7 新增第 60–68 条**（**第 60 条 `Load<float2>` 读 4 字节 UV 是本仓最隐蔽的 bug —— 画面"有颜色"却完全错，且不报任何错**）。
+6. **R7 之后的可开工项**：DXR IBL/点光源（§7 表「DXR 最终着色偏暗」，观感差距最大的一项）、alpha test（`AnyHit` + `IgnoreHit()`）、MR/Normal/AO/Emissive 贴图、多模型 DXR 验证（`baseVertex` 语义复核）、Soft Shadow。

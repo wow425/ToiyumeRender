@@ -398,6 +398,11 @@ std::shared_ptr<Scene::Model::Model> Scene::Model::LoadModel(const std::wstring&
 	// 调用内部函数，真正去触发或绑定这些纹理资源 (SRV 创建等)。
 	LoadMaterials(*model, materialTextures, materialConstantData, textureNames, textureOptions, basePath);
 
+	// R7：留一份材质标量的 CPU 副本，供光追路径在建 BLAS 时烘进每实例数据。
+	// 与上行到 GPU 的 m_MaterialConstants 用的是**同一份** materialConstantData，
+	// 因此不会出现「光栅一套、光追另一套」的不一致。
+	model->m_MaterialConstantData = materialConstantData;
+
 	// 包围盒
 	model->m_BoundingSphere = Math::BoundingSphere(*(XMFLOAT4*)header.boundingSphere);
 	model->m_BoundingBox = Math::AxisAlignedBox(Math::Vector3(*(XMFLOAT3*)header.minPos), Math::Vector3(*(XMFLOAT3*)header.maxPos));

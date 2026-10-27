@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // RendererDemoApp —— R3 统一入口
 // ------------------------------------------------------------
 // 它和三个旧 Demo 的区别只有一句话：
@@ -214,6 +214,18 @@ private:
 	//   调试通道   -> 直接把 visibility / 反射色 / 命中距离画出来
 	void RunR6Test(void);
 
+	// ---- R7 脚本化验收（-R7Test <dir>）----
+	// R7/D4 的验收对象是「贴图颜色到底有没有进着色」以及「GGX 有没有真的替换
+	// 掉 Lambert」。这两件事在 P0 里是**同时**引入的，因此单看一张图无法归因：
+	//   贴图接错（UV 偏移错/描述符表越界/采样器错）与 BRDF 换掉，都会让画面变化。
+	// 所以这里用 2×2 矩阵把两个变量解耦：
+	//   A5a 贴图关 + GGX 关 -> 必须逐字节等于 R6 基线 md5 a43b6059…（可自我证伪）
+	//   A5b 贴图关 + GGX 开 -> 只有高光变化，颜色仍是中性灰
+	//   A5c 贴图开 + GGX 关 -> 有颜色但仍是 Lambert
+	//   A5d 贴图开 + GGX 开 -> P0 的最终画面
+	// 另外单独取证 BaseColor 调试通道（与 DeferredRenderer 的同一通道逐像素比对）。
+	void RunR7Test(void);
+
 	// ---- 每帧 ----
 	void DrawPanels(void);
 	void DrawPerformancePanel(void);
@@ -306,6 +318,11 @@ private:
 	std::wstring m_R6TestDir;
 	int          m_R6TestStep = 0;
 	int          m_R6TestFrame = 0;
+
+	bool         m_R7TestMode = false;
+	std::wstring m_R7TestDir;
+	int          m_R7TestStep = 0;
+	int          m_R7TestFrame = 0;
 	std::wstring m_R3NextCapture;      // 下一步动作执行后要截的图
 	std::wstring m_PendingCapturePath; // 本帧 RenderScene 之后要截的图（完整路径）
 
@@ -1031,6 +1048,187 @@ void RendererDemoApp::RunR6Test(void)
 }
 
 // ============================================================
+// R7 脚本化验收（-R7Test <dir>）
+// ------------------------------------------------------------
+// 与 R3Test / R4Test / R6Test 同一套约定：每一步都直接写 m_Params 的同一批
+// 字段（与 UI 勾选框完全同一条路径），截图全部走 DebugCapture 的 GPU 回读。
+//
+// 为什么必须做成 2×2 矩阵：
+//   R7 P0 同时引入了「BaseColor 贴图」与「GGX/Cook-Torrance」两个变量。
+//   只对比"R6 vs R7"的话，任何一个变量接错都会表现为"画面变了"，
+//   无法判断是贴图没进来还是 BRDF 换了。两个正交开关把四象限拆开：
+//     (贴图关, GGX关) = 必须逐字节等于 R6 基线 -> 证明 R7 没动到旧路径
+//     (贴图关, GGX开) = 中性灰 + 高光    -> 证明 GGX 单独生效
+//     (贴图开, GGX关) = 有颜色 + Lambert -> 证明贴图单独生效
+//     (贴图开, GGX开) = 最终画面
+//   其中第一象限是**可自我证伪**的：若它不等于 a43b6059…，说明 R7 改坏了
+//   默认路径，此时后面三张图无论多好看都不算通过。
+// ============================================================
+void RendererDemoApp::RunR7Test(void)
+{
+	static const int kFramesPerStep = 10;
+	if ((m_R7TestFrame++ % kFramesPerStep) != 0)
+		return;
+
+	auto LogState = [this](const wchar_t* tag)
+	{
+		LOG_INFO(L"[R7-Test] %ws renderer=%ws textures=%d ggx=%d rtDebug=%ws shadow=%d reflection=%d\n",
+			tag,
+			m_RendererName.c_str(),
+			m_Params.EnableMaterialTextures ? 1 : 0,
+			m_Params.EnableGGX ? 1 : 0,
+			Renderer::RayTracingDebugViewName(m_Params.RTDebugView),
+			m_Params.EnableRTShadow ? 1 : 0,
+			m_Params.EnableRTReflection ? 1 : 0);
+
+		if (auto* raytracing = dynamic_cast<Renderer::RayTracing::RayTracingRenderer*>(m_Renderer.get()))
+		{
+			const Renderer::RayTracing::RayTracingFrameStats& stats = raytracing->GetFrameStats();
+			LOG_INFO(L"[R7-Test]   rays: primary=%llu shadow=%llu reflection=%llu total=%llu | geo: tri=%u blas=%u inst=%u\n",
+				(unsigned long long)stats.PrimaryRays,
+				(unsigned long long)stats.ShadowRays,
+				(unsigned long long)stats.ReflectionRays,
+				(unsigned long long)stats.TotalRays,
+				stats.TriangleCount, stats.BlasCount, stats.InstanceCount);
+		}
+	};
+
+	auto RequestShot = [this](const wchar_t* fileName)
+	{
+		wchar_t path[512] = {};
+		swprintf_s(path, L"%ws\\%ws", m_R7TestDir.c_str(), fileName);
+		m_PendingCapturePath = path;
+		LOG_INFO(L"[R7-Test] step %d -> %ws\n", m_R7TestStep, path);
+	};
+
+	switch (m_R7TestStep++)
+	{
+	case 0:
+		// A5d：最终画面（贴图开 + GGX 开）。这是用户在 UI 里默认看到的组合。
+		m_Params.EnableMaterialTextures = true;
+		m_Params.EnableGGX = true;
+		m_Params.RTDebugView = Renderer::RayTracingDebugView::Shaded;
+		LogState(L"[0] A5d textures ON + GGX ON (final look)");
+		RequestShot(L"r7_00_textures_ggx.png");
+		break;
+
+	case 1:
+		// A5a：两个都关。**必须逐字节等于 R6 基线 md5 a43b6059…**
+		// 这一步是整个 R7 最关键的自我证伪点：它证明 R7 的改动在关闭时
+		// 与 R6 的着色路径完全等价（没有被顺手改掉的隐含行为）。
+		m_Params.EnableMaterialTextures = false;
+		m_Params.EnableGGX = false;
+		LogState(L"[1] A5a textures OFF + GGX OFF (must equal R6 baseline)");
+		RequestShot(L"r7_01_A5a_both_off.png");
+		break;
+
+	case 2:
+		// A5b：贴图关、GGX 开。颜色应仍是中性灰 (0.8,0.8,0.8)，
+		// 但高光分布与 A5a 不同（GGX 的 D/V/F 三项都在工作）。
+		m_Params.EnableMaterialTextures = false;
+		m_Params.EnableGGX = true;
+		LogState(L"[2] A5b textures OFF + GGX ON");
+		RequestShot(L"r7_02_A5b_ggx_only.png");
+		break;
+
+	case 3:
+		// A5c：贴图开、GGX 关。有真实颜色，但着色仍是 R6 的 Lambert + 天空环境。
+		// 与 A5d 对比可以看出 GGX 单独贡献了多少。
+		m_Params.EnableMaterialTextures = true;
+		m_Params.EnableGGX = false;
+		LogState(L"[3] A5c textures ON + GGX OFF (Lambert + textures)");
+		RequestShot(L"r7_03_A5c_textures_only.png");
+		break;
+
+	case 4:
+		// BaseColor 调试通道：这是与 DeferredRenderer 唯一能逐像素比对的通道。
+		// 两边都选 BaseColor 时基色应当一致，若不一致说明贴图寻址/UV/采样器
+		// 这条链出了问题（GGX 与光照都已被这个通道绕过，不参与比对）。
+		m_Params.EnableMaterialTextures = true;
+		m_Params.EnableGGX = true;
+		m_Params.RTDebugView = Renderer::RayTracingDebugView::BaseColor;
+		LogState(L"[4] debug view = BaseColor (compare with Deferred)");
+		RequestShot(L"r7_04_debug_basecolor.png");
+		break;
+
+	case 5:
+		// 【A7 关键对照】切到 DeferredRenderer，用**同一次运行、同一个模型、同一帧参数**
+		// 拍一张 BaseColor 通道。这是唯一能把「贴图链路对不对」变成可判定命题的办法：
+		//   若两边基色一致 → 贴图寻址/UV/采样器/baseColorFactor 全部正确；
+		//   若不一致 → 差异一定在 DXR 侧的 UV 偏移、描述符表偏移或采样器上。
+		// 为什么必须现场拍而不是拿历史 R3Test 的图比：
+		//   历史图 `docs/AI/R6switch/r3_03_basecolor.png` 是在**另一条相机/模型状态下**
+		//   拍的，模型可能不是同一个（R3Test 第 6 步会换模型），拿来比对会把
+		//   "模型不同"误判成"贴图链路错了"。
+		//
+		// 【必须同时改 m_DebugViewIndex，不能只改 m_Params.Debug】
+		//   DrawDebugViewPanel() 每帧无条件执行
+		//       m_Params.Debug = (Renderer::DebugView)m_DebugViewIndex;
+		//   （见 RendererDemoApp.cpp 的 DrawDebugViewPanel 末尾）。只设 m_Params.Debug
+		//   会在同一帧的 UI 阶段被覆盖回 Final —— 实测后果：拍出来的 Deferred 是
+		//   完整着色画面而不是 BaseColor 通道，看起来像"两边基色完全不同"，
+		//   极易被误判成 DXR 贴图链路错了。这是本轮踩到的最隐蔽的一个坑。
+		m_Params.EnableRTReflection = false;
+		m_DebugViewIndex = (int)Renderer::DebugView::BaseColor;
+		m_Params.Debug = Renderer::DebugView::BaseColor;
+		SwitchRenderer(L"DeferredRenderer");
+		LogState(L"[5] A7 deferred BaseColor (same model, same frame)");
+		RequestShot(L"r7_05_deferred_basecolor.png");
+		break;
+
+	case 6:
+		// 切回 DXR 并恢复通道。这一步同时验证「切走再切回」后贴图仍正确
+		// （s_TextureHeap 在新渲染器里被 Destroy + Create，描述符偏移全部重算，
+		//  若 DXR 侧缓存了旧偏移，这里会立刻表现为基色全白或全黑）。
+		m_DebugViewIndex = (int)Renderer::DebugView::Final;
+		m_Params.Debug = Renderer::DebugView::Final;
+		SwitchRenderer(L"RayTracingRenderer");
+		m_Params.EnableMaterialTextures = true;
+		m_Params.EnableGGX = true;
+		m_Params.RTDebugView = Renderer::RayTracingDebugView::BaseColor;
+		LogState(L"[6] back to DXR, BaseColor again (descriptor re-alloc check)");
+		RequestShot(L"r7_06_dxr_basecolor_after_switch.png");
+		break;
+
+	case 7:
+		// 反射 + 贴图组合：确认 R7 没有破坏 R6 的反射路径。
+		m_Params.RTDebugView = Renderer::RayTracingDebugView::Shaded;
+		m_Params.EnableRTReflection = true;
+		LogState(L"[7] textures + GGX + reflection");
+		RequestShot(L"r7_07_with_reflection.png");
+		break;
+
+	case 8:
+		// 复原到 R6 的默认组合（阴影开、反射关），用于与 -R6Test 第 0 步交叉验证。
+		m_Params.EnableRTReflection = false;
+		LogState(L"[8] restored to R6 defaults");
+		RequestShot(L"r7_08_restored.png");
+		break;
+
+	case 9:
+		// ImGui 面板取证：确认两个新勾选框与 BaseColor 通道在 UI 上真的存在
+		// （不能只在代码里存在而面板没画出来）。
+		LogState(L"[9] ui capture");
+		{
+			wchar_t uiPath[512] = {};
+			swprintf_s(uiPath, L"%ws\\r7_09_imgui_panel.png", m_R7TestDir.c_str());
+			m_PendingUICapturePath = uiPath;
+			LOG_INFO(L"[R7-Test] step %d -> %ws (with ImGui)\n", m_R7TestStep, uiPath);
+		}
+		break;
+
+	case 10:
+		LogState(L"[10] final");
+		LOG_INFO(L"[R7-Test] all steps done\n");
+		PostQuitMessage(0);
+		break;
+
+	default:
+		break;
+	}
+}
+
+// ============================================================
 // 生命周期
 // ============================================================
 void RendererDemoApp::Startup(void)
@@ -1121,6 +1319,17 @@ void RendererDemoApp::Startup(void)
 		}
 	}
 
+	// ---- R7 脚本化验收 ----
+	{
+		std::wstring testDir;
+		if (CommandLineArgs::GetString(L"R7Test", testDir) && !testDir.empty())
+		{
+			m_R7TestMode = true;
+			m_R7TestDir = testDir;
+			LOG_INFO(L"[R7-Test] 脚本化验收开始，输出目录 %ws\n", m_R7TestDir.c_str());
+		}
+	}
+
 	// ---- 相机 ----
 	// R1 的顺序要求：先摆好相机，再创建控制器（控制器构造时会读相机朝向作为初值）。
 	m_Camera.SetEyeAtUp(Vector3(0.0f, 0.0f, 5.0f), Vector3(0.0f, 0.0f, -5.0f), Vector3(kYUnitVector));
@@ -1199,6 +1408,8 @@ void RendererDemoApp::Update(float deltaT)
 		RunR4Test();
 	if (m_R6TestMode)
 		RunR6Test();
+	if (m_R7TestMode)
+		RunR7Test();
 
 	// 帧边界动作：切 Renderer / 换模型。必须在任何 GraphicsContext 之前。
 	ApplyPendingActions();
@@ -1639,7 +1850,7 @@ void RendererDemoApp::DrawRendererPanel(void)
 
 		ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f),
 			"Active path: DispatchRays (hard shadow + 1-bounce reflection)");
-		ImGui::TextDisabled("R6 controls: see 'Ray Tracing (R6)' panel.");
+		ImGui::TextDisabled("R7 material: BaseColor texture + GGX, see 'Ray Tracing (R7)'.");
 	}
 
 	ImGui::End();
@@ -1660,9 +1871,10 @@ void RendererDemoApp::DrawRayTracingPanel(void)
 
 	// 1920 宽下留 16px 右边距：窗口宽 340，起点 1564 => 右边缘 1904。
 	// 再往右会被屏幕裁掉，滑块右侧的数值就会看不到（ImGui 不会自动换行）。
+	// R7 加了「材质」两行开关与 BaseColor 调试通道，窗口高度 470 -> 560。
 	ImGui::SetNextWindowPos(ImVec2(1564, 16), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(340, 470), ImGuiCond_FirstUseEver);
-	if (!ImGui::Begin("Ray Tracing (R6)"))
+	ImGui::SetNextWindowSize(ImVec2(340, 560), ImGuiCond_FirstUseEver);
+	if (!ImGui::Begin("Ray Tracing (R7)"))
 	{
 		ImGui::End();
 		return;
@@ -1676,11 +1888,22 @@ void RendererDemoApp::DrawRayTracingPanel(void)
 	ImGui::Checkbox("RT hard shadow", &m_Params.EnableRTShadow);
 	ImGui::Checkbox("RT reflection", &m_Params.EnableRTReflection);
 
+	// ---- R7 / D4：材质两个正交开关 ----
+	// 为什么必须是**两个**而不是一个「材质总开关」：
+	//   R7 P0 同时引入了「贴图」与「GGX」两个变量。若合并成一个开关，
+	//   画面变化时无法判断是贴图接错了还是 BRDF 变了。-R7Test 用 2×2 矩阵
+	//   （A5a/A5b/A5c）把两个变量解耦，其中"全关"必须逐字节等于 R6 基线
+	//   md5 a43b6059…，否则说明 R7 动到了不该动的着色路径。
+	ImGui::Separator();
+	ImGui::TextDisabled("Material (R7): both feed b0 root constants");
+	ImGui::Checkbox("Material textures", &m_Params.EnableMaterialTextures);
+	ImGui::Checkbox("GGX (Cook-Torrance)", &m_Params.EnableGGX);
+
 	// 调试通道：直接用 RTDebugView 本身作为状态，不额外加一个 bool
 	// （RenderParams 是唯一真源，多一个开关就多一处可能与它不同步的地方）。
 	int rtDebug = (int)m_Params.RTDebugView;
-	static const char* kRTDebugNames[] = { "Shaded", "Normal", "Shadow", "Reflection", "HitDistance" };
-	if (ImGui::Combo("Debug channel", &rtDebug, kRTDebugNames, 5))
+	static const char* kRTDebugNames[] = { "Shaded", "Normal", "Shadow", "Reflection", "HitDistance", "BaseColor" };
+	if (ImGui::Combo("Debug channel", &rtDebug, kRTDebugNames, 6))
 		m_Params.RTDebugView = (Renderer::RayTracingDebugView)rtDebug;
 
 	// ---- 偏差策略（D3 要求"明确采样与偏差策略"）----

@@ -3,6 +3,9 @@
 
 #include "02_RHI/GraphicsCore.h"
 #include "02_RHI/Command/CommandContext.h"
+//  R7：为了按 mesh.vertexFlags 推导 UV0 的字节偏移，需要 Renderer::kVertex_* 位标志。
+//  这些位定义在 PipelineDesc.h 里（与光栅 PSO 的顶点布局共用同一份真源）。
+#include "04_Renderer/Pipeline/PipelineDesc.h"
 #include "05_Scene/Model/Model.h"
 
 #include <algorithm>
@@ -292,6 +295,59 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 				data.BaseVertex = 0;
 				data.PrimitiveCount = primitiveCount;
 				data.InstanceId = (uint32_t)instanceData.size();
+
+				// ------------------------------------------------------------
+				//  R7 / D4：材质与 UV 定位
+				// ------------------------------------------------------------
+				//  UV0 的字节偏移由顶点布局**推导**，不额外存储：
+				//    POSITION  R32G32B32_FLOAT  @ 0   (12 B)
+				//    NORMAL    R10G10B10A2_UNORM @ 12  ( 4 B)
+				//    TANGENT   R10G10B10A2_UNORM @ 16  ( 4 B, 可选)
+				//    TEXCOORD0 R16G16_FLOAT      @ 16 或 20 ( 4 B)
+				//  见 Engine/03_AssetSystem/Importers/Mesh/MeshConvert.cpp 的
+				//  OutputElements 顺序。实测 merlin 全部 15 个 mesh 都是
+				//  vbStride=24 + vertexFlags=0x0f → UV0 @ 20。
+				//  没有 UV0 的 mesh 标记为 0xFFFFFFFF，命中着色器退回纯因子色。
+				const bool hasTangent = (mesh.vertexFlags & Renderer::kVertex_Tangent) != 0;
+				const bool hasUV0 = (mesh.vertexFlags & Renderer::kVertex_UV0) != 0;
+				data.UvByteOffset = hasUV0 ? (uint32_t)(12 + 4 + (hasTangent ? 4 : 0)) : 0xFFFFFFFFu;
+				data.VertexFlags = (uint32_t)mesh.vertexFlags;
+
+				//  材质：mesh 只存 materialSlotIdx，真正的描述符偏移与标量都要
+				//  从 model 侧取。注意 Mesh::srvTable 是**死字段**（全仓零赋值，
+				//  Debug 下实测恒为 0xCDCD），不要用它。
+				const uint32_t materialIndex = (uint32_t)mesh.materialSlotIdx;
+				data.MaterialIndex = materialIndex;
+				if (materialIndex < model->m_Materials.size())
+				{
+					const Scene::Material::Material& material = model->m_Materials[materialIndex];
+					data.SrvTableIndex = material.SRVTable;
+				}
+				if (materialIndex < model->m_MaterialConstantData.size())
+				{
+					const Scene::Material::MaterialConstantData& constants = model->m_MaterialConstantData[materialIndex];
+					data.BaseColorFactor[0] = constants.baseColorFactor[0];
+					data.BaseColorFactor[1] = constants.baseColorFactor[1];
+					data.BaseColorFactor[2] = constants.baseColorFactor[2];
+					data.BaseColorFactor[3] = constants.baseColorFactor[3];
+					data.EmissiveFactor[0] = constants.emissiveFactor[0];
+					data.EmissiveFactor[1] = constants.emissiveFactor[1];
+					data.EmissiveFactor[2] = constants.emissiveFactor[2];
+					data.NormalTextureScale = constants.normalTextureScale;
+					data.MetallicFactor = constants.metallicFactor;
+					data.RoughnessFactor = constants.roughnessFactor;
+					data.MaterialFlags = constants.flags;
+				}
+				else
+				{
+					//  没有 CPU 材质副本时退化为白模（与 R6 观感一致），
+					//  避免每实例数据里出现未初始化的 0（全黑模型）。
+					data.BaseColorFactor[0] = data.BaseColorFactor[1] = data.BaseColorFactor[2] = data.BaseColorFactor[3] = 1.0f;
+					data.NormalTextureScale = 1.0f;
+					data.MetallicFactor = 0.0f;
+					data.RoughnessFactor = 0.5f;
+				}
+
 				instanceData.push_back(data);
 
 				triangleCount += primitiveCount;
@@ -365,7 +421,7 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 	}
 
 	// ------------------------------------------------------------------
-	//  6. 每实例数据 → GPU（raw buffer，每实例 32 字节 = 8 个 DWORD）
+	//  6. 每实例数据 → GPU（raw buffer，R7 起每实例 96 字节 = 24 个 DWORD）
 	//     HLSL 侧用 ByteAddressBuffer + 手算偏移读取（根级 SRV 不带
 	//     StructureByteStride，声明成 StructuredBuffer<T> 会读错跨距）。
 	// ------------------------------------------------------------------
