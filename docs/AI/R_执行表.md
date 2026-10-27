@@ -1,13 +1,13 @@
 # TooiyumeRender 升级执行表（交接文档）
 
 > 用途：**跨会话复用**。新会话直接读本文件即可恢复全部上下文，无需重读长对话。
-> 最后更新：2026-10-27 ｜ 当前进度：**R0 ✅ R1 ✅ R2 ✅ R3 ✅ R4 ✅ R5 ✅ VS 环境验证 ✅ → R6（D3 光线效果）待开工**
+> 最后更新：2026-10-27 ｜ 当前进度：**R0 ✅ R1 ✅ R2 ✅ R3 ✅ R4 ✅ R5 ✅ VS 环境验证 ✅ R6（D3 光线效果）✅ → 待定（D4 接材质 / Soft Shadow / 多模型）**
 
 ---
 
 ## 0. 一句话状态
 
-项目是 DX12 渲染器（C++20 / HLSL / CMake / vcpkg）。R0 建立了可重复构建与资产基线，R1 修复了确定性渲染错误。**Deferred 路径现已正确渲染模型**（修复前模型完全不可见）。R2 已修复 Resize/最小化/相机宽高比/资源重建/backbuffer 索引 7 个缺陷并完成长宽比遍历验证。R3 已建成统一入口 `RendererDemoApp`：渲染器注册表可运行时切换 Forward/Deferred、Dear ImGui 六面板、`RenderParams` 成为参数唯一真源，并顺带修掉 Forward 全黑与一批 RHI 生命周期缺陷。**R4 已打通显示编码链**：Exposure→ACES→sRGB 成为 Lighting 与 Skybox 共用的唯一实现（修复前 Skybox 完全绕过曝光，天空 52% 像素硬截断）；Prefilter mip 上界改取真实值（4，原写死 8.0）；`m_HDRLoaded` 死标志语义修正；glTF MASK 材质接通 AlphaTest。模型区截断 23.0%→0.1%，天空 52.0%→0.0%。**R5 已把 DXR 接入统一入口**：设备能力查询与 App 请求解耦、`RequiresRaytracingSupport()` 补齐 `const override`、Shader 链支持 `lib_6_4`、BLAS/TLAS/RTPSO/SBT 全通、`DispatchRays` 输出法线色诊断画面并经统一 Present 上屏、`RayTracingRenderer` 可在 UI 切换且切回光栅无回归。**VS 环境验证已完成**：VS 2022 生成器树 Debug+Release 双配置构建通过、MSBuild 直构 `.sln` exit 0、DXR/光栅画面与 Ninja 版逐字节相同、Debug Layer（含 GPU-Based Validation）零 ERROR；过程中修掉 `DeployRuntimeDlls.cmake` 多配置选错 DLL 变体、MSBuild 被重复 proxy 环境变量打断两个真实缺陷。下一步：R6（D3 硬阴影射线 → 反射）。
+项目是 DX12 渲染器（C++20 / HLSL / CMake / vcpkg）。R0 建立了可重复构建与资产基线，R1 修复了确定性渲染错误。**Deferred 路径现已正确渲染模型**（修复前模型完全不可见）。R2 已修复 Resize/最小化/相机宽高比/资源重建/backbuffer 索引 7 个缺陷并完成长宽比遍历验证。R3 已建成统一入口 `RendererDemoApp`：渲染器注册表可运行时切换 Forward/Deferred、Dear ImGui 六面板、`RenderParams` 成为参数唯一真源，并顺带修掉 Forward 全黑与一批 RHI 生命周期缺陷。**R4 已打通显示编码链**：Exposure→ACES→sRGB 成为 Lighting 与 Skybox 共用的唯一实现（修复前 Skybox 完全绕过曝光，天空 52% 像素硬截断）；Prefilter mip 上界改取真实值（4，原写死 8.0）；`m_HDRLoaded` 死标志语义修正；glTF MASK 材质接通 AlphaTest。模型区截断 23.0%→0.1%，天空 52.0%→0.0%。**R5 已把 DXR 接入统一入口**：设备能力查询与 App 请求解耦、`RequiresRaytracingSupport()` 补齐 `const override`、Shader 链支持 `lib_6_4`、BLAS/TLAS/RTPSO/SBT 全通、`DispatchRays` 输出法线色诊断画面并经统一 Present 上屏、`RayTracingRenderer` 可在 UI 切换且切回光栅无回归。**VS 环境验证已完成**：VS 2022 生成器树 Debug+Release 双配置构建通过、MSBuild 直构 `.sln` exit 0、DXR/光栅画面与 Ninja 版逐字节相同、Debug Layer（含 GPU-Based Validation）零 ERROR；过程中修掉 `DeployRuntimeDlls.cmake` 多配置选错 DLL 变体、MSBuild 被重复 proxy 环境变量打断两个真实缺陷。**R6 / D3 已完成**：`RayTracing.hlsl` 从「法线色诊断」升级为「硬阴影射线 + 单次反射」——独立 `ShadowPayload`（8 B）+ SBT miss 表第二条 `ShadowMiss`、`SKIP_CLOSEST_HIT_SHADER` 避免载荷类型错配、递归闸门 `Depth>=1` 早退（越界会移除设备）、唯一偏差为沿法线的 `RTShadowNormalBias`（0.002 m）、Schlick Fresnel 反射混合、4 条调试通道；`RenderParams` 新增 6 个 RT 字段并接到独立「Ray Tracing (R6)」面板（开关/偏差/通道/发射数统计）。`-R6Test` 12 步单变量 A/B 证明：阴影开关改像素 1.61%、反射强度 0 与关闭像素级等价、来回切换后精确复原、Debug/Release 11 张渲染图 md5 全同。**并修掉一个致命的构建系统缺陷**：`msvc_deps_prefix` 在 ACP≠控制台代码页时被双重编码 → `ninja -t deps` 全 `#deps 0` → 改任何 `.h` 都不重编（静默、编译全绿但运行时布局错位）。下一步：D4（接材质）/ Soft Shadow / 多模型 DXR 视觉验证。
 
 ---
 
@@ -36,7 +36,8 @@
 | **R3** 统一入口与交互工作台 | P1 | RendererDemoApp、RendererRegistry 接通、ImGui、RenderParams | ✅ **完成** |
 | **R4** 光栅 PBR 闭环 | P1 | 曝光/ACES/sRGB 统一链、Prefilter mip 上界、IBL 状态机、AlphaTest | ✅ **完成** |
 | R5 DXR 最小闭环 | P1 | D0 设备能力 → D1 AS 构建 → D2 DispatchRays | ✅ **完成**（含 VS 环境验证，见 §6d） |
-| R6 扩展与加固 | P2 | Shadow、透明、SSAO、TAA、热重载、文档清理 | ⬜ 未开始 |
+| R6 / D3 光追算法 | P2 | 硬阴影射线、单次反射、偏差策略、性能统计、开关 | ✅ **完成**（见 §6e） |
+| R6 扩展与加固 | P2 | Shadow Map、透明、SSAO、TAA、热重载、文档清理 | ⬜ 未开始 |
 
 **硬性要求**：每个阶段必须通过「干净构建 + 实际运行 + 可观察证据」三项验收后才能进入下一阶段。每次施工完成后在 `docs/AI` 产出学习文档。
 
@@ -331,6 +332,79 @@
 
 ---
 
+## 6e. R6 / D3 光追算法（✅ 2026-10-27 完成）
+
+> 施工日志：`docs/AIWorkLogs/TR-20261027-03_R6-光追算法.md`
+> 路线图来源：`docs/AI/ToiyumeRender_升级路线图_2026-10-24.md:173-175`
+
+### 6e.1 路线图 D3 六条要求 → 落地情况
+
+| D3 原文要求 | 落地 | 证据 |
+|---|---|---|
+| 先做硬阴影射线 | `RayTracing.hlsl` 的 `ClosestHit` 发 `ShadowPayload` 射线（`RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH \| SKIP_CLOSEST_HIT_SHADER`） | `r6_02_debug_shadow.png`（黑白分明的自遮挡） |
+| 再做反射 | 同函数内一次 `RayPayload` 反射射线（`Depth=1`）+ Schlick Fresnel + 强度混合 | `r6_04` vs `r6_05`（有/无反射的调试通道对照） |
+| 可比较的光栅/光追场景 | `RendererDemoApp` 运行时切 Deferred/Forward/RayTracing，模型与相机不变 | `docs/AI/R6ctl/screenshot_90.png` = `16c8aeec…`（光栅对照） |
+| 明确采样与偏差策略 | 每像素 1 条主射线（无累积/抖动）；**唯一偏差** = 沿法线 `RTShadowNormalBias`（0.002 m），阴影与反射共用；阴影/反射各 1 次弹射 | `r6_09_shadow_bias_large.png`（偏差放大到 0.05 m 后接触阴影消失） |
+| 性能统计 | `RayTracingFrameStats`（primary/shadow/reflection/total 发射数 + 三角/BLAS/实例数）+ GPU 帧时间 | 面板截图 `r6_11_imgui_panel.png` |
+| 开关 | `EnableRTShadow` / `EnableRTReflection` / `RTDebugView` + 独立「Ray Tracing (R6)」面板 | 同上 |
+
+### 6e.2 交付内容
+
+1. **`Engine/04_Renderer/RenderParams.h`**：新增 `RayTracingDebugView` 枚举（Shaded/Normal/Shadow/Reflection/HitDistance）与 6 个字段：`EnableRTShadow=true`、`EnableRTReflection=false`、`RTShadowNormalBias=0.002f`、`RTShadowMaxDistance=100.0f`、`RTReflectionMaxDistance=200.0f`、`RTReflectionIntensity=0.6f`、`RTDebugView=Shaded`。理由是 DXR 没有 GBuffer，不能复用 `DebugView`（见 §8 取舍 B）。
+2. **`RayTracingRenderer.h/.cpp`**：根常量 5→9 字段（128→192 B / 32→48 DWORD）、`RayTracingFrameStats` + `GetFrameStats()`、RTPSO `exports=4`（加 `ShadowMiss`）、`MaxPayloadSizeInBytes=32`、`MaxTraceRecursionDepth=2`、统计写入、开关变化日志。
+3. **`RaytracingScene.cpp`**：`BuildShaderBindingTable` 加 `shadowMissExport` 参数，miss 表 1→2 条（`kShadowMissOffset=96`、`kHitGroupOffset=128`、`kTotalBytes=192`）。拿不到 ShadowMiss 标识符时**直接失败**（不能静默降级为主 Miss —— 32 B 载荷被当 8 B 解释会越界写）。
+4. **`Engine/Shader/07_RayTracing/RayTracing.hlsl`**（468 行，整文件重写）：`ShadowPayload`、`SkyColor(dir)` 梯度天空、`TraceShadowRay`、`TraceReflectionRay`、递归闸门、4 条调试通道。
+5. **`RendererDemoApp.cpp`**：`RunR6Test()`（12 步单变量 A/B）、`DrawRayTracingPanel()`（独立面板）、面板重排（`Material/Lighting` 移到第二列下方、R6 面板放右上）、`Material/Lighting` 的 DXR 门控修正（太阳参数在 DXR 下可编辑，点光源/IBL 保持禁用）。
+6. **`.vs/launch.vs.json`**：6 条 → 4 条（`DeferredApp` / `TooiyumeApp` / `RayTracingApp` / `RendererDemoApp`）。
+
+### 6e.3 三条硬证据
+
+**① 射线计数随开关变化（算法真在跑）**
+
+| 参数 | primary | shadow | reflection | total |
+|---|---|---|---|---|
+| shadow off / reflect off | 2073600 | 0 | 0 | 2073600 |
+| shadow on / reflect off | 2073600 | 2073600 | 0 | 4147200 |
+| shadow on / reflect on | 2073600 | 2073600 | 2073600 | 6220800 |
+
+`2073600 = 1920×1080`。**统计滞后一帧**（`Render` 末尾写、`Update` 开头读），读日志时要注意。
+
+**② md5 等价关系（像素级证明）**
+
+- `r6_00_baseline_shadow_on` == `r6_06_reflect_intensity_0` == `r6_10_restored` = `a43b605977a626e747c91559dcb1bb7f`
+  → 「反射强度=0」与「反射关」像素级等价；11 步来回切参数后**精确复原**。
+- `r6_00` ≠ `r6_01_shadow_off`（1.61% 采样点不同，maxd=649）→ 阴影开关真的改像素。
+- `r6_00` ≠ `r6_03_reflection_on` ≠ `r6_07_reflect_intensity_1` → 反射强度 0/0.6/1.0 三档都生效。
+
+**③ Debug / Release / 光栅 三方一致**
+
+- Debug 与 Release 的 11 张渲染图 md5 **完全相同**（只有含 FPS 文本的 ImGui 面板图不同）。
+- 光栅对照 `docs/AI/R6ctl/screenshot_90.png` = `16c8aeec294844b9e3fedde4df78a349`，与 R5 的 `R5ctl` **同 md5** → R6 对光栅路径零影响。
+- `-R3Test` 切换链路：`RayTracingRenderer → ForwardRenderer → DeferredRenderer` 全程正常，`r3_07_forward` / `r3_08_back_deferred` 与 R5 同名文件 md5 相同。
+- 全程 `grep -cE "D3D12 ERROR"` = 0。
+
+### 6e.4 顺带修掉的致命构建缺陷（比 R6 本身更重要）
+
+**`msvc_deps_prefix` 双重编码 → 头文件依赖全失效。**
+
+- 症状：R6 首跑新增字段全读成 0，`EnableRTReflection` 默认 false 却打成「开」。
+- 根因：`ninja -t deps` 显示 74 个 obj 全 `#deps 0`。`rules.ninja:17` 的 `msvc_deps_prefix` 是乱码（「注意: 包含文件: 」被存成 `娉ㄦ剰: 鍖呭惈鏂囦欢:`）。机理：`cl /showIncludes` 按控制台代码页输出，CMake 在 configure 期抓这段写进 `rules.ninja`，Ninja 之后用这个字节串去 grep；系统 ACP=936、控制台 65001 → 前缀乱码 → 一行都匹配不到 → **所有依赖静默丢失**。
+- 后果：编译链接全绿，但改结构体后其他 obj 保留旧布局 → 运行时内存错位，且完全静默。
+- 修复（`scripts/build.bat`）：① 步骤 0 `chcp 65001`（同时包住 configure 与 build）；② 代码页哨兵 `_tooi_codepage.txt`，哨兵缺失/不符则整树重配；③ 步骤 6b `ninja -t deps` + `findstr /R "#deps [1-9]"` 自检（结果文件字节数=0 才警告）；④ 两条退出路径恢复原代码页。
+- 验证：`msvc_deps_prefix` 恢复正确、`RayTracingRenderer.cpp.obj` `#deps 53`、`touch RenderParams.h` 后 `ninja -n` 报 9 个构建步骤。
+
+### 6e.5 未验证项
+
+| # | 项 | 原因 |
+|---|---|---|
+| U1 | 真 VS GUI 里点 F5 | AI 无 GUI 操作能力，需用户手动确认 |
+| U2 | VS 下拉菜单是否还剩自动生成的重复项 | VS 会为每个 target 自动生成默认启动项；`launch.vs.json` 已精简到 4 条，但 VS 侧的自动项需目视确认 |
+| U3 | 反射画质「好不好看」 | 人肉审美 |
+| U4 | 多模型场景的阴影/反射 | 本轮只有单模型 merlin |
+| U5 | 性能基准（射线/秒、MVPS） | 未做基准测试，不属 D3 |
+
+---
+
 ## 7. 已知遗留问题
 
 | 问题 | 说明 | 归属 |
@@ -340,15 +414,20 @@
 | Forward 只输出 baseColor | `DefaultPS.hlsl::MainPS` 只返回 baseColor，不消费 `Light b0` → Forward 面板的光照控件被 `BeginDisabled` 禁用。**R4 范围外，顺延未做** | **R4 后续** |
 | 光照硬编码 | R3 已改为 `RenderParams` 单点真源 | ✅ R3 已解决 |
 | `TextureRef::operator=` 不减 Unload | 只减引用计数不 `Unload`，缓存条目残留（不会 double free） | R4 观察项（本轮未触碰） |
-| `PipelineStateCache::s_PipelineDescs` 的 `Reset()` 无调用者 | 跨 Renderer 单调增长（仅 CPU 描述，含 `<0xffff` 断言） | R6 |
-| AlphaBlend（glTF BLEND） | 路线图 §7.1 明确与 AlphaTest 分开排期。R4 只做了 MASK | R6 |
+| `PipelineStateCache::s_PipelineDescs` 的 `Reset()` 无调用者 | 跨 Renderer 单调增长（仅 CPU 描述，含 `<0xffff` 断言）。**R6 未处理（R6 实际做的是 D3 光追算法）** | 顺延 D4+ |
+| AlphaBlend（glTF BLEND） | 路线图 §7.1 明确与 AlphaTest 分开排期。R4 只做了 MASK。**R6 未做** | R6 扩展（未开始） |
 | 架构自检 6 项 RED | ai-check.ps1 报 R1/R2/R3/R4/R13/R9 红灯，**R4 之前即已存在**，属 WP0–WP8 排期债 | WP0–WP8 |
 | **VS 环境验证（R5）** | **✅ 已完成 2026-10-27**（详见 §6d）：VS 生成器树 `out/build/vs2022` 配置+构建成功、MSBuild 直构 `.sln` exit 0、Debug/Release 双配置运行通过、DXR 画面与 Ninja 版逐字节相同（md5 `1bea89b2…`）、Debug Layer + GPU-Based Validation 零 ERROR。**过程中修掉 2 个真实缺陷**：`DeployRuntimeDlls.cmake` 的 `CMAKE_BUILD_TYPE` 判断在多配置生成器下恒真（Release 误部署调试版 DLL）、MSBuild 被重复 proxy 环境变量（`NO_PROXY`/`no_proxy`）打断报假错「找不到编译器」 | ✅ 完成 |
-| DXR Tier 日志格式 | `GraphicsCore.cpp:219-220` 用 `tier=%d.%d`（`>>4` / `&0xF`），Tier 1.2 打印成 `0.12`。`QueryRaytracingCapability()` 返回原值，UI 不受影响 | R6（仅可读性） |
-| DXR 未接材质 | DXR 诊断画面只输出法线色，不采样贴图；`s_TextureHeap`/`s_SamplerHeap` 建了但未消费 | R6 / D3 |
-| BLAS 未去重 | BLAS 数量 = 实例数 × mesh 数 × draw 数；同一模型加载两次会重复建 | R6 |
+| **R6 光追算法（D3）** | **✅ 已完成 2026-10-27**（详见 §6e）：硬阴影射线 + 单次反射 + 4 条调试通道 + 独立「Ray Tracing (R6)」面板 + `-R6Test` 12 步 A/B。md5 证明阴影开关改像素 1.61%、反射强度 0 与关闭像素级等价、来回切换精确复原、Debug/Release 11 张渲染图全同、光栅对照 `16c8aeec…` 无回归。**同轮修掉致命构建缺陷**：`msvc_deps_prefix` 在 ACP≠控制台代码页时双重编码 → `ninja -t deps` 全 `#deps 0` → 改任何 `.h` 都不重编（静默，编译全绿但运行时布局错位） | ✅ 完成 |
+| DXR Tier 日志格式 | `GraphicsCore.cpp:219-220` 用 `tier=%d.%d`（`>>4` / `&0xF`），Tier 1.2 打印成 `0.12`。`QueryRaytracingCapability()` 返回原值，UI 不受影响。**R6 未修（仅可读性）** | 顺延（未修） |
+| DXR 未接材质 | **R6 仍未接**：D3 刻意用中性灰 albedo（`(0.8,0.8,0.8)`）+ 几何面法线，避免把材质失败面混进光追验证。`s_TextureHeap`/`s_SamplerHeap` 建了但未消费 → 观感是刻面。**反射/阴影算法本身已通** | **D4** |
+| BLAS 未去重 | BLAS 数量 = 实例数 × mesh 数 × draw 数；同一模型加载两次会重复建。**R6 未处理** | 顺延 D4+ |
 | 多模型 DXR 未视觉验证 | `Transform[i][j] = m[j][i]` 的行/列转置修复只在单模型下不显现（平移为 0），多模型场景尚未跑 | 待补测 |
 | 未用 `RAYTRACING_ACCELERATION_STRUCTURE` 资源标志 | 本机 `d3d12.dll` 10.0.19041 不认该标志（#719），只能用 `ALLOW_UNORDERED_ACCESS` + AS 初始状态 | 保持现状（已写注释） |
+| DXR 反射噪点 | 每像素 1 条反射射线、无累积缓冲、无降噪 → 有可见噪点。**刻意的**：D3 只要求算法链路通；降噪需要时间累积，属 D4+ | D4+ |
+| DXR 阴影不做 alpha test | 阴影射线用 `SKIP_CLOSEST_HIT_SHADER`，不采样贴图 alpha → 镂空/叶片/布料会投实心影。接材质时一并做 | D4 |
+| DXR 不消费点光源与 IBL | HLSL 只有方向光 + 程序化 `SkyColor`。UI 上这两段在 DXR 下已 `BeginDisabled` 并注明原因，不放假控件 | D4+ |
+| R6 统计滞后一帧 | `RayTracingFrameStats` 在 `Render` 末尾写、`LogState` 在 `Update` 开头读 → 日志里射线数比当前帧参数晚一帧。读数现象非缺陷，已在日志与文档注明 | 保持现状 |
 
 ---
 
@@ -457,6 +536,22 @@
 
 51. **R5-VS：`--config` 与 `CMAKE_BUILD_TYPE` 是两套东西。** `cmake --build out/build/vs2022 --config Release` 里的 `--config` 是多配置生成器的配置选择；`CMAKE_BUILD_TYPE` 是配置期缓存变量。两者可以「不一致」（本项目就是 `CMAKE_BUILD_TYPE=Debug` + 跑 `--config Release`）。**不要指望它们联动。**
 
+52. **R6：`msvc_deps_prefix` 双重编码会让头文件依赖**全部**失效，且完全静默。** 症状不是编译报错，而是「改了结构体字段，运行时的值还是旧的/是 0」。诊断：`ninja -C <dir> -t deps <某个>.obj` 看 `#deps` 行数。根因：`cl.exe /showIncludes` 按**控制台代码页**输出提示行，CMake 在 configure 期抓这段前缀写进 `rules.ninja` 的 `msvc_deps_prefix`，Ninja 之后用这个字节串去 grep cl 的输出；当系统 ACP（本机 936=GBK）与构建时会话代码页（65001=UTF-8）不一致时，前缀被双重编码成乱码（「注意: 包含文件: 」→ `娉ㄦ剰: 鍖呭惈鏂囦欢:`）→ 一行都匹配不到 → **所有 .obj 的 `#deps` 变成 0**。正解：`build.bat` 里 `chcp 65001` 并**同时包住 configure 与 build**（cl 是在 build 期打印前缀的），另加代码页哨兵文件强制旧树重配（`CMakeCXXCompiler.cmake` 只有 clean configure 才重生成）。**单点改 `rules.ninja` 无效**，下次 configure 又被覆盖。
+
+53. **R6：`DispatchRays` 的阴影射线必须用 `RAY_FLAG_SKIP_CLOSEST_HIT_SHADER` + 独立 `ShadowPayload` + SBT 里第二条 miss 记录。** 命中着色器签名按**载荷类型**绑定：只加第二条 miss 记录但让阴影射线走主 hit group，主 `ClosestHit` 会按 `RayPayload`（32 B）解释只传了 `ShadowPayload`（8 B）的载荷 → 越界写坏内存（可能只是画面乱，也可能崩）。加了 `SKIP_CLOSEST_HIT_SHADER` 后语义变成「命中 → 不调用任何着色器、载荷保持初值 0 = 被遮挡；只有未命中才调 `ShadowMiss` 置 1」，一个 hit group 就够。
+
+54. **R6：`MaxTraceRecursionDepth` 越界不报错，设备直接把进程移除（`DEVICE_REMOVED 0x887A0005`）。** 所以递归闸门必须写在 `ClosestHit` 的**最前面**（几何寻址后立即 `if (payload.Depth >= 1u) return;`），而不是「算完再判断要不要递归」。主射线 `Depth=0`、反射射线 `Depth=1`、上限设 2 刚好够。
+
+55. **R6：同一根常量块要改时，四处必须同步。** ① HLSL 的 `cbuffer` 字段数；② C++ 的 `static_assert(sizeof(...) == N)`；③ 根签名 `InitAsConstants(0, N_DWORD)`；④ 提交时的 `SetConstantArray(..., N_DWORD, ...)`。漏改任意一处 → **后续字段整体错位、画面异常但完全不报错**（因为根常量本质是裸字节）。本轮 32→48 DWORD 就是这条。
+
+56. **R6：光追的偏差（bias）只留一个旋钮，是为了可归因。** 阴影与反射共用同一个沿法线的 `RTShadowNormalBias`；反射射线的 `TMin` 也用它（从 0 起算会立刻命中自己所在三角形 → 全场条纹）。同时给「法线偏移 + 光线偏移」两个参数，出问题时分不清是谁的锅。**先证明链路通，再谈旋钮数量。**
+
+57. **R6：`SunDirection` 存的是「光的传播方向」，不是「指向光源」。** 光栅侧（`LightingPS.hlsl:118`）与光追侧（`toLight = normalize(-g_LightDirection.xyz)`）都必须取反。`RenderParams.h:57-60` 有注释警告。**两侧任一处漏取反 → 主光高低翻转，且不报错。**
+
+58. **R6：ImGui 的 `imgui.ini` 会覆盖 `ImGuiCond_FirstUseEver`。** 改了 `SetNextWindowPos/SetNextWindowSize` 但画面没动 → 先删可执行文件目录下的 `imgui.ini`。另外 **ImGui 滑块标签画在控件右侧**，面板靠屏幕右缘时标签会被裁 → 用 `PushItemWidth()` 收窄控件。
+
+59. **R6：A/B 验证要挑「md5 必须相等」的对照组，而不只是「应该不同」的实验组。** 本轮最有说服力的三条里，两条是等价关系：`反射强度=0` 与 `反射关` 像素级等价（`a43b6059…`）、11 步来回切参数后 `r6_10_restored` 与基线完全相同。**「能改」只能证明参数传到了 shader，「能还原」才证明没有隐藏状态残留。**
+
 ---
 
 ## 9. 构建与运行
@@ -543,8 +638,19 @@ scripts\run.bat Debug RendererDemo -R3Test D:\CS-Self-Study\Computer_Graphics\DX
 | `docs/AI/R5/screenshot_90.png` | R5 DXR 画面证据（GPU 回读，法线色模型） | **新增**（R5） |
 | `out/build/vs2022/` | VS 2022 生成器树（Debug+Release 全目标构建成功，MSBuild 直构 `.sln` 通过） | **新增**（R5） |
 | `Engine/20_cmake/DeployRuntimeDlls.cmake:34-55` | DLL 变体选择改 `$<CONFIG>` 生成器表达式（修多配置 bug） | R5-VS 修复 |
-| `.vs/launch.vs.json` | VS 调试启动配置（6 条：Deferred / RayTracing / DXR+截图 / R3 回归 / 原 DeferredApp / RayTracingApp） | R5 更新（gitignored） |
+| `.vs/launch.vs.json` | VS 调试启动配置（**R6 精简为 4 条**：DeferredApp / TooiyumeApp(前向) / RayTracingApp / RendererDemoApp） | R6 更新（gitignored） |
 | `docs/AI/R5final/` | 四棵树构建等价性证据（`ninja_dbg`/`ninja_rel`/`vs_dbg`/`vs_rel`/`vs_rel_r`/`vs_switch`） | **新增**（R5） |
+| `Engine/Shader/07_RayTracing/RayTracing.hlsl` | **R6 重写**：硬阴影射线（`ShadowPayload`+`ShadowMiss`+`SKIP_CLOSEST_HIT_SHADER`）、单次反射（Schlick Fresnel）、`SkyColor` 梯度天空、递归闸门、4 条调试通道 | R6（D3） |
+| `Engine/04_Renderer/Renderer/RayTracing/RaytracingScene.cpp:597-680` | `BuildShaderBindingTable` miss 表 1→2 条（`kShadowMissOffset=96` / `kHitGroupOffset=128`） | R6 |
+| `Engine/04_Renderer/Renderer/RayTracing/RayTracingRenderer.cpp` | 根常量 32→48 DWORD、`exports=4`、`payload=32`、`depth=2`、`RayTracingFrameStats` 统计 | R6 |
+| `Engine/04_Renderer/RenderParams.h` | `RayTracingDebugView` 枚举 + 6 个 RT 字段（阴影/反射开关、偏差、距离、强度、调试通道） | R6 |
+| `Demos/RendererDemoApp/RendererDemoApp.cpp` | `RunR6Test()`（`-R6Test` 12 步 A/B）+ `DrawRayTracingPanel()` + 面板重排 | R6 |
+| `scripts/build.bat` | **代码页统一 + 依赖自检**（修 `msvc_deps_prefix` 双重编码 → `#deps 0`） | R6（独立缺陷修复） |
+| `docs/AIWorkLogs/TR-20261027-03_R6-光追算法.md` | R6 施工日志（13 节 + 8 条踩坑） | **新增**（R6） |
+| `docs/AI/R6test/` | 12 步 A/B 证据（Debug） | **新增**（R6） |
+| `docs/AI/R6test_rel/` | Release 版 `-R6Test`：11 张渲染图 md5 与 Debug 相同（已去重只留 README + 唯一不同的 `r6_11_imgui_panel.png`） | **新增**（R6） |
+| `docs/AI/R6ctl/` | 光栅对照（`16c8aeec…`，与 R5ctl 同 md5） | **新增**（R6） |
+| `docs/AI/R6switch/` | `-R3Test` 切换链路证据（`r3_00`~`r3_06` + README；`r3_07`/`r3_08` 与 R5 同 md5 故去重） | **新增**（R6） |
 
 ---
 
@@ -552,6 +658,6 @@ scripts\run.bat Debug RendererDemo -R3Test D:\CS-Self-Study\Computer_Graphics\DX
 
 1. 读本文件 `docs/AI/R_执行表.md`
 2. 需要细节时再读对应阶段文档：`R0_*.md` / `R1_*.md` / `R2/R2_生命周期与窗口稳定性.md` / `R3/R3_统一入口与交互工作台.md`
-3. **R5 与 VS 环境验证均已完成**（2026-10-27）。VS 侧：`out/build/vs2022`（VS 2022 生成器）Debug+Release 双配置构建通过、MSBuild 直构 `.sln` 通过、运行通过、画面与 Ninja 版逐字节一致、Debug Layer 零 ERROR。详见 §6d
+3. **R5、VS 环境验证、R6（D3 光追算法）均已完成**（2026-10-27）。R6 细节见 §6e，施工日志 `docs/AIWorkLogs/TR-20261027-03_R6-光追算法.md`。**接手前必看**：`scripts/build.bat` 的代码页修复（否则所有「改了代码没生效」都会被误判成代码 bug）。VS 侧：`out/build/vs2022`（VS 2022 生成器）Debug+Release 双配置构建通过、MSBuild 直构 `.sln` 通过、运行通过、画面与 Ninja 版逐字节一致、Debug Layer 零 ERROR。详见 §6d
 4. 施工日志模板：`docs/AIWorkLogs/_TEMPLATE_WP_施工日志.md`；最近示例：`docs/AIWorkLogs/TR-20261027-01_R5-DXR最小闭环.md`（含 17 条 R5 教训）、`docs/AIWorkLogs/TR-20261027-02_R5-VS环境验证.md`（含 VS 环境 6 条教训）
-5. 注意：**不要重复踩过的坑**（见 §8，R5 新增第 31–45 条，其中「DispatchRays 用计算根签名」「HLSL 缺 row_major」「shader 头依赖漏挂」三条各花了数小时）
+5. 注意：**不要重复踩过的坑**（见 §8）。R5 新增第 31–45 条（其中「DispatchRays 用计算根签名」「HLSL 缺 row_major」「shader 头依赖漏挂」三条各花了数小时）；R6 新增第 52–59 条（**第 52 条 `msvc_deps_prefix` 最危险 —— 它让所有头文件改动静默失效**）。

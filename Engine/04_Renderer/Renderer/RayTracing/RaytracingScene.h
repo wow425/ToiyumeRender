@@ -161,8 +161,15 @@ namespace Renderer::RayTracing
 
 		// ---- SBT ----
 		// 需要 State Object 的 properties 来取 32 字节着色器标识符。
+		//
+		// R6 起 miss 表有**两条记录**（原来只有一条）：
+		//   index 0 = missExport      （主射线 / 反射射线打空）
+		//   index 1 = shadowMissExport（阴影射线打空 → 受光）
+		// TraceRay 的第 6 个实参 MissShaderIndex 直接索引这张表，
+		// 所以顺序就是契约：编号与这里写入的顺序必须一致。
 		bool BuildShaderBindingTable(ID3D12StateObjectProperties* stateObjectProperties,
-			const wchar_t* rayGenExport, const wchar_t* missExport, const wchar_t* hitGroupName);
+			const wchar_t* rayGenExport, const wchar_t* missExport,
+			const wchar_t* shadowMissExport, const wchar_t* hitGroupName);
 
 		const D3D12_DISPATCH_RAYS_DESC* GetDispatchRaysDesc() const { return &m_DispatchRaysDesc; }
 

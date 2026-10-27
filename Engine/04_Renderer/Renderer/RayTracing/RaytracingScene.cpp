@@ -590,13 +590,19 @@ void Renderer::RayTracing::RaytracingScene::RebuildTopLevel(GraphicsContext& gfx
 // ----------------------------------------------------------------------------
 //  布局（每 section 起点按 64 字节对齐，记录 32 字节）：
 //    [0]   RayGeneration  32 B
-//    [64]  Miss           32 B
+//    [64]  Miss[0]        32 B   ← 主射线 / 反射射线打空
+//    [96]  Miss[1]        32 B   ← 阴影射线打空（ShadowMiss）
 //    [128] HitGroup       32 B
-//  总 160 B，向上取整到 256。
+//  总 192 B。
+//
+//  注意 miss 表是**连续两条记录**：[kMissOffset, kMissOffset + 2*32)，
+//  SizeInBytes = 64、StrideInBytes = 32。TraceRay 的第 6 个实参
+//  MissShaderIndex 就是这张表的下标（0 → Miss，1 → ShadowMiss），顺序即契约。
 // ============================================================================
 bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	ID3D12StateObjectProperties* stateObjectProperties,
-	const wchar_t* rayGenExport, const wchar_t* missExport, const wchar_t* hitGroupName)
+	const wchar_t* rayGenExport, const wchar_t* missExport,
+	const wchar_t* shadowMissExport, const wchar_t* hitGroupName)
 {
 	if (stateObjectProperties == nullptr)
 	{
@@ -605,9 +611,10 @@ bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	}
 
 	constexpr uint32_t kRayGenOffset = 0;
-	constexpr uint32_t kMissOffset = kRayGenOffset + kSbtSectionAlignment;
-	constexpr uint32_t kHitGroupOffset = kMissOffset + kSbtSectionAlignment;
-	constexpr uint32_t kTotalBytes = kHitGroupOffset + kSbtSectionAlignment; // 192
+	constexpr uint32_t kMissOffset = kRayGenOffset + kSbtSectionAlignment;       // 64
+	constexpr uint32_t kShadowMissOffset = kMissOffset + kSbtRecordSize;         // 96
+	constexpr uint32_t kHitGroupOffset = kMissOffset + kSbtSectionAlignment * 2; // 128
+	constexpr uint32_t kTotalBytes = kHitGroupOffset + kSbtSectionAlignment;     // 192
 
 	if (m_SbtUpload.GetBufferSize() != kTotalBytes)
 		m_SbtUpload.Create(L"Raytracing SBT", kTotalBytes);
@@ -633,6 +640,21 @@ bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	}
 	memcpy(sbt + kMissOffset, missId, kSbtRecordSize);
 
+	// 阴影射线专用的 miss。拿不到标识符意味着 State Object 的 Exports 里
+	// 漏了它 —— 这种情况下**不能**静默降级（例如把 index 1 也填成主 Miss），
+	// 因为主 Miss 的载荷类型是 RayPayload(32B)，被当 ShadowPayload(8B) 解释
+	// 会越界写。必须直接失败，让问题在启动日志里暴露。
+	void* shadowMissId = stateObjectProperties->GetShaderIdentifier(shadowMissExport);
+	if (shadowMissId == nullptr)
+	{
+		LOG_INFO(L"[DXR] SBT 失败：导出 %s 没有着色器标识符"
+			L"（检查 RayTracingRenderer::BuildStateObject 的 desc.Exports）\n",
+			shadowMissExport);
+		m_SbtUpload.Unmap(0, kTotalBytes);
+		return false;
+	}
+	memcpy(sbt + kShadowMissOffset, shadowMissId, kSbtRecordSize);
+
 	void* hitGroupId = stateObjectProperties->GetShaderIdentifier(hitGroupName);
 	if (hitGroupId == nullptr)
 	{
@@ -648,7 +670,7 @@ bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	m_DispatchRaysDesc.RayGenerationShaderRecord.StartAddress = base + kRayGenOffset;
 	m_DispatchRaysDesc.RayGenerationShaderRecord.SizeInBytes = kSbtRecordSize;
 	m_DispatchRaysDesc.MissShaderTable.StartAddress = base + kMissOffset;
-	m_DispatchRaysDesc.MissShaderTable.SizeInBytes = kSbtRecordSize;
+	m_DispatchRaysDesc.MissShaderTable.SizeInBytes = kSbtRecordSize * 2;   // 两条记录
 	m_DispatchRaysDesc.MissShaderTable.StrideInBytes = kSbtRecordSize;
 	m_DispatchRaysDesc.HitGroupTable.StartAddress = base + kHitGroupOffset;
 	m_DispatchRaysDesc.HitGroupTable.SizeInBytes = kSbtRecordSize;
@@ -656,8 +678,9 @@ bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	m_DispatchRaysDesc.CallableShaderTable = {};
 	m_DispatchRaysDesc.Depth = 1;
 
-	LOG_INFO(L"[DXR] SBT 构建完成：RayGen=%s Miss=%s HitGroup=%s 记录=%u B\n",
-		rayGenExport, missExport, hitGroupName, kSbtRecordSize);
+	LOG_INFO(L"[DXR] SBT 构建完成：RayGen=%s Miss=%s ShadowMiss=%s HitGroup=%s "
+		L"记录=%u B，miss 表=2 条\n",
+		rayGenExport, missExport, shadowMissExport, hitGroupName, kSbtRecordSize);
 	return true;
 }
 

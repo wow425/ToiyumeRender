@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // RendererDemoApp —— R3 统一入口
 // ------------------------------------------------------------
 // 它和三个旧 Demo 的区别只有一句话：
@@ -205,11 +205,21 @@ private:
 	void RunR4Test(void);
 	bool SaveCaptureTo(const std::wstring& fullPath);
 
+	// ---- R6 脚本化验收（-R6Test <dir>）----
+	// R6/D3 的验收对象是「光追算法是否真的在起作用」。光追的失败模式很隐蔽：
+	// 阴影射线打空、偏差过大、SBT miss 表错位，都会得到一张"看起来像有光"的图。
+	// 因此每一步都是**单变量 A/B**，靠像素统计证明开关真的改变了结果：
+	//   阴影 开/关 -> 同一帧光照下，模型自遮挡区域必须变亮
+	//   反射 开/关 -> 同一帧下，掠射角区域必须出现天空色
+	//   调试通道   -> 直接把 visibility / 反射色 / 命中距离画出来
+	void RunR6Test(void);
+
 	// ---- 每帧 ----
 	void DrawPanels(void);
 	void DrawPerformancePanel(void);
 	void DrawScenePanel(void);
 	void DrawRendererPanel(void);
+	void DrawRayTracingPanel(void);
 	void DrawLightingPanel(void);
 	void DrawDebugViewPanel(void);
 	void DrawDevToolsPanel(void);
@@ -291,6 +301,11 @@ private:
 	std::wstring m_R4TestDir;
 	int          m_R4TestStep = 0;
 	int          m_R4TestFrame = 0;
+
+	bool         m_R6TestMode = false;
+	std::wstring m_R6TestDir;
+	int          m_R6TestStep = 0;
+	int          m_R6TestFrame = 0;
 	std::wstring m_R3NextCapture;      // 下一步动作执行后要截的图
 	std::wstring m_PendingCapturePath; // 本帧 RenderScene 之后要截的图（完整路径）
 
@@ -847,6 +862,175 @@ void RendererDemoApp::RunR4Test(void)
 }
 
 // ============================================================
+// R6 脚本化验收（-R6Test <dir>）
+// ------------------------------------------------------------
+// 与 R3Test / R4Test 同一套约定：每步都走真实交互路径上的同一批字段，
+// 截图全部走 DebugCapture 的 GPU 回读。
+//
+// R6 的验收对象是"光追算法是否真的在起作用"。光追的失败模式比光栅隐蔽得多：
+// 阴影射线打空、TMin 偏差过大、SBT miss 表记录错位，都能得到一张看起来
+// 正常、只是"有点平"的图。因此这里每一步都是**单变量 A/B**，让开关的效果
+// 必须能被像素统计证明，而不是靠肉眼判断"好像有点阴影"。
+// ============================================================
+void RendererDemoApp::RunR6Test(void)
+{
+	static const int kFramesPerStep = 10;
+	if ((m_R6TestFrame++ % kFramesPerStep) != 0)
+		return;
+
+	auto LogState = [this](const wchar_t* tag)
+	{
+		LOG_INFO(L"[R6-Test] %ws renderer=%ws shadow=%d reflection=%d normalBias=%.4f shadowDist=%.1f reflectDist=%.1f reflectIntensity=%.2f rtDebug=%d\n",
+			tag,
+			m_RendererName.c_str(),
+			m_Params.EnableRTShadow ? 1 : 0,
+			m_Params.EnableRTReflection ? 1 : 0,
+			m_Params.RTShadowNormalBias,
+			m_Params.RTShadowMaxDistance,
+			m_Params.RTReflectionMaxDistance,
+			m_Params.RTReflectionIntensity,
+			(int)m_Params.RTDebugView);
+
+		// 渲染器自报的射线计数：这是"真的发出去了多少条"的唯一证据。
+		// 用 dynamic_cast 而不是按名字分支 —— 与 BindRendererOutput 同一理由。
+		if (auto* raytracing = dynamic_cast<Renderer::RayTracing::RayTracingRenderer*>(m_Renderer.get()))
+		{
+			const Renderer::RayTracing::RayTracingFrameStats& stats = raytracing->GetFrameStats();
+			LOG_INFO(L"[R6-Test]   rays: primary=%llu shadow=%llu reflection=%llu total=%llu | geo: tri=%u blas=%u inst=%u\n",
+				(unsigned long long)stats.PrimaryRays,
+				(unsigned long long)stats.ShadowRays,
+				(unsigned long long)stats.ReflectionRays,
+				(unsigned long long)stats.TotalRays,
+				stats.TriangleCount, stats.BlasCount, stats.InstanceCount);
+		}
+	};
+
+	auto RequestShot = [this](const wchar_t* fileName)
+	{
+		wchar_t path[512] = {};
+		swprintf_s(path, L"%ws\\%ws", m_R6TestDir.c_str(), fileName);
+		m_PendingCapturePath = path;
+		LOG_INFO(L"[R6-Test] step %d -> %ws\n", m_R6TestStep, path);
+	};
+
+	switch (m_R6TestStep++)
+	{
+	case 0:
+		// 基线：DXR + 阴影开 + 反射关（RenderParams 的默认组合）。
+		LogState(L"[0] rt baseline (shadow on, reflection off)");
+		RequestShot(L"r6_00_baseline_shadow_on.png");
+		break;
+
+	case 1:
+		// A/B 1：只关阴影。其余参数完全相同。
+		// 若与上一步一样，说明阴影射线根本没参与着色（或偏差大到看不见接触阴影）。
+		m_Params.EnableRTShadow = false;
+		LogState(L"[1] rt shadow OFF");
+		RequestShot(L"r6_01_shadow_off.png");
+		break;
+
+	case 2:
+		// 调试通道：把 visibility 直接画成灰度。
+		// 这是最硬的证据 —— 阴影射线如果全打空，这张图会是纯白。
+		m_Params.EnableRTShadow = true;
+		m_Params.RTDebugView = Renderer::RayTracingDebugView::Shadow;
+		LogState(L"[2] debug view = shadow visibility");
+		RequestShot(L"r6_02_debug_shadow.png");
+		break;
+
+	case 3:
+		// A/B 2：反射开。单独一步，与"只有阴影"的基线对照。
+		m_Params.RTDebugView = Renderer::RayTracingDebugView::Shaded;
+		m_Params.EnableRTReflection = true;
+		LogState(L"[3] rt reflection ON");
+		RequestShot(L"r6_03_reflection_on.png");
+		break;
+
+	case 4:
+		// 反射调试通道：直接看反射射线的命中颜色。
+		m_Params.RTDebugView = Renderer::RayTracingDebugView::Reflection;
+		LogState(L"[4] debug view = reflection color");
+		RequestShot(L"r6_04_debug_reflection.png");
+		break;
+
+	case 5:
+		// 反射关断对照：同一调试通道下关掉反射，应回到背景色（没算反射）。
+		m_Params.EnableRTReflection = false;
+		LogState(L"[5] reflection debug with reflection OFF");
+		RequestShot(L"r6_05_debug_reflection_off.png");
+		break;
+
+	case 6:
+		// 反射强度 0/1 的极端值：强度=0 时画面必须与"反射关"完全一致。
+		// 这是 lerp 系数是否真的接上了 `RTReflectionIntensity` 的证据。
+		m_Params.RTDebugView = Renderer::RayTracingDebugView::Shaded;
+		m_Params.EnableRTReflection = true;
+		m_Params.RTReflectionIntensity = 0.0f;
+		LogState(L"[6] reflection intensity 0");
+		RequestShot(L"r6_06_reflect_intensity_0.png");
+		break;
+
+	case 7:
+		// 反射强度 1.0：全反射，画面应明显偏向天空色。
+		m_Params.RTReflectionIntensity = 1.0f;
+		LogState(L"[7] reflection intensity 1");
+		RequestShot(L"r6_07_reflect_intensity_1.png");
+		break;
+
+	case 8:
+		// 命中距离调试通道：验证 TraceReflectionRay 的 RayTCurrent 真的回传了。
+		m_Params.EnableRTReflection = true;
+		m_Params.RTReflectionIntensity = 0.6f;
+		m_Params.RTDebugView = Renderer::RayTracingDebugView::HitDistance;
+		LogState(L"[8] debug view = hit distance");
+		RequestShot(L"r6_08_debug_hitdistance.png");
+		break;
+
+	case 9:
+		// 偏差敏感性：偏差从 0.002 m 放大到 0.05 m。
+		// 太大时会漏光（接触阴影消失），这是"偏差是两个量纲不同的东西"的证据。
+		m_Params.RTDebugView = Renderer::RayTracingDebugView::Shadow;
+		m_Params.RTShadowNormalBias = 0.05f;
+		LogState(L"[9] normal bias 0.05 m");
+		RequestShot(L"r6_09_shadow_bias_large.png");
+		break;
+
+	case 10:
+		// 复原并确认描述符没有泄漏（连续切换后 RTV/SRV/pool 应稳定）。
+		m_Params.RTShadowNormalBias = 0.002f;
+		m_Params.RTDebugView = Renderer::RayTracingDebugView::Shaded;
+		m_Params.EnableRTShadow = true;
+		m_Params.EnableRTReflection = false;
+		LogState(L"[10] restored to defaults");
+		RequestShot(L"r6_10_restored.png");
+		break;
+
+	case 11:
+		// ImGui 面板取证（与 R3Test 第 9 步同一机制）：
+		// RenderUI 在本帧稍后把面板画进 SceneColor，下一帧 Update 开头再把
+		// 「含 UI 的完整画面」回读出来。绕开「不能在 GameCore 的
+		// GraphicsContext 里嵌套开上下文」的限制。
+		LogState(L"[11] ui capture");
+		{
+			wchar_t uiPath[512] = {};
+			swprintf_s(uiPath, L"%ws\\r6_11_imgui_panel.png", m_R6TestDir.c_str());
+			m_PendingUICapturePath = uiPath;
+			LOG_INFO(L"[R6-Test] step %d -> %ws (with ImGui)\n", m_R6TestStep, uiPath);
+		}
+		break;
+
+	case 12:
+		LogState(L"[12] final");
+		LOG_INFO(L"[R6-Test] all steps done\n");
+		PostQuitMessage(0);
+		break;
+
+	default:
+		break;
+	}
+}
+
+// ============================================================
 // 生命周期
 // ============================================================
 void RendererDemoApp::Startup(void)
@@ -926,6 +1110,17 @@ void RendererDemoApp::Startup(void)
 		}
 	}
 
+	// ---- R6 脚本化验收 ----
+	{
+		std::wstring testDir;
+		if (CommandLineArgs::GetString(L"R6Test", testDir) && !testDir.empty())
+		{
+			m_R6TestMode = true;
+			m_R6TestDir = testDir;
+			LOG_INFO(L"[R6-Test] 脚本化验收开始，输出目录 %ws\n", m_R6TestDir.c_str());
+		}
+	}
+
 	// ---- 相机 ----
 	// R1 的顺序要求：先摆好相机，再创建控制器（控制器构造时会读相机朝向作为初值）。
 	m_Camera.SetEyeAtUp(Vector3(0.0f, 0.0f, 5.0f), Vector3(0.0f, 0.0f, -5.0f), Vector3(kYUnitVector));
@@ -1002,6 +1197,8 @@ void RendererDemoApp::Update(float deltaT)
 		RunR3Test();
 	if (m_R4TestMode)
 		RunR4Test();
+	if (m_R6TestMode)
+		RunR6Test();
 
 	// 帧边界动作：切 Renderer / 换模型。必须在任何 GraphicsContext 之前。
 	ApplyPendingActions();
@@ -1144,6 +1341,7 @@ void RendererDemoApp::DrawPanels(void)
 	DrawPerformancePanel();
 	DrawScenePanel();
 	DrawRendererPanel();
+	DrawRayTracingPanel();
 	DrawLightingPanel();
 	DrawDebugViewPanel();
 	DrawDevToolsPanel();
@@ -1302,8 +1500,8 @@ void RendererDemoApp::DrawScenePanel(void)
 
 void RendererDemoApp::DrawRendererPanel(void)
 {
-	ImGui::SetNextWindowPos(ImVec2(16, 430), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(330, 200), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(16, 620), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(360, 330), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("Renderer"))
 	{
 		ImGui::End();
@@ -1399,16 +1597,22 @@ void RendererDemoApp::DrawRendererPanel(void)
 	}
 
 	// ============================================================
-	// R5：DXR 能力状态
+	// R5/R6：DXR 能力状态 + 光追算法开关
 	// ------------------------------------------------------------
 	// 路线图 D0 验收：「无 DXR 支持时禁用相应 UI 项并继续运行光栅模式」，
 	// 并且要「日志显示真实查询到的 Raytracing Tier」。
 	// 这里把查询结果原样显示出来 —— 是硬件真实值，不是写死的文案。
+	//
+	// R6 起这一段同时承担 D3 的验收要求：
+	//   「每个算法都应有可比较的光栅/光追场景、明确采样与偏差策略、
+	//     性能统计和开关」。
+	// 因此下面的控件都**真的接到了 GPU 命令**（RayTracingRenderer::Render
+	// 把这些字段原样塞进 b0 根常量），与上面那四个 [stub] 项性质完全不同 ——
+	// 拨动它们会改变画面，这一点由 -R6Test 的 md5 A/B 证明。
 	// ============================================================
 	ImGui::Separator();
 	{
 		const Graphics::RaytracingCapability cap = Graphics::QueryRaytracingCapability();
-
 		const bool isRaytracingRenderer =
 			m_Renderer && HasFeature(m_Renderer->GetFeatures(), Renderer::RendererFeature::Raytracing);
 
@@ -1425,14 +1629,95 @@ void RendererDemoApp::DrawRendererPanel(void)
 			ImGui::TextDisabled("RayTracingRenderer will refuse to initialize.");
 		}
 
-		if (isRaytracingRenderer)
+		if (!isRaytracingRenderer)
 		{
-			ImGui::TextDisabled("Active path: DispatchRays (normal-color diagnostic)");
+			if (cap.supported)
+				ImGui::TextDisabled("Switch to RayTracingRenderer above to enable R6 controls.");
+			ImGui::End();
+			return;
 		}
-		else if (cap.supported)
-		{
-			ImGui::TextDisabled("Switch to RayTracingRenderer above to test DXR.");
-		}
+
+		ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f),
+			"Active path: DispatchRays (hard shadow + 1-bounce reflection)");
+		ImGui::TextDisabled("R6 controls: see 'Ray Tracing (R6)' panel.");
+	}
+
+	ImGui::End();
+}
+
+void RendererDemoApp::DrawRayTracingPanel(void)
+{
+	// R6/D3 的验收要求是「每个算法都应有...明确采样与偏差策略、性能统计和开关」。
+	// 这几项放在独立面板里，而不是塞进 Renderer 面板底部：
+	//   1) Renderer 面板在 1080p 下已经顶到屏幕底部，继续加内容会被裁掉；
+	//   2) 这是**光追专属**控件，与上面那四个光栅 [stub] 开关性质完全不同，
+	//      放在一起会让读者误以为它们也都是空壳。
+	// 只有当前渲染器声明了 Raytracing 能力时才画这个面板。
+	const bool isRaytracingRenderer =
+		m_Renderer && HasFeature(m_Renderer->GetFeatures(), Renderer::RendererFeature::Raytracing);
+	if (!isRaytracingRenderer)
+		return;
+
+	// 1920 宽下留 16px 右边距：窗口宽 340，起点 1564 => 右边缘 1904。
+	// 再往右会被屏幕裁掉，滑块右侧的数值就会看不到（ImGui 不会自动换行）。
+	ImGui::SetNextWindowPos(ImVec2(1564, 16), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(340, 470), ImGuiCond_FirstUseEver);
+	if (!ImGui::Begin("Ray Tracing (R6)"))
+	{
+		ImGui::End();
+		return;
+	}
+
+	ImGui::TextDisabled("Real GPU work: toggling these changes pixels.");
+	ImGui::TextDisabled("(raster comparison: switch to DeferredRenderer)");
+	ImGui::Separator();
+
+	// ---- 算法开关 ----
+	ImGui::Checkbox("RT hard shadow", &m_Params.EnableRTShadow);
+	ImGui::Checkbox("RT reflection", &m_Params.EnableRTReflection);
+
+	// 调试通道：直接用 RTDebugView 本身作为状态，不额外加一个 bool
+	// （RenderParams 是唯一真源，多一个开关就多一处可能与它不同步的地方）。
+	int rtDebug = (int)m_Params.RTDebugView;
+	static const char* kRTDebugNames[] = { "Shaded", "Normal", "Shadow", "Reflection", "HitDistance" };
+	if (ImGui::Combo("Debug channel", &rtDebug, kRTDebugNames, 5))
+		m_Params.RTDebugView = (Renderer::RayTracingDebugView)rtDebug;
+
+	// ---- 偏差策略（D3 要求"明确采样与偏差策略"）----
+	// 只暴露一个法线偏差，不提供沿光线的位移：两个偏差同时存在时，
+	// 出问题无法归因到哪一个。这一点在 -R6Test 第 9 步用放大偏差
+	// 到 0.05 m 的方式显式验证过（画面变白 = 接触阴影被漏掉）。
+	ImGui::Separator();
+	ImGui::TextDisabled("Bias: normal-only, single knob");
+	// 收窄控件宽度，把右侧留给标签文字 —— ImGui 的滑块标签画在控件右边，
+	// 面板靠屏幕右缘时默认宽度会把标签挤到屏幕外。
+	ImGui::PushItemWidth(150.0f);
+	ImGui::SliderFloat("Normal bias (m)", &m_Params.RTShadowNormalBias, 0.0f, 0.05f, "%.4f");
+	ImGui::SliderFloat("Shadow max dist", &m_Params.RTShadowMaxDistance, 1.0f, 500.0f, "%.0f");
+	ImGui::SliderFloat("Reflect max dist", &m_Params.RTReflectionMaxDistance, 1.0f, 500.0f, "%.0f");
+	ImGui::SliderFloat("Reflect intensity", &m_Params.RTReflectionIntensity, 0.0f, 1.0f, "%.2f");
+	ImGui::PopItemWidth();
+
+	// ---- 性能统计（D3 要求"性能统计"）----
+	// 这些是**发射数**（= 分辨率 × 打开的射线种类），不是命中数。
+	// 命中率要回读 UAV 累加器，属于性能分析工具范畴，本阶段不做 ——
+	// 与其给一个可能被误读的"命中率"，不如只报能精确算出的上界。
+	ImGui::Separator();
+	if (auto* raytracing = dynamic_cast<Renderer::RayTracing::RayTracingRenderer*>(m_Renderer.get()))
+	{
+		const Renderer::RayTracing::RayTracingFrameStats& s = raytracing->GetFrameStats();
+		ImGui::Text("Rays/frame (dispatched)");
+		ImGui::TextDisabled("  primary %llu   shadow %llu",
+			(unsigned long long)s.PrimaryRays, (unsigned long long)s.ShadowRays);
+		ImGui::TextDisabled("  reflect %llu   total %llu",
+			(unsigned long long)s.ReflectionRays, (unsigned long long)s.TotalRays);
+		ImGui::Text("Geometry: %u tri / %u BLAS / %u inst",
+			s.TriangleCount, s.BlasCount, s.InstanceCount);
+		ImGui::Text("GPU frame: %.3f ms", m_GpuFrameMs);
+	}
+	else
+	{
+		ImGui::TextDisabled("Stats unavailable (renderer cast failed)");
 	}
 
 	ImGui::End();
@@ -1440,8 +1725,8 @@ void RendererDemoApp::DrawRendererPanel(void)
 
 void RendererDemoApp::DrawLightingPanel(void)
 {
-	ImGui::SetNextWindowPos(ImVec2(16, 646), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(330, 360), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(390, 400), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("Material / Lighting"))
 	{
 		ImGui::End();
@@ -1451,21 +1736,37 @@ void RendererDemoApp::DrawLightingPanel(void)
 	// Forward 的 DefaultPS 只输出 baseColor，完全不消费 Light UBO（见 DefaultPS.hlsl 的 MainPS）。
 	// 与其让用户拖动滑杆却毫无反应，不如显式禁用并说明原因 —— 路线图要求
 	// "只放真实接通的控件，未实现的显示禁用或 Not Implemented"。
-	const bool lightingConnected = m_Renderer && (m_Renderer->GetFeatures() & RendererFeature::Deferred) != RendererFeature::None;
-	if (!lightingConnected)
+	// R6 更新：DXR 路径**确实**消费太阳参数（RayTracingRenderer::Render 把
+	// SunDirection / SunIntensity / SunColor 原样传进 b0 根常量，HLSL 里
+	// 用它算 Lambert 主光与阴影射线方向），所以太阳这一段在 DXR 下必须可编辑。
+	// 但点光源与 IBL 在 DXR 里**没有**消费点（HLSL 只有一个方向光 + 程序化
+	// SkyColor 环境项），因此这两段在 DXR 下保持禁用 —— 宁可显示禁用，
+	// 也不给一个拨了没反应的滑杆。
+	const bool deferredConnected = m_Renderer && (m_Renderer->GetFeatures() & RendererFeature::Deferred) != RendererFeature::None;
+	const bool raytracingConnected = m_Renderer && (m_Renderer->GetFeatures() & RendererFeature::Raytracing) != RendererFeature::None;
+	const bool sunConnected = deferredConnected || raytracingConnected;
+	const bool fullLightingConnected = deferredConnected;
+
+	if (!sunConnected)
 	{
 		ImGui::TextDisabled("Current renderer does not consume light params.");
 		ImGui::TextDisabled("ForwardRenderer's DefaultPS outputs baseColor only.");
 		ImGui::Separator();
 	}
-	ImGui::BeginDisabled(!lightingConnected);
+	else if (raytracingConnected)
+	{
+		ImGui::TextDisabled("DXR consumes the SUN only (point light / IBL not wired yet).");
+		ImGui::Separator();
+	}
 
+	ImGui::BeginDisabled(!sunConnected);
 	ImGui::Checkbox("Sun light", &m_Params.EnableSunLight);
 	ImGui::SliderFloat("Sun intensity", &m_Params.SunIntensity, 0.0f, 10.0f);
 	ImGui::ColorEdit3("Sun color", m_Params.SunColor);
 	ImGui::DragFloat3("Sun direction", m_Params.SunDirection, 0.01f, -1.0f, 1.0f);
 
 	ImGui::Separator();
+	ImGui::BeginDisabled(!fullLightingConnected);
 	ImGui::Checkbox("Point light", &m_Params.EnablePointLight);
 	ImGui::SliderFloat("Point intensity", &m_Params.PointLightIntensity, 0.0f, 20.0f);
 	ImGui::SliderFloat("Point range", &m_Params.PointLightRange, 0.1f, 100.0f);
@@ -1475,8 +1776,9 @@ void RendererDemoApp::DrawLightingPanel(void)
 	ImGui::Separator();
 	ImGui::Checkbox("IBL", &m_Params.EnableIBL);
 	ImGui::SliderFloat("IBL intensity", &m_Params.IBLIntensity, 0.0f, 4.0f);
+	ImGui::EndDisabled();   // end of point-light/IBL block
 
-	ImGui::EndDisabled();
+	ImGui::EndDisabled();   // end of sun block
 
 	// ============================================================
 	// R4.6：恢复默认值
@@ -1511,7 +1813,7 @@ void RendererDemoApp::DrawLightingPanel(void)
 
 void RendererDemoApp::DrawDebugViewPanel(void)
 {
-	ImGui::SetNextWindowPos(ImVec2(360, 16), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(390, 16), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(300, 150), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("Debug View"))
 	{
@@ -1543,7 +1845,7 @@ void RendererDemoApp::DrawDebugViewPanel(void)
 
 void RendererDemoApp::DrawDevToolsPanel(void)
 {
-	ImGui::SetNextWindowPos(ImVec2(360, 180), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(390, 180), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(300, 210), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("DevTools"))
 	{

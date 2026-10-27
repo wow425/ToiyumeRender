@@ -47,6 +47,41 @@ namespace Renderer
 		}
 	}
 
+	// ============================================================
+	// R6 / D3：DXR 光线效果的调试通道
+	// ------------------------------------------------------------
+	// 为什么**不**复用上面的 DebugView：
+	//   DebugView 的每一项都对应 DeferredRenderer 的某一张 GBuffer
+	//   （BaseColor / Metallic / Roughness / AO / Depth …），
+	//   而 RayTracingRenderer 没有 GBuffer，也不接材质（见路线图 D3 未完成项）。
+	//   把两者塞进同一个枚举会让「Deferred 选 Metallic」与「DXR 选 Metallic」
+	//   表现出完全不同的含义，属于语义陷阱。
+	//   因此单开一个枚举，只描述 DXR 路径**能真实产出**的通道。
+	// ============================================================
+	enum class RayTracingDebugView : uint32_t
+	{
+		Shaded = 0,      // Lambert + 硬阴影 + 反射的最终着色（D3 主画面）
+		Normal = 1,      // 主射线命中的世界空间法线（*0.5+0.5）
+		Shadow = 2,      // 主光可见度：1=受光，0=被遮挡
+		Reflection = 3,  // 只显示反射射线颜色（未开反射时即天空色）
+		HitDistance = 4, // 主射线命中距离 / 32 米（超出为白）
+
+		Count
+	};
+
+	inline const wchar_t* RayTracingDebugViewName(RayTracingDebugView view)
+	{
+		switch (view)
+		{
+		case RayTracingDebugView::Shaded:      return L"Shaded";
+		case RayTracingDebugView::Normal:      return L"Normal";
+		case RayTracingDebugView::Shadow:      return L"Shadow";
+		case RayTracingDebugView::Reflection:  return L"Reflection";
+		case RayTracingDebugView::HitDistance: return L"HitDistance";
+		default:                               return L"Unknown";
+		}
+	}
+
 	// 渲染参数（CPU 真源）。
 	//
 	// 默认值与 Scene::LightingSystem::CreateLights() 里的历史硬编码值一致，
@@ -114,6 +149,45 @@ namespace Renderer
 		bool EnableSSAO        = false;
 		bool EnableTransparent = true;
 		bool EnablePostProcess = false;
+
+		// ============================================================
+		// R6 / D3：DXR 光线效果参数
+		// ------------------------------------------------------------
+		// 与上面四项的根本差别：**这几项在 RayTracingRenderer 里有真实 GPU 命令**。
+		// 拨动它们会改变 DispatchRays 发出的射线数量与着色结果，
+		// 不是"允许 Pass 参与"的空壳。
+		// 在 Deferred / Forward 里它们不生效（那两个渲染器走光栅路径）。
+		// ============================================================
+
+		// 硬阴影射线：从命中点朝主光方向再发一条可见性射线。
+		// 关闭时 DXR 画面退化为纯 Lambert（可与开启时做 A/B 对照截图）。
+		bool  EnableRTShadow     = true;
+
+		// 反射射线：命中点沿反射方向再发一条射线，按 Fresnel 混合。
+		// 路线图 D3 的顺序是「先硬阴影，再反射」，因此默认关闭 ——
+		// 保证默认画面能被解释为"只有阴影的 DXR"，而不是两者的叠加黑箱。
+		bool  EnableRTReflection = false;
+
+		// 阴影射线的起点沿法线抬起的距离（米）。太小 → 自遮挡噪点（acne）；
+		// 太大 → 接触阴影丢失（peter-panning）。1e-3 对 1.6 米高的角色模型合适。
+		// 这是**唯一**的偏差来源（故意不加第二条"沿光线方向偏移"，
+		// 因为两条偏差叠加会让效果难以归因，D3 阶段只保留一个可调旋钮）。
+		float RTShadowNormalBias = 0.002f;
+
+		// 阴影射线的最大距离（米）。超过这个距离认为不受遮挡（= 受光）。
+		// 主光在无限远，理论上应取无穷；但有限值能让"远处不被遮挡"成立，
+		// 与方向光的物理语义一致，同时避免 TMax=FLT_MAX 带来的精度问题。
+		float RTShadowMaxDistance = 100.0f;
+
+		// 反射射线的最大距离（米）。反射是"看到什么算什么"，
+		// 命中与否由 TLAS 决定，TMax 只影响极远处是否算未命中（→ 天空色）。
+		float RTReflectionMaxDistance = 200.0f;
+
+		// 反射强度倍率（线性乘到反射颜色上），便于在"过亮"和"看不见"之间调。
+		float RTReflectionIntensity = 0.6f;
+
+		// DXR 专用调试通道（见上面的 RayTracingDebugView）。
+		RayTracingDebugView RTDebugView = RayTracingDebugView::Shaded;
 
 		// 把全部参数恢复为默认值。
 		// 实现方式是"整体赋值一个默认构造的 RenderParams"，而不是逐字段手写 ——

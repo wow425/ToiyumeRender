@@ -1,7 +1,7 @@
 #pragma once
 
 // ============================================================================
-//  RayTracingRenderer.h —— R5 / D2：DXR 最小闭环渲染器
+//  RayTracingRenderer.h —— R6 / D3：DXR 光追渲染器（硬阴影 + 反射）
 // ----------------------------------------------------------------------------
 //  设计定位（严格对齐路线图 §8 总纲）：
 //    「DXR 要作为新增 Renderer 接入，而不是让现有光栅路径依赖光追。
@@ -15,10 +15,13 @@
 //      Display::PreparePresentSDR 统一 Present 路径（格式家族一致）。
 //    * 显示编码：RayGen 里调用 ColorPipeline.hlsli 的 EncodeDisplayColor，
 //      与光栅路径共用 tonemap + sRGB 传递函数。
+//    * 灯光：方向光数据取自 RenderParams（与光栅路径同一真源），
+//      语义也一致（SunDirection 是**传播方向**，着色时取反）。
 //
-//  本阶段（D2）能力：
-//    只发一条主射线，命中返回世界空间面法线色，未命中返回背景色。
-//    这是**诊断画面**，不是路径追踪器（D3 才加阴影/反射）。
+//  能力演进：
+//    R5 / D2 —— 最小闭环：主射线 → 面法线色。只是"证明 DXR 通了"。
+//    R6 / D3 —— 本文件：主射线 → 硬阴影射线 + 单次反射射线（递归深度 2），
+//               Lambert 着色、法线偏差、可开关、可调试通道、逐帧统计。
 // ============================================================================
 
 #include "04_Renderer/Renderer/Base/BaseRenderer.h"
@@ -40,7 +43,7 @@ namespace Renderer::RayTracing
 {
 	// ============================================================
 	//  根常量（b0）：必须与 HLSL 的 cbuffer RaytracingConstants 逐字段一致
-	//  共 32 个 DWORD = 128 字节
+	//  R6 起共 48 个 DWORD = 192 字节（R5 是 32 个 DWORD = 128 字节）
 	// ============================================================
 	struct RaytracingConstants
 	{
@@ -49,8 +52,31 @@ namespace Renderer::RayTracing
 		Math::Vector4 OutputSize;     // 16 B：xy = 分辨率, zw = 1/分辨率
 		Math::Vector4 DisplayParams;  // 16 B：x = exposure, y = tonemap, z = srgb
 		Math::Vector4 DebugParams;    // 16 B：保留
+
+		// ---- R6 / D3 追加（只能追加在末尾）----
+		Math::Vector4 LightDirection; // 16 B：xyz = 光传播方向, w = 强度
+		Math::Vector4 LightColor;     // 16 B：rgb = 颜色
+		Math::Vector4 RTParams;       // 16 B：x = 阴影法线偏差, y = 阴影最大距离,
+		                              //       z = 反射最大距离, w = 反射强度
+		Math::Vector4 RTParams2;      // 16 B：x = 开阴影, y = 开反射, z = 调试通道
 	};
-	static_assert(sizeof(RaytracingConstants) == 128, "必须与 HLSL 的 32 个 DWORD 根常量一致");
+	static_assert(sizeof(RaytracingConstants) == 192, "必须与 HLSL 的 48 个 DWORD 根常量一致");
+
+	// 每帧的射线统计。数值是**发射数**（不是命中数）：
+	//   主射线 = 输出像素数；阴影射线 = 主射线命中且开阴影的像素数；
+	//   反射射线 = 主射线命中且开反射的像素数。
+	// 想拿命中率必须靠调试通道，本阶段不做逐射线回读（那需要额外 UAV + 读回，
+	// 属于性能分析工具的范畴，不在 D3 的"最小可比较"范围内）。
+	struct RayTracingFrameStats
+	{
+		uint64_t PrimaryRays = 0;
+		uint64_t ShadowRays = 0;
+		uint64_t ReflectionRays = 0;
+		uint64_t TotalRays = 0;
+		uint32_t TriangleCount = 0;
+		uint32_t BlasCount = 0;
+		uint32_t InstanceCount = 0;
+	};
 
 	class RayTracingRenderer final : public BaseRenderer
 	{
@@ -68,6 +94,9 @@ namespace Renderer::RayTracing
 
 		// 供 RendererDemoApp::BindRendererOutput 取输出缓冲（与 Deferred/Forward 同构）
 		std::shared_ptr<ColorBuffer> GetSceneColorBuffer(void) const { return m_SceneColorBuffer; }
+
+		// 供 UI 读统计（Render 之后每帧更新）
+		const RayTracingFrameStats& GetFrameStats(void) const { return m_Stats; }
 
 		RendererFeature GetFeatures() const override
 		{
@@ -114,5 +143,11 @@ namespace Renderer::RayTracing
 
 		// 统计（供 UI / 日志）
 		uint32_t m_DispatchedFrames = 0;
+		RayTracingFrameStats m_Stats;
+
+		// 上一帧实际生效的开关。用于检测「用户刚拨动开关」并在首帧打日志，
+		// 让「拨了没反应」这类问题在日志里立刻可见（而不是靠肉眼看画面差异）。
+		bool m_LastEnableShadow = false;
+		bool m_LastEnableReflection = false;
 	};
 }

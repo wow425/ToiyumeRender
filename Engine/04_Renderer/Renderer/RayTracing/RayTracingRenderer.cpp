@@ -38,9 +38,16 @@ namespace
 		kGlobalRootSceneData,        // t1：聚合几何（根级 SRV）
 		kGlobalRootInstanceData,     // t2：每实例数据（根级 SRV）
 		kGlobalRootOutputTable,      // u0：输出 UAV（描述符表，1 个）
-		kGlobalRootConstants,        // b0：根常量 32 DWORD
+		kGlobalRootConstants,        // b0：根常量 48 DWORD（R6 从 32 扩到 48）
 		kNumGlobalRootBindings
 	};
+
+	// 根常量个数。**改这里必须同时改**：
+	//   * HLSL 的 cbuffer RaytracingConstants 字段数
+	//   * RayTracingRenderer.h 的 RaytracingConstants（有 static_assert 挡着）
+	//   * Render() 里的 SetConstantArray 实参
+	// 三处任一漏改的后果都一样：后续字段整体错位，画面异常但**不报错**。
+	constexpr uint32_t kGlobalRootConstantDwords = 48;
 
 	// 输出 UAV 在自有堆里的槽位
 	constexpr uint32_t kOutputUavSlot = 0;
@@ -234,7 +241,8 @@ bool RayTracingRenderer::BuildRootSignature()
 	m_GlobalRootSig[kGlobalRootInstanceData].InitAsBufferSRV(2, D3D12_SHADER_VISIBILITY_ALL);
 	m_GlobalRootSig[kGlobalRootOutputTable].InitAsDescriptorRange(
 		D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 1, D3D12_SHADER_VISIBILITY_ALL);
-	m_GlobalRootSig[kGlobalRootConstants].InitAsConstants(0, 32, D3D12_SHADER_VISIBILITY_ALL);
+	m_GlobalRootSig[kGlobalRootConstants].InitAsConstants(0, kGlobalRootConstantDwords,
+		D3D12_SHADER_VISIBILITY_ALL);
 
 	// DXR 全局根签名不需要 INPUT_ASSEMBLER 标志。
 	m_GlobalRootSig.Finalize(L"RayTracingRenderer Global Root Signature",
@@ -259,7 +267,12 @@ bool RayTracingRenderer::BuildStateObject()
 
 	// lib_6_4 编译出的每个 [shader("...")] 都是一个可导出符号。
 	// 全部登记，让 State Object 把它们都保留下来。
-	desc.Exports = { L"RayGen", L"Miss", L"ClosestHit" };
+	//
+	// 【关键】ShadowMiss 必须出现在这个导出列表里，否则它不会进入 DXIL 库的
+	// 「可导出」集合，SBT 的 miss 表第二条记录拿到的就是全零标识符 ——
+	// 运行时表现为「阴影射线未命中时也判为被遮挡」（整个场景全黑），
+	// 而 Debug Layer 只在 SBT 校验非常严格时才提一句，很容易漏看。
+	desc.Exports = { L"RayGen", L"Miss", L"ShadowMiss", L"ClosestHit" };
 
 	desc.HitGroupName = L"HitGroup";
 	desc.ClosestHitExport = L"ClosestHit";
@@ -269,10 +282,17 @@ bool RayTracingRenderer::BuildStateObject()
 	desc.RayGenExport = L"RayGen";
 	desc.MissExport = L"Miss";
 
-	// 与 HLSL 的 RayPayload { float3 Color; float HitDistance; } = 16 B 一致。
-	desc.MaxPayloadSizeInBytes = 16;
+	// 与 HLSL 的 RayPayload 一致：float3 Color(12) + float HitDistance(4)
+	//                       + uint Depth(4) + uint _pad0(4) + float2 _pad1(8) = 32 B。
+	// R5 时是 16 B（只有 Color + HitDistance），R6 加 Depth 后必须同步放大，
+	// 否则 TraceRay 会**越界写**载荷（Debug Layer 报
+	// "Payload is larger than the size specified in the shader config"）。
+	desc.MaxPayloadSizeInBytes = 32;
 	desc.MaxAttributeSizeInBytes = 8;
-	desc.MaxTraceRecursionDepth = 1;
+	// 递归深度 2：主射线(0) → ClosestHit → 二级射线(1) → ClosestHit 早退。
+	// 与 HLSL 里 `if (payload.Depth >= 1u) return;` 的闸门严格对应。
+	// 写 1 而代码里发二级射线，设备会直接移除进程（0x887A0005），无友好提示。
+	desc.MaxTraceRecursionDepth = 2;
 
 	desc.GlobalRootSignature = m_GlobalRootSig.GetSignature();
 
@@ -353,8 +373,9 @@ void RayTracingRenderer::Update(const RenderFrameDesc& frame, GraphicsContext& g
 		m_GeometryReady = true;
 
 		// BLAS 刚建完，SBT 还没建（依赖 State Object，已在 Initialize 建好）
+		// R6：miss 表需要两条记录 —— Miss（主/反射）与 ShadowMiss（阴影）。
 		m_Scene.BuildShaderBindingTable(m_StateObject.GetProperties(),
-			L"RayGen", L"Miss", L"HitGroup");
+			L"RayGen", L"Miss", L"ShadowMiss", L"HitGroup");
 
 		// 关键：RebuildGeometry 只建 BLAS 与每实例数据，**不建 TLAS**。
 		// TLAS 的构建在 UpdateInstances 里（它同时写 instance desc）。
@@ -466,8 +487,36 @@ void RayTracingRenderer::Render(GraphicsContext& context, const RenderFrameDesc&
 		0.0f);
 	constants.DebugParams = Vector4(kZero);
 
+	// ---- R6 / D3：灯光与光追参数 ---------------------------------------
+	// 方向光直接取 RenderParams —— 与 DeferredRenderer / LightingSystem 同一真源。
+	//
+	// 【语义】RenderParams::SunDirection 是**光的传播方向**，不是"指向光源的方向"。
+	// LightingPS.hlsl:118 里是 `float3 dirL = normalize(-DirectionIntensity.xyz);`。
+	// 这里原样上传传播方向，由 HLSL 的 ClosestHit 自己取反 —— 两侧保持同一约定，
+	// 谁都不做"顺手翻一下"，否则两条路径的主光会一上一下（这种 bug 在单张
+	// 截图里很难判断是"光反了"还是"法线反了"）。
+	constants.LightDirection = Vector4(params.SunDirection[0], params.SunDirection[1],
+		params.SunDirection[2], params.EnableSunLight ? params.SunIntensity : 0.0f);
+	constants.LightColor = Vector4(params.SunColor[0], params.SunColor[1],
+		params.SunColor[2], 0.0f);
+
+	constants.RTParams = Vector4(
+		params.RTShadowNormalBias,       // x：法线偏差（米）
+		params.RTShadowMaxDistance,      // y：阴影射线最大距离
+		params.RTReflectionMaxDistance,  // z：反射射线最大距离
+		params.RTReflectionIntensity);   // w：反射强度倍率
+
+	// 关掉太阳时阴影没有意义（toLight 方向还在，但 radiance 为 0），
+	// 这里仍允许阴影射线照常发射 —— 因为调试通道 2 要能单独看"几何遮挡关系"，
+	// 与光照强度解耦。是否发射只由 EnableRTShadow 决定。
+	constants.RTParams2 = Vector4(
+		params.EnableRTShadow ? 1.0f : 0.0f,
+		params.EnableRTReflection ? 1.0f : 0.0f,
+		(float)(uint32_t)params.RTDebugView,
+		0.0f);
+
 	// 同上：根常量也必须走计算根参数槽位（SetComputeRoot32BitConstants）。
-	compute.SetConstantArray(kGlobalRootConstants, 32, &constants);
+	compute.SetConstantArray(kGlobalRootConstants, kGlobalRootConstantDwords, &constants);
 
 	// ---- 5. DispatchRays -----------------------------------------------
 	// 关键：DispatchRays 的 Width/Height 必须在这里按输出尺寸填。
@@ -500,6 +549,41 @@ void RayTracingRenderer::Render(GraphicsContext& context, const RenderFrameDesc&
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
 	context.PIXEndEvent();
+
+	// ---- 7. 统计（供 UI 面板显示）--------------------------------------
+	// 这些是**发射数**而不是命中数：命中率要靠调试通道肉眼看，
+	// 逐射线回读需要额外 UAV + 读回，属性能分析工具范畴，D3 不做。
+	//
+	//   主射线 = 输出像素数（每个像素一条，无采样抖动）
+	//   阴影射线 = 开阴影时，每条主射线在命中后发 1 条；未命中的主射线不发
+	//   反射射线 = 同理
+	// 因此 ShadowRays/ReflectionRays 的**上界**是 PrimaryRays，
+	// 实际值只有命中像素才计入 —— 这里用"是否开启"做增量为
+	// PrimaryRays 的近似，并注明这是上界而不是精确值。
+	// 精确值需要 GPU 计数器，本阶段不做，UI 里也标注为「上界」。
+	const uint64_t primary = (uint64_t)m_CreateDesc.width * (uint64_t)m_CreateDesc.height;
+	m_Stats.PrimaryRays = primary;
+	m_Stats.ShadowRays = params.EnableRTShadow ? primary : 0;
+	m_Stats.ReflectionRays = params.EnableRTReflection ? primary : 0;
+	m_Stats.TotalRays = m_Stats.PrimaryRays + m_Stats.ShadowRays + m_Stats.ReflectionRays;
+	m_Stats.TriangleCount = m_Scene.GetTriangleCount();
+	m_Stats.BlasCount = m_Scene.GetBlasCount();
+	m_Stats.InstanceCount = m_Scene.GetInstanceCount();
+
+	// 开关变化时打一条日志：让「拨了开关但画面没变」在日志里立刻可见。
+	// 只在值真的翻转时打，不会每帧刷屏。
+	if (params.EnableRTShadow != m_LastEnableShadow
+		|| params.EnableRTReflection != m_LastEnableReflection)
+	{
+		m_LastEnableShadow = params.EnableRTShadow;
+		m_LastEnableReflection = params.EnableRTReflection;
+		LOG_INFO(L"[DXR] 光追开关：阴影=%s 反射=%s（偏差=%.4f m，阴影距离=%.1f m，"
+			L"反射距离=%.1f m，反射强度=%.2f）\n",
+			params.EnableRTShadow ? L"开" : L"关",
+			params.EnableRTReflection ? L"开" : L"关",
+			params.RTShadowNormalBias, params.RTShadowMaxDistance,
+			params.RTReflectionMaxDistance, params.RTReflectionIntensity);
+	}
 
 	++m_DispatchedFrames;
 	if (m_DispatchedFrames == 1)
