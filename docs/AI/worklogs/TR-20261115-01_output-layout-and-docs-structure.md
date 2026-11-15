@@ -197,3 +197,99 @@ git rm --cached -r --quiet ThirdParty
 - `Engine/02_RHI/Pipeline/RaytracingPSO.h:39` 注释提到 `ShaderCache/RayTracing.h`（纯注释）。
 - Release 运行验证是「运行 50s 后主动终止」，**不等于**「程序自然退出通过」——程序本身没有自动退出参数，此处如实标注。
 - `docs/AI/architecture/`、`docs/AI/reviews/` 目前是空目录（git 不跟踪空目录），待确有该类文档时再填。
+
+## 8. 提交与推送至 GitHub（用户追加指令）
+
+用户追加要求：把屏蔽后的项目更新至 GitHub 仓库。提交范围经用户确认选择「全部提交，GitHub 与磁盘完全一致」，因此本次提交同时落地了用户此前在工作区自行删除的 161 项（`docs/AI` 旧 R0–R7 归档 121 项、`docs/AIWorkLogs` 21 项、`scripts/` 11 个、`.vscode/launch.json`、`.claudiaideconfig*`、`docs/{LearningLog,UpgradeRoadmap_2026-10,Showcase}.md`、`Engine/Shader/06_Environment.zip` 等）。
+
+### 8.1 提交前的额外屏蔽
+
+| 新增规则 | 理由 |
+| --- | --- |
+| `.mnemon/`（`.gitignore:431`） | AI 记忆工具运行时目录（`documents/index.json`、`runtime/*.md`、`memories.json`），非工程内容 |
+| `/*.zip`（`.gitignore:433`） | 仓库根出现手工打包快照 `TooiyumeRender.zip`（3,858,464 B，260 entries，仅 `Engine` 227 + `Demos` 33，含 `Demos/ForwardApp/.vs/` 等垃圾） |
+
+追加后 `.gitignore` 仍为 UTF-8 无 BOM（首字节 `35,35,32`），大小 9,284 B。
+
+### 8.2 AGENTS.md 同步修正
+
+因本次提交会删除 `scripts/` 与 skill 目录，原 `AGENTS.md` 中的两条引用必然失效，一并改写：
+
+1. 构建入口整段改为 vcvars64 + VS 自带 cmake/ninja 的真实可用命令（保留 `chcp 65001` 说明、`set VCPKG_ROOT=`、`-DCMAKE_MAKE_PROGRAM`、`--build --parallel`），运行路径改为 `out\<Config>\Demos\<App>\<exe>`。
+2. 删除末尾「自检」小节（其指向的 `docs/AI/渲染器AI编程流程skill/scripts/ai-check.ps1` 在 HEAD 中 `git ls-tree` 计数为 0，早已不存在）。
+
+### 8.3 提交
+
+`git add -A` 后暂存 202 项（183 `D` / 13 `M` / 5 `A` / 1 `R`）：
+
+- 暂存区中 `Assets|out|vcpkg_installed` 前缀条目 **0 条**；
+- `ThirdParty` 23 条全部为 `D `（退出索引，磁盘 25 个文件保留）；
+- 新增：`Engine/20_cmake/OutputLayout.cmake`、`docs/AI/README.md`、`docs/AI/architecture/.gitkeep`、`docs/AI/reviews/.gitkeep`、`docs/AI/worklogs/TR-20261115-01_...md`；
+- 重命名：`docs/TooiyumeRender_光追管线教程.md` → `docs/AI/guides/TooiyumeRender_光追管线教程.md`（相似度 100%）。
+
+结果：`[master 3860f05] chore: 工程结构明确化（产物归位 out/、docs/AI 分类、git 上传范围屏蔽）`，`202 files changed, 486 insertions(+), 100926 deletions(-)`，exit 0。
+
+### 8.4 推送
+
+`git push origin master` → `d3d3022..3860f05  master -> master`，exit 0。
+
+- `git ls-remote --heads origin` = `3860f05d8974c438e1977e733d688168b17815ca  refs/heads/master`
+- `origin/master..HEAD` 未推送提交数 = **0**
+- `git status --porcelain` = **干净**
+
+远端：`https://github.com/wow425/ToiyumeRender.git`（注意远端仓库名拼写为 `ToiyumeRender`，少于本地目录名的一个 `o`，属既有事实，未改动）。
+
+### 8.5 新 HEAD 内容复核
+
+| 指标 | 提交前 HEAD `d3d3022` | 提交后 HEAD `3860f05` |
+| --- | --- | --- |
+| 跟踪文件数 | 385 | **207** |
+| 跟踪文件体积 | 29.3 MB | **2.5 MB** |
+| `git ls-tree -r HEAD` 中 `Assets`/`out`/`ThirdParty`/`vcpkg_installed` 前缀条目 | — | **全部 0** |
+
+本地被屏蔽目录的实际体量（对照说明为何不入库）：`Assets` 187 files / 678.1 MB、`ThirdParty` 25 files / 3.6 MB、`vcpkg_installed` 162 files / 67.5 MB。
+
+提交后对本地 `out/build/Debug` 复跑 `cmake --build` → `ninja: no work to do.`，exit 0，说明提交未意外污染构建树。
+
+## 9. 从 GitHub 全新克隆的独立验证
+
+为确认「上传出去的东西本身自洽、且能被别人构建」，做了一次干净克隆验证。
+
+### 9.1 克隆结果
+
+`git clone --depth 1 https://github.com/wow425/ToiyumeRender.git` 成功。克隆内容：`Demos/ docs/ Engine/` + `.editorconfig .gitattributes .gitignore AGENTS.md CMakeLists.txt CMakePresets.json CppProperties.json imgui.ini README.md vcpkg.json`。
+
+- 四个被屏蔽目录 `Assets`、`out`、`ThirdParty`、`vcpkg_installed`：`Test-Path` 全部 **False**；
+- `scripts/build.bat`：不存在（与本次提交一致）；
+- `Engine/20_cmake/OutputLayout.cmake`：存在。
+
+### 9.2 裸克隆直接配置会失败（预期行为，非缺陷）
+
+```
+CMake Error at CMakeLists.txt:103 (message):
+  找不到第三方依赖，且没有可用的 vcpkg：
+    仓库内置目录不存在或无内容：...\vcpkg_installed/x64-windows
+    VCPKG_ROOT 也未设置。
+```
+
+这是屏蔽 `vcpkg_installed` 的必然结果，报错本身已给出三条出路（放 `vcpkg_installed`、设 `VCPKG_ROOT`、传 `CMAKE_TOOLCHAIN_FILE`）。**结论：克隆后必须先补齐 `vcpkg_installed` 才能构建**。
+
+### 9.3 补齐依赖后完整重建成功
+
+用目录联接（junction）把本地 `ThirdParty`、`vcpkg_installed`、`Assets` 接进克隆目录（避免复制 745 MB），再清空 `out/`，用同一套 VS 环境驱动：
+
+| 阶段 | 结果 |
+| --- | --- |
+| configure | `-- [layout] 产物根目录: .../out/Debug`、`-- [layout] 着色器产物: .../out/Debug/Engine/Shader`、`-- [deps] 使用仓库内依赖目录（优先于 VCPKG_ROOT）`、`Configuring done (7.1s)`、`Generating done (0.2s)` |
+| build | **106/106 全部完成，exit 0** |
+| 产物 | `out/Debug/ThirdParty/imgui/imgui.lib`、`out/Debug/Engine/TooiyumeEngine.lib`、`out/Debug/Demos/{DeferredApp,ForwardApp,RayTracingApp,RendererDemoApp}/<exe>`、`out/Debug/Engine/Shader/{01_Default,02_Deferred,06_Environment,07_RayTracing}/*.h` |
+
+编译期仅 3 条既有 warning（与本地构建完全一致，均非本次改造引入）：`DeferredCommon.hlsli:60:12 [-Wconversion]`、`Utility.cpp(97) C5033 register`、`BaseRenderer.cpp(77) C4319`。
+
+验证完成后用 `rmdir` 逐个拆除 junction（避免 `Remove-Item -Recurse` 递归删到源目录），复核三个源目录文件数与体积不变（187 / 25 / 162 files），随后删除克隆目录。
+
+## 10. 遗留提示
+
+- 克隆得到的仓库必须自行补齐 `ThirdParty`（PIX 头/lib、imgui 源码）与 `vcpkg_installed`，否则 configure 会在 `CMakeLists.txt:103` 报错退出。这是屏蔽策略的正常代价，已在 `AGENTS.md` 与本文记录。
+- 工作区另有一个用户手放的任务说明文件 `docs/AI执行任务.md`（16,069 B，未跟踪），与本次三项要求无关，未纳入本次提交。
+- `docs/AI/architecture/`、`docs/AI/reviews/` 目前仅含 `.gitkeep`，待确有对应文档时填充。
