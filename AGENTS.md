@@ -1,18 +1,30 @@
 # TooiyumeRender — AI 施工常驻规则
 
-> 完整流程见 `docs/AI/渲染器AI编程流程skill/SKILL.md`。本文件只列**没读 skill 也不许犯**的错误。
+> 本文件只列**没读完整流程也不许犯**的错误。
 
 ## 构建与运行（唯一入口）
 
-```bash
-set VCPKG_ROOT=F:/VS/rep/vcpkg        # 每 shell 必设
-scripts\build.bat Debug               # 新增 .cpp / 改 CMakeLists 时加 clean
-scripts\build.bat Release             # 必须与 Debug 同跑
-scripts\run.bat Debug Deferred
+`scripts/` 已于 2026-11-15 移除，改为直接用 **VS 自带工具链**（不得脱离 VS 环境）：
+
+```bat
+call "F:\VS\Community\VC\Auxiliary\Build\vcvars64.bat"
+:: 注意：必须 chcp 65001，否则 Ninja 的 msvc_deps_prefix 双重编码，改头文件不重编
+set VCPKG_ROOT=
+
+set CMAKE=F:\VS\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe
+set NINJA=F:\VS\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe
+
+:: 配置（Debug / Release 各一次；新增 .cpp 或改 CMakeLists 时删掉 out\build\<Config> 重配）
+"%CMAKE%" -S . -B out\build\Debug -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA%" ^
+  -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=cl.exe -DCMAKE_CXX_COMPILER=cl.exe
+:: 编译
+"%CMAKE%" --build out\build\Debug --parallel
 ```
 
-- **禁止 `cmake --preset`**：产物落 `out/build/x64-debug`，与 `build.bat` 的 `out/build/<Config>` 不同。两目录并存会导致「构建了」≠「跑的是新 exe」。
-- 产物：`out/build/<Config>/Demos/<App>/`；exe 名不统一（Forward=`TooiyumeApp.exe`）。
+- 运行：`out\<Config>\Demos\<App>\<exe>`（例：`out\Debug\Demos\DeferredApp\DeferredApp.exe -Screenshot out\_shots`）。
+- **禁止 `cmake --preset`**：预设会另建 `out/build/x64-debug`，与上面的 `out/build/<Config>` 形成双树，导致「构建了」≠「跑的是新 exe」。
+- **产物（2026-11-15 起）**：`out/<Config>/{Engine,ThirdParty,Demos}/...`，镜像源码树层次；构建树（`CMakeCache.txt`/`.obj`/`build.ninja`）仍在 `out/build/<Config>/`。着色器产物 `out/<Config>/Engine/Shader/<HLSL子目录>/`。统一出口变量见 `Engine/20_cmake/OutputLayout.cmake`。
+- exe 名不统一（Forward=`TooiyumeApp.exe`），路径为 `out/<Config>/Demos/<App>/`。
 - 新增 `.cpp` 必须 `clean`（`GLOB_RECURSE` 无 `CONFIGURE_DEPENDS`）。
 
 ## 验证（分层，缺层必须标注）
@@ -33,15 +45,9 @@ scripts\run.bat Debug Deferred
 
 ## 施工文档（每次必写）
 
-`docs/AIWorkLogs/TR-YYYYMMDD-NN_<slug>.md`，模板见 skill 的 `assets/worklog-template.md`。
+`docs/AI/worklogs/TR-YYYYMMDD-NN_<slug>.md`（`docs/AI` 的分类约定见 `docs/AI/README.md`）。
 每条结论带 `路径:行号` 并注明基线；未验证项必须显式列出。
 
 ## 状态用词
 
 `DONE` / `IMPLEMENTED_UNVERIFIED` / `PARTIAL` / `BLOCKED` / `REJECTED`。证据不足只能降低状态，不得拔高。
-
-## 自检
-
-```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File "docs/AI/渲染器AI编程流程skill/scripts/ai-check.ps1"
-```

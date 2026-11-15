@@ -17,12 +17,14 @@
 #include "04_Renderer/RenderParams.h"
 #include "05_Scene/Camera/Camera.h"
 
-#include "SkyboxVS.h"
-#include "SkyboxPS.h"
-#include "EquirectangularToCubemapCS.h"
-#include "IrradianceConvolutionCS.h"
-#include "SpecularPrefilterCS.h"
-#include "BRDFLUTCS.h"
+// 着色器字节码头按 HLSL 子目录镜像到
+// out/<Config>/Engine/Shader/06_Environment/，因此 include 带子目录前缀。
+#include "06_Environment/SkyboxVS.h"
+#include "06_Environment/SkyboxPS.h"
+#include "06_Environment/EquirectangularToCubemapCS.h"
+#include "06_Environment/IrradianceConvolutionCS.h"
+#include "06_Environment/SpecularPrefilterCS.h"
+#include "06_Environment/BRDFLUTCS.h"
 #include <algorithm>
 
 namespace Renderer::EnvironmentLighting

@@ -17,11 +17,13 @@ target_include_directories(
         ${CMAKE_SOURCE_DIR}
 )
 
-target_include_directories(
-        RayTracingApp
-        PUBLIC
-        ${CMAKE_SOURCE_DIR}/cmake-build-debug/ShaderCache
-)
+# 说明：这里原有一条指向 ${CMAKE_SOURCE_DIR}/cmake-build-debug/ShaderCache 的
+# include，那是 CLion 时代的遗留路径（目录早已不存在），已删除。
+# 生成头的正确位置由 TooiyumeEngine 的 PUBLIC include
+# ${TOOIYUME_SHADER_OUT_DIR}（= out/<Config>/Engine/Shader）提供。
+
+# 产物落 out/<Config>/Demos/RayTracingApp/（镜像源码层次）
+tooiyume_set_output_dirs(RayTracingApp "Demos/RayTracingApp")
 
 # 链接引擎库
 target_link_libraries(RayTracingApp PRIVATE TooiyumeEngine)

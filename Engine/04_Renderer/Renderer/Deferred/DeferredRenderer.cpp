@@ -17,10 +17,12 @@
 #include "05_Scene/Model/Model.h"
 
 
-#include "StaticMeshVS.h"
-#include "GBufferPS.h"
-#include "FullScreenVS.h"
-#include "LightingPS.h"
+// 着色器字节码头由 compile_shader 生成，按 HLSL 子目录镜像到
+// out/<Config>/Engine/Shader/02_Deferred/，因此 include 带子目录前缀。
+#include "02_Deferred/StaticMeshVS.h"
+#include "02_Deferred/GBufferPS.h"
+#include "02_Deferred/FullScreenVS.h"
+#include "02_Deferred/LightingPS.h"
 
 #pragma warning(disable:4319) // 关闭警告：零扩展警告?
 

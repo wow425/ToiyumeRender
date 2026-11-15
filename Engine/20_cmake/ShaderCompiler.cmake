@@ -33,7 +33,18 @@ function(compile_shader TARGET_NAME SHADER_FILE ENTRY PROFILE)
 
     set(SHADER_SOURCE "${CMAKE_SOURCE_DIR}/Engine/${SHADER_FILE}")
 
-    set(OUTPUT_DIR "${CMAKE_BINARY_DIR}/ShaderCache")
+    # 产物按 HLSL 的**子目录层次**镜像到 out/<Config>/Engine/Shader/<子目录>。
+    # 例：Shader/02_Deferred/GBufferPS.hlsl
+    #  -> out/Debug/Engine/Shader/02_Deferred/GBufferPS.cso|.h
+    # 这样生成的 .h 与源码 .hlsl 位置一一对应，C++ 侧写
+    # #include "02_Deferred/GBufferPS.h" 即可，也不会再出现多个同名头互相覆盖。
+    get_filename_component(SHADER_REL_DIR "${SHADER_FILE}" DIRECTORY)
+    string(REGEX REPLACE "^Shader/?/?" "" SHADER_REL_DIR "${SHADER_REL_DIR}")
+    if(SHADER_REL_DIR)
+        set(OUTPUT_DIR "${TOOIYUME_SHADER_OUT_DIR}/${SHADER_REL_DIR}")
+    else()
+        set(OUTPUT_DIR "${TOOIYUME_SHADER_OUT_DIR}")
+    endif()
 
     file(MAKE_DIRECTORY ${OUTPUT_DIR})
 
@@ -183,7 +194,16 @@ function(compile_raytracing_library TARGET_NAME SHADER_FILE)
     get_filename_component(FILE_WE ${SHADER_FILE} NAME_WE)
 
     set(SHADER_SOURCE "${CMAKE_SOURCE_DIR}/Engine/${SHADER_FILE}")
-    set(OUTPUT_DIR "${CMAKE_BINARY_DIR}/ShaderCache")
+
+    # 与 compile_shader 相同的镜像规则：产物落到
+    # out/<Config>/Engine/Shader/<HLSL 子目录>/。
+    get_filename_component(SHADER_REL_DIR "${SHADER_FILE}" DIRECTORY)
+    string(REGEX REPLACE "^Shader/?/?" "" SHADER_REL_DIR "${SHADER_REL_DIR}")
+    if(SHADER_REL_DIR)
+        set(OUTPUT_DIR "${TOOIYUME_SHADER_OUT_DIR}/${SHADER_REL_DIR}")
+    else()
+        set(OUTPUT_DIR "${TOOIYUME_SHADER_OUT_DIR}")
+    endif()
 
     file(MAKE_DIRECTORY ${OUTPUT_DIR})
 

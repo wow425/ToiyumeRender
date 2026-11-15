@@ -14,7 +14,9 @@
 #include "04_Renderer/RenderParams.h"
 #include "05_Scene/Model/Model.h"
 
-#include "RayTracing.h"
+// DXIL 库字节码头，由 compile_raytracing_library 生成，
+// 镜像到 out/<Config>/Engine/Shader/07_RayTracing/。
+#include "07_RayTracing/RayTracing.h"
 
 using namespace Math;
 using namespace Graphics;

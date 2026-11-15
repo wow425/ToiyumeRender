@@ -7,6 +7,9 @@ add_executable(TooiyumeApp WIN32 Tooiyume.cpp )
 # 链接引擎库
 target_link_libraries(TooiyumeApp PRIVATE TooiyumeEngine)
 
+# 产物落 out/<Config>/Demos/ForwardApp/（镜像源码层次）
+tooiyume_set_output_dirs(TooiyumeApp "Demos/ForwardApp")
+
 # ==========================================
 
 # ==========================================

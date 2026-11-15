@@ -15,13 +15,17 @@ add_library(TooiyumeEngine STATIC ${ENGINE_SOURCES}
         04_Renderer/TemporalEffects.cpp
         04_Renderer/TemporalEffects.h)
 
+# 产物落 out/<Config>/Engine/（镜像源码层次，见 Engine/20_cmake/OutputLayout.cmake）
+tooiyume_set_output_dirs(TooiyumeEngine "Engine")
+
 # ==========================================
 # Shader 编译
 # ==========================================
 # R0：01_Default 是 ForwardRenderer 真正使用的 HLSL 组，但此前从未进入 CMake。
 # 后果：仓库里提交的 Engine/Shader/01_Default/DefaultVS.h / DefaultPS.h 是
 # 某次手工导出的旧字节码，改了 HLSL 不会重编译，Forward 永远跑旧的。
-# 这里把两者纳入正规编译链，产物落到 ${CMAKE_BINARY_DIR}/ShaderCache。
+# 这里把两者纳入正规编译链，产物落到
+# ${TOOIYUME_SHADER_OUT_DIR}/01_Default/（即 out/<Config>/Engine/Shader/01_Default/）。
 compile_shader(
     DefaultVS
     Shader/01_Default/DefaultVS.hlsl
@@ -112,7 +116,8 @@ compile_shader(
 # 与上面 12 个 compile_shader 的区别：lib profile **不带 -E**，
 # 一份文件里的 RayGen / Miss / ClosestHit / AnyHit 全部编进同一个 DXIL 库，
 # 再由 State Object 的 DXIL_LIBRARY 子对象按导出名挑选。
-# 产物同样是 ${CMAKE_BINARY_DIR}/ShaderCache/RayTracing.{cso,h}。
+# 产物同样是 ${TOOIYUME_SHADER_OUT_DIR}/07_RayTracing/RayTracing.{cso,h}
+# （即 out/<Config>/Engine/Shader/07_RayTracing/）。
 compile_raytracing_library(
     RayTracing
     Shader/07_RayTracing/RayTracing.hlsl
@@ -137,12 +142,16 @@ add_dependencies(TooiyumeEngine
   RayTracing_Shader
 )
 
-# R0：ShaderCache 必须是 PUBLIC include，且排在源码目录之前。
+# R0：生成头目录必须是 PUBLIC include，且排在源码目录之前。
 # 原因：仓库里残留着旧版 `Engine/Shader/01_Default/DefaultVS.h`（预编译字节码头）
 # 和构建目录生成的同名头。若源码目录优先，编译器会静默选中旧字节码，
-# 导致「改了 HLSL 却不生效」。把 ShaderCache 放在最前面可以强制优先命中生成头。
+# 导致「改了 HLSL 却不生效」。把生成头根目录放在最前面可以强制优先命中生成头。
+#
+# 注意路径变了：生成头不再平铺在 <build>/ShaderCache，而是按 HLSL 子目录
+# 镜像到 out/<Config>/Engine/Shader/<子目录>/，因此 C++ 侧的 include
+# 必须带子目录前缀，例如 #include "02_Deferred/GBufferPS.h"。
 target_include_directories(TooiyumeEngine PUBLIC
-    "${CMAKE_BINARY_DIR}/ShaderCache"
+    "${TOOIYUME_SHADER_OUT_DIR}"
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
@@ -155,32 +164,32 @@ target_include_directories(TooiyumeEngine PUBLIC
 # ==========================================================
 shader_attach_header_dependency(
     "${CMAKE_CURRENT_SOURCE_DIR}/04_Renderer/Renderer/Deferred/DeferredRenderer.cpp"
-    "${CMAKE_BINARY_DIR}/ShaderCache/StaticMeshVS.h"
-    "${CMAKE_BINARY_DIR}/ShaderCache/GBufferPS.h"
-    "${CMAKE_BINARY_DIR}/ShaderCache/FullScreenVS.h"
-    "${CMAKE_BINARY_DIR}/ShaderCache/LightingPS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/02_Deferred/StaticMeshVS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/02_Deferred/GBufferPS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/02_Deferred/FullScreenVS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/02_Deferred/LightingPS.h"
 )
 shader_attach_header_dependency(
     "${CMAKE_CURRENT_SOURCE_DIR}/04_Renderer/Renderer/Forward/ForwardRenderer.cpp"
-    "${CMAKE_BINARY_DIR}/ShaderCache/DefaultVS.h"
-    "${CMAKE_BINARY_DIR}/ShaderCache/DefaultPS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/01_Default/DefaultVS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/01_Default/DefaultPS.h"
 )
 shader_attach_header_dependency(
     "${CMAKE_CURRENT_SOURCE_DIR}/04_Renderer/EnvironmentLightingManager.cpp"
-    "${CMAKE_BINARY_DIR}/ShaderCache/SkyboxVS.h"
-    "${CMAKE_BINARY_DIR}/ShaderCache/SkyboxPS.h"
-    "${CMAKE_BINARY_DIR}/ShaderCache/EquirectangularToCubemapCS.h"
-    "${CMAKE_BINARY_DIR}/ShaderCache/IrradianceConvolutionCS.h"
-    "${CMAKE_BINARY_DIR}/ShaderCache/SpecularPrefilterCS.h"
-    "${CMAKE_BINARY_DIR}/ShaderCache/BRDFLUTCS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/06_Environment/SkyboxVS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/06_Environment/SkyboxPS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/06_Environment/EquirectangularToCubemapCS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/06_Environment/IrradianceConvolutionCS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/06_Environment/SpecularPrefilterCS.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/06_Environment/BRDFLUTCS.h"
 )
-# R5：RayTracingRenderer.cpp 里 #include "RayTracing.h" 拿 DXIL 库字节码。
+# R5：RayTracingRenderer.cpp 里 #include "07_RayTracing/RayTracing.h" 拿 DXIL 库字节码。
 # 漏掉这一条会导致「改 HLSL → .cso/.h 更新 → 但 .cpp 不重编」，
 # exe 里嵌入的仍是旧字节码，所有 shader 侧修改静默失效（实测踩过：
 # 排查了很久的黑屏，其实是调试着色器根本没被编进 exe）。
 shader_attach_header_dependency(
     "${CMAKE_CURRENT_SOURCE_DIR}/04_Renderer/Renderer/RayTracing/RayTracingRenderer.cpp"
-    "${CMAKE_BINARY_DIR}/ShaderCache/RayTracing.h"
+    "${TOOIYUME_SHADER_OUT_DIR}/07_RayTracing/RayTracing.h"
 )
 # ==========================================
 # PCH (Precompiled Header)

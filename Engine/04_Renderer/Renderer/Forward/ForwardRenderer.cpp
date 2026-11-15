@@ -13,10 +13,11 @@
 #include "03_AssetSystem/Importers/Texture/TextureManager.h"
 #include "05_Scene/Lighting/LightingSystem.h"
 #include "05_Scene/Model/Model.h"
-// R0：改为引用 CMake 生成到 build/ShaderCache 的头，不再使用仓库内提交的旧字节码。
+// R0：改为引用 CMake 生成的头，不再使用仓库内提交的旧字节码。
 // 生成头由 `compile_shader(DefaultVS/DefaultPS ...)` 产出，修改 .hlsl 或 .hlsli 会自动重编译。
-#include "DefaultVS.h"
-#include "DefaultPS.h"
+// 产物按 HLSL 子目录镜像到 out/<Config>/Engine/Shader/01_Default/，include 带子目录前缀。
+#include "01_Default/DefaultVS.h"
+#include "01_Default/DefaultPS.h"
 
 #pragma warning(disable:4319) // 关闭警告：零扩展警告?
 

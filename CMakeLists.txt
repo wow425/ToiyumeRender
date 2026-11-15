@@ -29,6 +29,16 @@ endif()
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
 
 # ==========================================
+# 产物输出布局
+# ==========================================
+# 必须在 CMAKE_BUILD_TYPE 落定**之后**、任何 add_subdirectory **之前** include：
+#   - 它根据 CMAKE_BUILD_TYPE 推导 out/<Config>，太早读会拿到空值；
+#   - ShaderCompiler.cmake 里的 compile_shader / compile_raytracing_library
+#     在**被调用时**（Engine/CMakeLists.txt 里）读 TOOIYUME_SHADER_OUT_DIR，
+#     因此这里先定义好即可，不必抢在 ShaderCompiler.cmake 前面。
+include(${CMAKE_SOURCE_DIR}/Engine/20_cmake/OutputLayout.cmake)
+
+# ==========================================
 # 第三方依赖定位（R4.1：解除对 vcpkg toolchain 的硬依赖）
 # ==========================================
 # 背景：原实现要求先设 VCPKG_ROOT 环境变量、再走 vcpkg 的 toolchain 文件。
