@@ -11,6 +11,20 @@ using namespace Graphics;
 std::mutex DescriptorAllocator::sm_AllocationMutex;
 std::vector<Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>> DescriptorAllocator::sm_DescriptorHeapPool;
 
+void DescriptorAllocator::Reset(void)
+{
+	m_CurrentHeap = nullptr;
+	m_CurrentHandle.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
+	m_DescriptorSize = 0;
+	m_RemainingFreeHandles = 0;
+	m_FreeRanges.clear();
+	m_AllocatedBits.clear();
+	m_TotalAllocated = 0;
+	m_LiveAllocated = 0;
+	m_FreedCount = 0;
+	m_DoubleFreeCount = 0;
+}
+
 void DescriptorAllocator::DestroyAll(void)
 {
 	sm_DescriptorHeapPool.clear();

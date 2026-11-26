@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <string>
 #include <sstream>
+#include <cmath>
+#include <climits>
 
 namespace CommandLineArgs
 {
@@ -14,6 +16,8 @@ namespace CommandLineArgs
     template<typename GetStringFunc>
     void GatherArgs(size_t numArgs, const GetStringFunc& pfnGet)
     {
+        // [WP-1D / TD-07c] 每次重新初始化前清空旧参数表，保证重复调用 Initialize 时状态确定。
+        m_argumentMap.clear();
         // argv[0] 永远是 exe 路径，从 1 开始扫描 key/value 对。
         //
         // R0 修复：原实现是
@@ -84,18 +88,56 @@ namespace CommandLineArgs
 
     bool GetInteger(const wchar_t* key, uint32_t& value)
     {
-        return Lookup(key, [&value](std::wstring& val)
-            {
-                value = std::stoi(val);
-            });
+        // [WP-1D / TD-07c] 严格校验无符号 32 位整数字面量：拒绝空串、负数、非数字后缀与越界值，
+        // 捕获所有解析异常且解析失败时不污染调用方传入的 value。
+        const auto found = m_argumentMap.find(key);
+        if (found == m_argumentMap.end())
+            return false;
+
+        const std::wstring& val = found->second;
+        if (val.empty() || val[0] == L'-' || val[0] == L'+')
+            return false;
+
+        try
+        {
+            size_t pos = 0;
+            unsigned long long parsed = std::stoull(val, &pos, 10);
+            if (pos != val.size() || parsed > UINT_MAX)
+                return false;
+            value = static_cast<uint32_t>(parsed);
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
     }
 
     bool GetFloat(const wchar_t* key, float& value)
     {
-        return Lookup(key, [&value](std::wstring& val)
-            {
-                value = (float)_wtof(val.c_str());
-            });
+        // [WP-1D / TD-07c] 严格校验有限浮点字面量：拒绝空串、非数字尾缀与 NaN/Inf，
+        // 解析失败返回 false 且不覆写 value。
+        const auto found = m_argumentMap.find(key);
+        if (found == m_argumentMap.end())
+            return false;
+
+        const std::wstring& val = found->second;
+        if (val.empty())
+            return false;
+
+        try
+        {
+            size_t pos = 0;
+            float parsed = std::stof(val, &pos);
+            if (pos != val.size() || !std::isfinite(parsed))
+                return false;
+            value = parsed;
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
     }
 
     bool HasFlag(const wchar_t* key)

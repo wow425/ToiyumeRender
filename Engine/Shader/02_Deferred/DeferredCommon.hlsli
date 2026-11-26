@@ -53,12 +53,9 @@ float3 ReconstructWorldPosition(float2 uv, float depth, float4x4 invViewProj)
     return worldPos.xyz;
 }
 
-static const float PI = 3.14159265359;
+#include "00_Common/PBRCommon.hlsli"
 
-float FresnelSchlick(float cosTheta, float3 F0)
-{
-    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
-}
+static const float PI = kPBR_PI;
 
 float DistributionGGX(float3 N, float3 H, float roughness)
 {

@@ -39,8 +39,16 @@ public:
 
     static void DestroyAll(void)
     {
-        sm_DescriptorHeapPool[0].clear();
-        sm_DescriptorHeapPool[1].clear();
+        // [TD-08b] 清空静态堆池的同时必须清空退休与可用队列，防止二次 Init 弹出悬空堆指针。
+        std::lock_guard<std::mutex> LockGuard(sm_Mutex);
+        for (int i = 0; i < 2; ++i)
+        {
+            while (!sm_RetiredDescriptorHeaps[i].empty())
+                sm_RetiredDescriptorHeaps[i].pop();
+            while (!sm_AvailableDescriptorHeaps[i].empty())
+                sm_AvailableDescriptorHeaps[i].pop();
+            sm_DescriptorHeapPool[i].clear();
+        }
     }
 
     void CleanupUsedHeaps(uint64_t fenceValue);

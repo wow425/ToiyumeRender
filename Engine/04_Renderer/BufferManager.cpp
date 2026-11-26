@@ -101,6 +101,24 @@ namespace Graphics
 	{
 		s_DepthBuffers.erase(ResourceID);
 	}
+
+	void BufferManager::ReleaseColorBuffer(const std::wstring& ResourceID, const std::shared_ptr<ColorBuffer>& expected)
+	{
+		if (expected)
+			expected->Destroy();
+		auto it = s_ColorBuffers.find(ResourceID);
+		if (it != s_ColorBuffers.end() && it->second == expected)
+			s_ColorBuffers.erase(it);
+	}
+
+	void BufferManager::ReleaseDepthBuffer(const std::wstring& ResourceID, const std::shared_ptr<DepthBuffer>& expected)
+	{
+		if (expected)
+			expected->Destroy();
+		auto it = s_DepthBuffers.find(ResourceID);
+		if (it != s_DepthBuffers.end() && it->second == expected)
+			s_DepthBuffers.erase(it);
+	}
 }
 
 

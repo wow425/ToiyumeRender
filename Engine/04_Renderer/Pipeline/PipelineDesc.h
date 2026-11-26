@@ -23,6 +23,7 @@ namespace Renderer
 		kVertex_Tangent = 4,   // 00100
 		kVertex_UV0 = 8,   // 01000
 		kVertex_UV1 = 16,  // 10000
+		kVertex_Color0 = 32, // 100000
 	};
 
 	enum class RenderPassType

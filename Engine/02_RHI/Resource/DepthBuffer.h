@@ -19,6 +19,8 @@ public:
 		m_hDSV[1].ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 		m_hDSV[2].ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 		m_hDSV[3].ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
+		for (uint32_t i = 0; i < kMaxArraySlices; ++i)
+			m_hSliceDSV[i].ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 		m_hDepthSRV.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 		m_hStencilSRV.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 	}
@@ -41,10 +43,19 @@ public:
 		// DSV 4 个变体 + 深度/模板 SRV 都属于 CPU-only 描述符堆，
 		// 不归还就会在每次 Resize 时按此数量持续泄漏。
 		// ============================================================
-		for (int i = 0; i < _countof(m_hDSV); ++i)
+		// [TD-03e] 无 Stencil 格式（如 D32_FLOAT）下，m_hDSV[2]/[3] 是 m_hDSV[0]/[1] 的别名而非独立分配槽；
+		// 仅在 m_HasSeparateStencilDSV == true 时释放 [2]/[3]，消除每次 Resize 产生的 +2 次 DSV 重复归还。
+		const int dsvCountToFree = m_HasSeparateStencilDSV ? 4 : 2;
+		for (int i = 0; i < dsvCountToFree; ++i)
 		{
 			if (m_hDSV[i].ptr != D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
 				Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_DSV].Free(m_hDSV[i], 1);
+		}
+		// [WP-3C] 归还 Texture2DArray 阴影图每级切片独立分配的 DSV 槽，保证算法热切换 0 泄漏、0 DoubleFree。
+		for (uint32_t i = 0; i < m_SliceDSVCount; ++i)
+		{
+			if (m_hSliceDSV[i].ptr != D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+				Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_DSV].Free(m_hSliceDSV[i], 1);
 		}
 		if (m_hDepthSRV.ptr != D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
 			Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV].Free(m_hDepthSRV, 1);
@@ -53,6 +64,10 @@ public:
 
 		for (int i = 0; i < _countof(m_hDSV); ++i)
 			m_hDSV[i].ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
+		for (uint32_t i = 0; i < kMaxArraySlices; ++i)
+			m_hSliceDSV[i].ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
+		m_SliceDSVCount = 0;
+		m_HasSeparateStencilDSV = false;
 		m_hDepthSRV.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 		m_hStencilSRV.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 	}
@@ -65,11 +80,23 @@ public:
 	void Create(const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t NumSamples, DXGI_FORMAT Format,
 		D3D12_GPU_VIRTUAL_ADDRESS VidMemPtr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN);
 
+	// [WP-3C] 创建深度纹理数组（ArraySize ∈ [1, kMaxArraySlices]），供 SimpleShadowMap(1) 与 CSM(2..4) 共用。
+	// 每个切片各自拥有独立 DSV（GetSliceDSV(slice)），整体暴露 Texture2DArray SRV（GetDepthSRV()），
+	// 使 HLSL 采样侧统一走 Texture2DArray<float> + SampleCmpLevelZero，无需按算法维护两套 Shader。
+	void CreateArray(const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t ArraySize, DXGI_FORMAT Format,
+		D3D12_GPU_VIRTUAL_ADDRESS VidMemPtr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN);
+
 	// Get pre-created CPU-visible descriptor handles
 	const D3D12_CPU_DESCRIPTOR_HANDLE& GetDSV() const { return m_hDSV[0]; }
 	const D3D12_CPU_DESCRIPTOR_HANDLE& GetDSV_DepthReadOnly() const { return m_hDSV[1]; }
 	const D3D12_CPU_DESCRIPTOR_HANDLE& GetDSV_StencilReadOnly() const { return m_hDSV[2]; }
 	const D3D12_CPU_DESCRIPTOR_HANDLE& GetDSV_ReadOnly() const { return m_hDSV[3]; }
+	const D3D12_CPU_DESCRIPTOR_HANDLE& GetSliceDSV(uint32_t slice) const
+	{
+		ASSERT(slice < m_SliceDSVCount, "DepthBuffer::GetSliceDSV slice out of range");
+		return m_hSliceDSV[slice];
+	}
+	uint32_t GetSliceCount() const { return m_SliceDSVCount > 0 ? m_SliceDSVCount : 1u; }
 
 	const D3D12_CPU_DESCRIPTOR_HANDLE& GetDepthSRV() const { return m_hDepthSRV; }
 	const D3D12_CPU_DESCRIPTOR_HANDLE& GetStencilSRV() const { return m_hStencilSRV; }
@@ -80,8 +107,10 @@ public:
 	DXGI_FORMAT GetFormat() const { return m_format; }
 
 protected:
+	static constexpr uint32_t kMaxArraySlices = 4;
 
 	void CreateDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format);
+	void CreateArrayDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format, uint32_t ArraySize);
 
 	float m_ClearDepth; // 清空值
 	uint8_t m_ClearStencil;
@@ -89,6 +118,9 @@ protected:
 	// A,B。读写与只读组合排并
 	// 0双读写。1.只读深度，读写模板。2.读写深度，只读模板。3.双只读
 	D3D12_CPU_DESCRIPTOR_HANDLE m_hDSV[4];
+	D3D12_CPU_DESCRIPTOR_HANDLE m_hSliceDSV[kMaxArraySlices]; // [WP-3C] Texture2DArray 逐切片 DSV
+	uint32_t m_SliceDSVCount = 0;
+	bool m_HasSeparateStencilDSV = false; // [TD-03e] 标记 m_hDSV[2]/[3] 是否为独立分配的 Stencil DSV 槽
 	D3D12_CPU_DESCRIPTOR_HANDLE m_hDepthSRV; // 深度SRV
 	D3D12_CPU_DESCRIPTOR_HANDLE m_hStencilSRV; // 模板SRV
 

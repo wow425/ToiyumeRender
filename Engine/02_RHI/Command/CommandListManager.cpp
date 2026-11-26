@@ -26,11 +26,22 @@ void CommandQueue::Shutdown()
 		return;
 
 	m_AllocatorPool.Shutdown();
-	CloseHandle(m_FenceEventHandle);
-	m_pFence->Release();
-	m_pFence = nullptr;
+	if (m_FenceEventHandle != nullptr)
+	{
+		CloseHandle(m_FenceEventHandle);
+		m_FenceEventHandle = nullptr;
+	}
+	if (m_pFence != nullptr)
+	{
+		m_pFence->Release();
+		m_pFence = nullptr;
+	}
 	m_CommandQueue->Release();
 	m_CommandQueue = nullptr;
+
+	// [TD-08b] 复位 Fence 计数至初始基值，防止同进程二次 Init 时新 Fence 从 0 起步却被旧缓存误判已完成。
+	m_NextFenceValue = ((uint64_t)m_Type << 56) | 1;
+	m_LastCompletedFenceValue = ((uint64_t)m_Type << 56);
 }
 
 void CommandQueue::Create(ID3D12Device* pDevice)
@@ -43,12 +54,13 @@ void CommandQueue::Create(ID3D12Device* pDevice)
 	D3D12_COMMAND_QUEUE_DESC QueueDesc{};
 	QueueDesc.Type = m_Type;
 	QueueDesc.NodeMask = 1;
-	pDevice->CreateCommandQueue(&QueueDesc, TY_IID_PPV_ARGS(&m_CommandQueue));
+	// [TD-04e] 严格检查 CreateCommandQueue 与 Signal 的 HRESULT，避免静默忽略设备失败
+	ASSERT_SUCCEEDED(pDevice->CreateCommandQueue(&QueueDesc, TY_IID_PPV_ARGS(&m_CommandQueue)));
 	m_CommandQueue->SetName(L"CommandListManager::m_CommandQueue");
 
 	ASSERT_SUCCEEDED(pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, TY_IID_PPV_ARGS(&m_pFence)));
 	m_pFence->SetName(L"CommandListManager::m_pFence");
-	m_pFence->Signal((uint64_t)m_Type << 56);  // 值更新
+	ASSERT_SUCCEEDED(m_pFence->Signal((uint64_t)m_Type << 56));  // 值更新
 
 	m_FenceEventHandle = CreateEvent(nullptr, false, false, nullptr);
 	ASSERT(m_FenceEventHandle != NULL);
@@ -77,6 +89,7 @@ void CommandListManager::Shutdown()
 	m_GraphicsQueue.Shutdown();
 	m_ComputeQueue.Shutdown();
 	m_CopyQueue.Shutdown();
+	m_Device = nullptr;
 }
 
 void CommandListManager::Create(ID3D12Device* pDevice)
@@ -116,29 +129,44 @@ uint64_t CommandQueue::ExecuteCommandList(ID3D12CommandList* List)
 	ASSERT_SUCCEEDED(((ID3D12GraphicsCommandList*)List)->Close()); // 向下转换
 
 	m_CommandQueue->ExecuteCommandLists(1, &List);
-	m_CommandQueue->Signal(m_pFence, m_NextFenceValue);
+	const uint64_t fenceValue = m_NextFenceValue.load(std::memory_order_relaxed);
+	ASSERT_SUCCEEDED(m_CommandQueue->Signal(m_pFence, fenceValue));
+	m_NextFenceValue.store(fenceValue + 1, std::memory_order_release);
 
-	return m_NextFenceValue++;
+	return fenceValue;
 }
 
 uint64_t CommandQueue::IncrementFence(void)
 {
 	std::lock_guard<std::mutex> LockGuard(m_FenceMutex);
-	m_CommandQueue->Signal(m_pFence, m_NextFenceValue); // m_pFence更新为m_NextFenceValue
-	return m_NextFenceValue++;
+	const uint64_t fenceValue = m_NextFenceValue.load(std::memory_order_relaxed);
+	ASSERT_SUCCEEDED(m_CommandQueue->Signal(m_pFence, fenceValue)); // m_pFence更新为m_NextFenceValue
+	m_NextFenceValue.store(fenceValue + 1, std::memory_order_release);
+	return fenceValue;
 }
 
 // 查询围栏是否击中
 bool CommandQueue::IsFenceComplete(uint64_t FenceValue)
 {
-	// 为了性能考虑，我们优先比对本地缓存的围栏值，以减少对硬件 API 的昂贵查询。
-	// 这里强制使用 max() 是一种防御性编程，用来规避极罕见的竞态条件(硬件导致的数值抖动）——确保观测到的 GPU 进度只会前进，绝不会出现数值倒退的异常。
-	// “永远不要完全信任硬件返回的非原子快照” 是一条准则。
+	// [TD-04e] 原子单调最大更新：无锁快速路径零数据竞争，检测设备移除返回 UINT64_MAX。
+	uint64_t cached = m_LastCompletedFenceValue.load(std::memory_order_acquire);
+	if (FenceValue > cached)
+	{
+		const uint64_t completed = m_pFence->GetCompletedValue();
+		if (completed == UINT64_MAX)
+		{
+			LOG_ERROR(L"[RHI][TD-04e] ID3D12Fence::GetCompletedValue() 返回 UINT64_MAX（设备已移除/TDR）\n");
+			return true;
+		}
+		while (completed > cached &&
+			!m_LastCompletedFenceValue.compare_exchange_weak(
+				cached, completed, std::memory_order_acq_rel, std::memory_order_acquire))
+		{
+		}
+		cached = m_LastCompletedFenceValue.load(std::memory_order_acquire);
+	}
 
-	if (FenceValue > m_LastCompletedFenceValue)
-		m_LastCompletedFenceValue = std::max(m_LastCompletedFenceValue, m_pFence->GetCompletedValue());
-
-	return FenceValue <= m_LastCompletedFenceValue;
+	return FenceValue <= cached;
 }
 
 namespace Graphics
@@ -152,24 +180,39 @@ void CommandQueue::StallForFence(uint64_t FenceValue)
 	// 根据围栏值获取对应的生产者队列类型
 	CommandQueue& Producer = Graphics::g_CommandManager.GetQueue((D3D12_COMMAND_LIST_TYPE)(FenceValue >> 56));
 	// 让GPU的一个队列等待另一个队列，不阻塞CPU。将当前消费者的命令处理器挂起stall，直到生产者m_pFence值更新，再继续处理数据
-	m_CommandQueue->Wait(Producer.m_pFence, FenceValue);
+	ASSERT_SUCCEEDED(m_CommandQueue->Wait(Producer.m_pFence, FenceValue));
 }
 
 // 待优化
 void CommandQueue::WaitForFence(uint64_t FenceValue)
 {
-	//“待优化：注意多线程并发时的同步粒度。如果线程 A 抢先绑定了目标值为 100 的唤醒事件，而随后线程 B 只需要等待目标值 99，
-	// 由于我们底层只有一个共用的唤醒事件句柄，导致线程 B 被迫‘连坐’，不得不跟着等 GPU 跑到 100 才能被唤醒。后续可以考虑引入事件队列（多句柄）来解决这个延迟瓶颈。”
-	// 上述被称为线程饥饿 (Thread Starvation)。 需要事件池 (Event Pool)优化
 	if (IsFenceComplete(FenceValue))
 		return;
 
 	{
 		std::lock_guard<std::mutex> LockGuard(m_EveneMutex);
 
-		m_pFence->SetEventOnCompletion(FenceValue, m_FenceEventHandle);
-		WaitForSingleObject(m_FenceEventHandle, INFINITE);
-		m_LastCompletedFenceValue = FenceValue;
+		const HRESULT hr = m_pFence->SetEventOnCompletion(FenceValue, m_FenceEventHandle);
+		if (FAILED(hr))
+		{
+			LOG_ERROR(L"[RHI][TD-04e] SetEventOnCompletion 失败 hr=0x%08X (fence=%llu)\n",
+				(unsigned)hr, (unsigned long long)FenceValue);
+			ASSERT_SUCCEEDED(hr);
+			return;
+		}
+		const DWORD waitRes = WaitForSingleObject(m_FenceEventHandle, INFINITE);
+		if (waitRes != WAIT_OBJECT_0)
+		{
+			LOG_ERROR(L"[RHI][TD-04e] WaitForSingleObject 失败 result=0x%08X lastErr=%lu\n",
+				(unsigned)waitRes, (unsigned long)GetLastError());
+		}
+
+		uint64_t cached = m_LastCompletedFenceValue.load(std::memory_order_acquire);
+		while (FenceValue > cached &&
+			!m_LastCompletedFenceValue.compare_exchange_weak(
+				cached, FenceValue, std::memory_order_acq_rel, std::memory_order_acquire))
+		{
+		}
 	}
 }
 

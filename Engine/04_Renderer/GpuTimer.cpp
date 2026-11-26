@@ -8,30 +8,27 @@
 #include "00_Core/Utility/Utility.h"
 
 // ============================================================
-// GpuTimer 实现说明（R3-E）
+// GpuTimer 实现说明（R3-E -> WP-3A TD-11a 多区间逐 Pass 计时）
 // ------------------------------------------------------------
 // 一次采样由三段组成，缺一段都会读到垃圾数据：
-//   1) Begin/End：在渲染命令列表里各插一个 TIMESTAMP 查询（槽 i 用 2i / 2i+1）；
-//      End 里顺手 ResolveQueryData 把两个 uint64 拷到 READBACK 堆的第 i*16 字节。
-//   2) OnSubmitted：命令列表提交后，把 CommandContext::Finish() 返回的围栏值记到该槽。
-//   3) TryGetElapsedMs：只有当 IsFenceComplete(该槽围栏值) 为真时才 Map 回读堆，
-//      否则 GPU 可能还在往这块内存里写 —— Debug Layer 会直接报错，读到的是半成品。
-//
-// 为什么用 ResolveQueryData 而不是 CommandContext::ResolveTimeStamps：
-//   后者的目标偏移被写死成 0，只适合「堆里只有一对时间戳」的场景；这里要多槽轮转，
-//   每个槽必须落到自己的 16 字节区间，所以直接调底层的 ResolveQueryData 传偏移。
+//   1) Begin / [BeginPass..EndPass]* / End：
+//      槽 s 的查询基址 base = s * kQueriesPerFrame：
+//        - base + 0 / base + 1         : 整帧起止时间戳
+//        - base + 2 + 2*p / +3 + 2*p   : 第 p 个 Pass 的起止时间戳
+//      End() 一次性 ResolveQueryData 把 2 + 2*passCount 个 uint64 拷入回读堆该槽偏移。
+//   2) OnSubmitted：命令列表提交后把 Finish() 返回的围栏值记到该槽。
+//   3) TryGetElapsedMs：仅当 IsFenceComplete(fence) 为真时才 Map 回读堆，
+//      同时解析整帧总耗时与每个 Pass 的毫秒明细，零 CPU 停顿、零 Debug Layer 竞态。
 // ============================================================
 namespace Renderer
 {
 	namespace
 	{
-		// 单个槽在回读堆里的字节数：起始 / 结束各一个 uint64。
-		constexpr uint32_t kBytesPerSlot = (uint32_t)(2 * sizeof(uint64_t));
+		constexpr uint32_t kBytesPerQuery = static_cast<uint32_t>(sizeof(uint64_t));
 	}
 
 	void GpuTimer::Initialize(ID3D12Device* device, uint32_t maxFramesInFlight)
 	{
-		// 允许重复初始化：先整体复位，避免上一次的堆/回读资源泄漏。
 		Shutdown();
 
 		if (device == nullptr)
@@ -40,20 +37,17 @@ namespace Renderer
 			return;
 		}
 
-		// 槽数夹紧到 [1, kMaxSlots]：0 会让取模除零，超过上限会写穿定长数组。
 		if (maxFramesInFlight == 0)
-		{
 			maxFramesInFlight = 1;
-		}
 		if (maxFramesInFlight > kMaxSlots)
-		{
 			maxFramesInFlight = kMaxSlots;
-		}
 
-		// 1) 时间戳查询堆：2 个 query / 槽（帧开始、帧结束）。
+		const uint32_t totalQueries = kQueriesPerFrame * maxFramesInFlight;
+
+		// 1) 时间戳查询堆：整帧 2 槽 + 最多 32 个 Pass × 2 槽
 		D3D12_QUERY_HEAP_DESC QueryHeapDesc = {};
 		QueryHeapDesc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
-		QueryHeapDesc.Count = 2 * maxFramesInFlight;
+		QueryHeapDesc.Count = totalQueries;
 		QueryHeapDesc.NodeMask = 0;
 
 		HRESULT hr = device->CreateQueryHeap(&QueryHeapDesc, TY_IID_PPV_ARGS(&m_QueryHeap));
@@ -64,11 +58,10 @@ namespace Renderer
 			return;
 		}
 
-		// 2) 回读堆：每槽 16 字节，CPU 侧 Map 读取；GPU 侧是 ResolveQueryData 的落地目标。
-		m_Readback.Create(L"GpuTimer Readback", 2 * maxFramesInFlight, (uint32_t)sizeof(uint64_t));
+		// 2) 回读堆：供 ResolveQueryData 落地与 CPU 侧 Map 读取
+		m_Readback.Create(L"GpuTimer MultiRange Readback", totalQueries, kBytesPerQuery);
 
-		// 3) GPU 时钟频率：一次取好，之后换算毫秒都靠它。
-		//    必须问图形队列 —— 时间戳查询只在 DIRECT 队列上有效，换别的队列频率单位可能不同。
+		// 3) GPU 时钟频率：只在 DIRECT 队列上有效
 		UINT64 Frequency = 0;
 		CommandQueue& GraphicsQueue = Graphics::g_CommandManager.GetGraphicsQueue();
 		hr = GraphicsQueue.GetCommandQueue()->GetTimestampFrequency(&Frequency);
@@ -84,14 +77,14 @@ namespace Renderer
 		m_CurrentSlot = 0;
 		m_ActiveSlot = kInvalidSlot;
 		m_LastEndedSlot = kInvalidSlot;
+		m_ActivePassIdx = kInvalidSlot;
 		m_LastElapsedMs = 0.0f;
+		m_LastPassTimings.clear();
 		m_Initialized = true;
 	}
 
 	void GpuTimer::Shutdown(void)
 	{
-		// 顺序：先放回读堆（普通资源），再放查询堆。
-		// GpuBuffer::Destroy 内部会把 SRV/UAV 描述符句柄归还分配器，重复调用也安全。
 		m_Readback.Destroy();
 		m_QueryHeap.Reset();
 
@@ -100,15 +93,18 @@ namespace Renderer
 		m_CurrentSlot = 0;
 		m_ActiveSlot = kInvalidSlot;
 		m_LastEndedSlot = kInvalidSlot;
+		m_ActivePassIdx = kInvalidSlot;
 		m_LastElapsedMs = 0.0f;
+		m_LastPassTimings.clear();
 		m_Initialized = false;
 		for (uint32_t i = 0; i < kMaxSlots; ++i)
 		{
-			m_SlotInFlight[i] = false;
-			m_SlotFence[i] = 0;
+			m_Slots[i].InFlight = false;
+			m_Slots[i].Fence = 0;
+			m_Slots[i].PassCount = 0;
+			for (auto& name : m_Slots[i].PassNames)
+				name.clear();
 		}
-
-		// 注意：m_Enabled 是「面板要不要显示/采样」的用户偏好，不随资源生命周期复位。
 	}
 
 	bool GpuTimer::IsInitialized(void) const
@@ -126,54 +122,73 @@ namespace Renderer
 		if (!m_Initialized || !m_Enabled)
 		{
 			m_ActiveSlot = kInvalidSlot;
+			m_ActivePassIdx = kInvalidSlot;
 			return;
 		}
 
 		if (m_ActiveSlot != kInvalidSlot)
 		{
-			// ============================================================
-			// R4.5：这里**不能**断言。
-			// ------------------------------------------------------------
-			// 原实现用 ASSERT(false) 终止进程，触发条件是「上一次 Begin
-			// 之后没有配对的 End」。而这种情况在正常运行时**会发生**：
-			//
-			//   RenderScene 里 Begin(gfxContext) 插入了起始时间戳，
-			//   但若该帧后半段被跳过（例如 Resize 期间 Present 早退、
-			//   或异常路径直接 return），End() 就不会被调用，
-			//   槽永远停在"已 Begin 未 End"。
-			//   下一帧再 Begin 就命中这条断言 —— 表现为
-			//   「拉伸窗口几次后闪退」，退出码 2170（CRT abort）。
-			//
-			// 正确语义：GPU 计时是可选的诊断功能，缺一个配对就**跳过本帧采样**，
-			// 绝不能因此让渲染器崩溃。这里直接放弃本帧、把槽标记为可复用。
-			// ============================================================
+			// R4.5：GPU 计时是可选诊断功能，若上一帧因 Resize/异常跳过 End，本帧直接复位该槽而非崩溃
 			LOG_TRACE(L"[GpuTimer] 上一帧 Begin 未配对 End，本帧跳过采样\n");
-			m_SlotInFlight[m_ActiveSlot] = false;
-			m_SlotFence[m_ActiveSlot] = 0;
+			m_Slots[m_ActiveSlot].InFlight = false;
+			m_Slots[m_ActiveSlot].Fence = 0;
+			m_Slots[m_ActiveSlot].PassCount = 0;
 			m_ActiveSlot = kInvalidSlot;
+			m_ActivePassIdx = kInvalidSlot;
 			return;
 		}
 
 		const uint32_t slot = m_CurrentSlot;
-
-		// 槽要被复用了：上一轮的数据若还没读走，先确认 GPU 已经写完。
-		// - 未完成：这一槽的 query/回读内存 GPU 还在用，本帧必须放弃采样（否则就是飞行中写）；
-		// - 已完成：正常流程里 TryGetElapsedMs 每帧都会把样本读掉，走到这里说明面板没取，
-		//   直接丢弃旧样本，让 GPU 内存可以安全复用。
-		if (m_SlotInFlight[slot])
+		if (m_Slots[slot].InFlight)
 		{
-			if (!Graphics::g_CommandManager.GetGraphicsQueue().IsFenceComplete(m_SlotFence[slot]))
+			if (!Graphics::g_CommandManager.GetGraphicsQueue().IsFenceComplete(m_Slots[slot].Fence))
 			{
 				return;
 			}
-			m_SlotInFlight[slot] = false;
-			m_SlotFence[slot] = 0;
+			m_Slots[slot].InFlight = false;
+			m_Slots[slot].Fence = 0;
 		}
 
-		context.InsertTimeStamp(m_QueryHeap.Get(), slot * 2);
+		m_Slots[slot].PassCount = 0;
+		const uint32_t baseQuery = slot * kQueriesPerFrame;
+		context.InsertTimeStamp(m_QueryHeap.Get(), baseQuery + 0);
 
 		m_ActiveSlot = slot;
+		m_ActivePassIdx = kInvalidSlot;
 		m_CurrentSlot = (slot + 1) % m_SlotCount;
+	}
+
+	void GpuTimer::BeginPass(GraphicsContext& context, const char* passName)
+	{
+		if (!m_Initialized || m_ActiveSlot == kInvalidSlot)
+			return;
+
+		// 不支持嵌套 Pass 打点；若意外嵌套则静默跳过内层避免覆盖外层查询下标
+		if (m_ActivePassIdx != kInvalidSlot)
+			return;
+
+		FrameSlotData& slotData = m_Slots[m_ActiveSlot];
+		if (slotData.PassCount >= kMaxPassesPerFrame)
+			return;
+
+		const uint32_t passIdx = slotData.PassCount;
+		slotData.PassNames[passIdx] = (passName != nullptr) ? passName : "UnnamedPass";
+		const uint32_t queryIdx = m_ActiveSlot * kQueriesPerFrame + 2 + passIdx * 2;
+		context.InsertTimeStamp(m_QueryHeap.Get(), queryIdx);
+		m_ActivePassIdx = passIdx;
+	}
+
+	void GpuTimer::EndPass(GraphicsContext& context)
+	{
+		if (!m_Initialized || m_ActiveSlot == kInvalidSlot || m_ActivePassIdx == kInvalidSlot)
+			return;
+
+		const uint32_t passIdx = m_ActivePassIdx;
+		m_ActivePassIdx = kInvalidSlot;
+
+		const uint32_t queryIdx = m_ActiveSlot * kQueriesPerFrame + 2 + passIdx * 2 + 1;
+		context.InsertTimeStamp(m_QueryHeap.Get(), queryIdx);
+		++m_Slots[m_ActiveSlot].PassCount;
 	}
 
 	void GpuTimer::End(GraphicsContext& context)
@@ -181,136 +196,104 @@ namespace Renderer
 		if (!m_Initialized)
 		{
 			m_ActiveSlot = kInvalidSlot;
+			m_ActivePassIdx = kInvalidSlot;
 			return;
 		}
 
 		if (m_ActiveSlot == kInvalidSlot)
-		{
-			// Begin 没采（未初始化 / 被关闭 / 槽忙），这里什么也不能做：
-			// 缺了起始时间戳的查询，Resolve 出来的是无意义数值。
 			return;
-		}
 
-		// 注意这里不再看 m_Enabled：关闭开关可能正好发生在 Begin 之后，
-		// 那一帧的起始时间戳已经插进命令列表，必须补上结束时间戳并 Resolve 收尾，
-		// 否则该槽永远停在「已 Begin 未 End」状态，下一帧 Begin 会一直被断言拦下。
+		// 若有遗漏未关闭的 Pass，强制收口防止查询悬空
+		if (m_ActivePassIdx != kInvalidSlot)
+			EndPass(context);
 
 		const uint32_t slot = m_ActiveSlot;
 		m_ActiveSlot = kInvalidSlot;
 
-		context.InsertTimeStamp(m_QueryHeap.Get(), slot * 2 + 1);
+		const uint32_t baseQuery = slot * kQueriesPerFrame;
+		const uint32_t queryCount = 2 + m_Slots[slot].PassCount * 2;
+		context.InsertTimeStamp(m_QueryHeap.Get(), baseQuery + 1);
 
-		// 把这一槽的两个 uint64 拷到回读堆的 slot*16 字节处（slot * kBytesPerSlot）。
-		// 不传 slot*16 而是 kBytesPerSlot 的乘积，是为了让「每槽多少字节」只有一个出处。
+		const UINT64 destOffsetBytes = static_cast<UINT64>(baseQuery) * kBytesPerQuery;
 		context.ResolveQueryData(m_QueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
-			slot * 2, 2, m_Readback.GetResource(), (UINT64)(slot * kBytesPerSlot));
+			baseQuery, queryCount, m_Readback.GetResource(), destOffsetBytes);
 
-		// 这里还不知道围栏值，等 OnSubmitted 来认领。
 		m_LastEndedSlot = slot;
 	}
 
 	void GpuTimer::OnSubmitted(uint64_t fenceValue)
 	{
 		if (!m_Initialized || m_LastEndedSlot == kInvalidSlot)
-		{
 			return;
-		}
 
 		const uint32_t slot = m_LastEndedSlot;
 		m_LastEndedSlot = kInvalidSlot;
 
-		// 调用方传了 0（没有提交 / 传错），这个样本永远等不到完成，直接丢弃。
 		if (fenceValue == 0)
-		{
 			return;
-		}
 
-		m_SlotFence[slot] = fenceValue;
-		m_SlotInFlight[slot] = true;
+		m_Slots[slot].Fence = fenceValue;
+		m_Slots[slot].InFlight = true;
 	}
 
 	bool GpuTimer::TryGetElapsedMs(float& outMilliseconds)
 	{
 		if (!m_Initialized || m_TimestampFrequency == 0 || m_SlotCount == 0)
-		{
 			return false;
-		}
 
-		// 先在所有槽里挑「已提交且 GPU 已执行完」中围栏值最大的那一槽 ——
-		// 围栏值单调递增，最大即最近一帧。不能只按槽号顺序猜：某帧可能因为槽忙
-		// 而被跳过，槽号与时间先后并不总是一致。
 		uint32_t slot = kInvalidSlot;
 		for (uint32_t i = 0; i < m_SlotCount; ++i)
 		{
-			if (!m_SlotInFlight[i])
-			{
+			if (!m_Slots[i].InFlight)
 				continue;
-			}
 
-			// 关键的一步：GPU 没写完就 Map 是非法访问（Debug Layer 必报），必须跳过。
-			if (!Graphics::g_CommandManager.GetGraphicsQueue().IsFenceComplete(m_SlotFence[i]))
-			{
+			if (!Graphics::g_CommandManager.GetGraphicsQueue().IsFenceComplete(m_Slots[i].Fence))
 				continue;
-			}
 
-			if (slot == kInvalidSlot || m_SlotFence[i] > m_SlotFence[slot])
-			{
+			if (slot == kInvalidSlot || m_Slots[i].Fence > m_Slots[slot].Fence)
 				slot = i;
-			}
 		}
 
 		if (slot == kInvalidSlot)
-		{
-			// 一帧都还没跑完，正常现象（刚启动或 GPU 落后）。
 			return false;
-		}
 
 		const uint64_t* Timestamps = static_cast<const uint64_t*>(m_Readback.Map());
 		if (Timestamps == nullptr)
 		{
-			// ============================================================
-			// R4.4 修复：这里**不能**断言。
-			// ------------------------------------------------------------
-			// 原实现用 ASSERT(false, ...) 在这终止整个进程，导致
-			// 「Deferred 下拉伸窗口直接闪退」—— 崩溃栈是：
-			//     GpuTimer::TryGetElapsedMs
-			//       -> RendererDemoApp::Update
-			//       -> GameCore::UpdateApplication
-			// 与渲染资源生命周期毫无关系。
-			//
-			// 为什么会 Map 失败：
-			//   D3D12 的回读堆在 GPU 仍在读写映射区间时 Map 会失败。
-			//   本函数虽然先检查了 IsFenceComplete，但 Resize 会主动调用
-			//   IdleGPU()，打乱了「围栏已完成 == 本槽可安全读」这个推断；
-			//   槽的 InFlight 记录与真实 GPU 状态在那一个瞬间不一致。
-			//
-			// 正确的语义：GPU 计时是**可选的诊断功能**。拿不到样本就
-			// 沿用上一次的值（调用方本来就这么处理 false），
-			// 绝不能因为"测不到帧时间"而让渲染器崩溃。
-			// 同时把这一槽标记为可复用，避免它永远卡在 InFlight 状态。
-			// ============================================================
 			LOG_TRACE(L"[GpuTimer] 回读堆 Map 失败（GPU 仍在写入），本帧跳过采样\n");
-			m_SlotInFlight[slot] = false;
-			m_SlotFence[slot] = 0;
+			m_Slots[slot].InFlight = false;
+			m_Slots[slot].Fence = 0;
 			return false;
 		}
 
-		const uint64_t BeginTimestamp = Timestamps[slot * 2];
-		const uint64_t EndTimestamp = Timestamps[slot * 2 + 1];
+		const uint32_t baseQuery = slot * kQueriesPerFrame;
+		const uint64_t BeginTimestamp = Timestamps[baseQuery + 0];
+		const uint64_t EndTimestamp   = Timestamps[baseQuery + 1];
+
+		std::vector<PassTiming> parsedPasses;
+		const uint32_t passCount = m_Slots[slot].PassCount;
+		parsedPasses.reserve(passCount);
+		const double msScale = 1000.0 / static_cast<double>(m_TimestampFrequency);
+		for (uint32_t p = 0; p < passCount; ++p)
+		{
+			const uint64_t pBegin = Timestamps[baseQuery + 2 + p * 2];
+			const uint64_t pEnd   = Timestamps[baseQuery + 2 + p * 2 + 1];
+			float ms = 0.0f;
+			if (pEnd > pBegin)
+				ms = static_cast<float>(static_cast<double>(pEnd - pBegin) * msScale);
+			parsedPasses.push_back(PassTiming{ m_Slots[slot].PassNames[p], ms });
+		}
+
 		m_Readback.Unmap();
 
-		// 读完就释放这一槽，允许后续帧复用。
-		m_SlotInFlight[slot] = false;
-		m_SlotFence[slot] = 0;
+		m_Slots[slot].InFlight = false;
+		m_Slots[slot].Fence = 0;
 
-		// 空查询在部分驱动上会解析成两个相等的值，甚至倒序；这种样本直接丢弃。
-		// 该槽的数据已经读过并释放，本次返回 false 让调用方沿用上一次的值。
 		if (EndTimestamp <= BeginTimestamp)
-		{
 			return false;
-		}
 
-		m_LastElapsedMs = (float)((double)(EndTimestamp - BeginTimestamp) * 1000.0 / (double)m_TimestampFrequency);
+		m_LastElapsedMs = static_cast<float>(static_cast<double>(EndTimestamp - BeginTimestamp) * msScale);
+		m_LastPassTimings = std::move(parsedPasses);
 		outMilliseconds = m_LastElapsedMs;
 		return true;
 	}

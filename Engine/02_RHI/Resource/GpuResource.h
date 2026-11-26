@@ -1,6 +1,9 @@
 #pragma once
 
 // GpuResource的抽象基类
+#include "02_RHI/Memory/DeferredReleaseQueue.h"
+#include <functional>
+#include <vector>
 
 
 
@@ -40,6 +43,33 @@ public:
 		m_pResource = nullptr;
 		m_GpuVirtualAddress = D3D12_GPU_VIRTUAL_ADDRESS_NULL;
 		m_HeapType = kUnknownHeapType; // 资源已释放，堆类型缓存作废（下次重建重新查询）
+		m_SubresourceStates.clear();
+		++m_VersionID;
+	}
+
+	// [WP-1A / 契约 1：DX12 时钟 1 帧尾延迟释放入口]
+	// 将底层 ID3D12Resource 的所有权转移进帧尾延迟释放队列，并可选附带 CPU 描述符 / BindlessIndex
+	// 归还回调；随后立即清零本地地址与状态缓存并递增版本号。
+	// 这样 CPU 可立刻重建/丢弃壳对象，而真实 COM 释放与槽位复用严格延迟至 GPU 越过 EndOfFrameFence。
+	void ReleaseDeferred(Graphics::DeferredReleaseQueue& releaseQueue,
+		std::function<void()> onGpuComplete = nullptr)
+	{
+		if (m_pResource != nullptr)
+		{
+			Microsoft::WRL::ComPtr<IUnknown> unk;
+			m_pResource.As(&unk);
+			releaseQueue.Enqueue(std::move(unk));
+			m_pResource.Reset();
+		}
+		if (onGpuComplete)
+		{
+			releaseQueue.EnqueueCallback(std::move(onGpuComplete));
+		}
+		m_GpuVirtualAddress = D3D12_GPU_VIRTUAL_ADDRESS_NULL;
+		m_HeapType = kUnknownHeapType;
+		m_UsageState = D3D12_RESOURCE_STATE_COMMON;
+		m_TransitioningState = (D3D12_RESOURCE_STATES)-1;
+		m_SubresourceStates.clear();
 		++m_VersionID;
 	}
 
@@ -82,12 +112,19 @@ public:
 
 	uint32_t GetVersionID() const { return m_VersionID; }
 
+	// [WP-3A / 契约 3] 状态观测与按需子资源状态查询（单真源，常规路径 m_SubresourceStates 为空）
+	D3D12_RESOURCE_STATES GetUsageState() const { return m_UsageState; }
+	bool HasSubresourceStates() const { return !m_SubresourceStates.empty(); }
+
 protected:
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> m_pResource; // 资源指针
 
-	D3D12_RESOURCE_STATES m_UsageState; // 当前资源状态
+	D3D12_RESOURCE_STATES m_UsageState; // 当前资源状态（全资源标量快速路径）
 	D3D12_RESOURCE_STATES m_TransitioningState; // 过渡状态
+	// [WP-3A / 契约 3] 按需懒展开的子资源状态表（仅当某 Pass 指定 Subresource != ALL_SUBRESOURCES 时分配，
+	// 下一次全资源转换时自动收敛并清空，零常驻开销）。
+	std::vector<D3D12_RESOURCE_STATES> m_SubresourceStates;
 	uint32_t m_VersionID = 0; // 标记资源版本ID，每次资源更新时递增，便于追踪资源变化
 	D3D12_GPU_VIRTUAL_ADDRESS m_GpuVirtualAddress; // GPU虚拟地址
 

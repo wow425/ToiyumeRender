@@ -58,6 +58,9 @@ namespace
 
     DIMOUSESTATE2 s_MouseState;
     unsigned char s_Keybuffer[256];
+    // [TD-09b] Win32 WM_KEYDOWN/WM_KEYUP 送入的是 VK（虚拟键码），必须与 DirectInput 的 DIK
+    // 扫描码缓冲 s_Keybuffer 严格隔离，否则按 VK 写入再按 DIK 读出会导致全键位错位。
+    bool s_Win32VKBuffer[256] = {};
 
     // R4.5：DirectInput 不可用时的鼠标后备来源基准点（见 KbmUpdate）。
     POINT s_LastCursorPos = { 0, 0 };
@@ -558,6 +561,8 @@ namespace
             s_DI->Release();
             s_DI = nullptr;
         }
+        s_KbmReady = false;
+        KbmZeroInputs();
 #endif
     }
 
@@ -686,9 +691,10 @@ void GameInput::Initialize()
 void GameInput::NotifyWin32Key(UINT vkCode, bool isDown)
 {
 #ifdef USE_KEYBOARD_MOUSE
+    // [TD-09b] 写入独立 VK 状态表（而非按 DIK 索引的 s_Keybuffer），消除 VK/DIK 空间混用。
     if (vkCode < 256)
     {
-        s_Keybuffer[vkCode] = isDown ? 0x80 : 0x00;
+        s_Win32VKBuffer[vkCode] = isDown;
     }
 #endif
 }
@@ -696,6 +702,7 @@ void GameInput::NotifyWin32Key(UINT vkCode, bool isDown)
 void GameInput::Shutdown()
 {
 #ifdef USE_KEYBOARD_MOUSE
+    ZeroMemory(s_Win32VKBuffer, sizeof(s_Win32VKBuffer));
     KbmShutdown();
 #endif
 }
@@ -804,14 +811,10 @@ void GameInput::Update(float frameDelta)
         if (dik < 256 && (s_Keybuffer[dik] & 0x80) != 0)
             down = true;
 
-        // 通路 2：GetAsyncKeyState —— 必须用 **VK 虚拟键码**。
-        // R4.3 修复：原实现这里传的是 dik，导致两个后果：
-        //   1) 几乎所有字母键都读错位置（DIK_W=0x11 vs VK_W=0x57），
-        //      这也是"WASD 时灵时不灵"的根源；
-        //   2) 最致命的是 DIK_ESCAPE=0x01 恰好等于 VK_LBUTTON ——
-        //      **点击鼠标左键 = 按下 Escape**，IsDone() 立即为真，
-        //      主循环正常退出，表现为"点一下就闪退"且无任何错误日志。
+        // [TD-09b] Win32 WM_KEYDOWN/UP 与 GetAsyncKeyState 统一使用 VK 虚拟键码
         const unsigned char vk = s_VKMapping[i];
+        if (!down && vk != 0 && s_Win32VKBuffer[vk])
+            down = true;
         if (!down && windowActive && vk != 0)
             down = (::GetAsyncKeyState(vk) & 0x8000) != 0;
 
@@ -853,7 +856,14 @@ void GameInput::Update(float frameDelta)
 
 bool GameInput::IsAnyPressed(void)
 {
-    return s_Buttons[0] != 0;
+    // [TD-09b] 原 `return s_Buttons[0] != 0;` 将数组退化为非空指针，恒返回 true；
+    // 改为逐项扫描当前帧全部数字输入键位。
+    for (uint32_t i = 0; i < kNumDigitalInputs; ++i)
+    {
+        if (s_Buttons[0][i])
+            return true;
+    }
+    return false;
 }
 
 bool GameInput::IsPressed(DigitalInput di)

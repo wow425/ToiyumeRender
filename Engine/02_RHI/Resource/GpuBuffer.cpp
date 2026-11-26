@@ -2,7 +2,6 @@
 #include "02_RHI/Resource/GpuBuffer.h"
 #include "02_RHI/GraphicsCore.h"
 #include "02_RHI/Command/CommandContext.h"
-#include "04_Renderer/BufferManager.h"
 #include "02_RHI/Resource/Heap/UploadBuffer.h"
 #include "00_Core/Math/Common.h"
 
@@ -19,7 +18,8 @@ void GpuBuffer::Create(const std::wstring& name, uint32_t NumElements, uint32_t 
 	// 获取Buffer三属性,元素数量，大小，Buffer大小
 	m_ElementCount = NumElements;
 	m_ElementSize = ElementSize;
-	m_BufferSize = NumElements * ElementSize;
+	// [WP-1D / TD-05f] 先提升到 size_t 再相乘，避免 32-bit uint32_t 溢出截断。
+	m_BufferSize = static_cast<size_t>(NumElements) * static_cast<size_t>(ElementSize);
 
 	// 资源描述
 	D3D12_RESOURCE_DESC ResourceDesc = DescribeBuffer();
@@ -60,7 +60,8 @@ void GpuBuffer::Create(const std::wstring& name, uint32_t NumElements, uint32_t 
 	// 获取Buffer三属性,元素数量，大小，Buffer大小
 	m_ElementCount = NumElements;
 	m_ElementSize = ElementSize;
-	m_BufferSize = NumElements * ElementSize;
+	// [WP-1D / TD-05f] 先提升到 size_t 再相乘，避免 32-bit uint32_t 溢出截断。
+	m_BufferSize = static_cast<size_t>(NumElements) * static_cast<size_t>(ElementSize);
 
 	// 资源描述
 	D3D12_RESOURCE_DESC ResourceDesc = DescribeBuffer();
@@ -98,7 +99,8 @@ void GpuBuffer::CreatePlaced(const std::wstring& name, ID3D12Heap* pBackingHeap,
 	// 获取Buffer三属性,元素数量，大小，Buffer大小
 	m_ElementCount = NumElements;
 	m_ElementSize = ElementSize;
-	m_BufferSize = NumElements * ElementSize;
+	// [WP-1D / TD-05f] 先提升到 size_t 再相乘，避免 32-bit uint32_t 溢出截断。
+	m_BufferSize = static_cast<size_t>(NumElements) * static_cast<size_t>(ElementSize);
 
 	// 资源描述
 	D3D12_RESOURCE_DESC ResourceDesc = DescribeBuffer();
@@ -125,8 +127,8 @@ void GpuBuffer::CreatePlaced(const std::wstring& name, ID3D12Heap* pBackingHeap,
 // 2. 根常量视图创建和获取
 D3D12_CPU_DESCRIPTOR_HANDLE GpuBuffer::CreateConstantBufferView(uint32_t Offset, uint32_t Size) const
 {
-	// 判断buffer是否足够存放
-	ASSERT(Offset + Size <= m_BufferSize);
+	// [WP-1D / TD-05f] 判断 buffer 是否足够存放（先宽化至 size_t 防 32-bit 加法溢出）
+	ASSERT(static_cast<size_t>(Offset) + static_cast<size_t>(Size) <= m_BufferSize);
 
 	Size = Math::AlignUp(Size, 16);
 

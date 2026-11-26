@@ -46,6 +46,9 @@ public:
     // ============================================================
     void Free(D3D12_CPU_DESCRIPTOR_HANDLE Handle, uint32_t Count);
 
+    // [TD-08b] 复位实例级游标、空闲表、位图与计数，配合 DestroyAll() 支持同进程多轮 Init/Shutdown。
+    void Reset(void);
+
     static void DestroyAll(void);
 
     // ============================================================

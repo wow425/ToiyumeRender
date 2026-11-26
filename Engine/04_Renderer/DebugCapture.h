@@ -1,27 +1,27 @@
+// ============================================================================
+// 模块：DebugCapture（GPU 回读截帧工具：LDR PNG / HDR Tonemapped PNG / 线性 .hdr）
+// 架构层：Engine/04_Renderer（WP-2C / TD-10c）
+// 核心职责：通过 ReadbackBuffer 将 GPU ColorBuffer 真实内容同步回读到 CPU 并落盘，
+//           支持 R8G8B8A8_UNORM、R16G16B16A16_FLOAT（Linear HDR）与 R16G16_FLOAT（Normal GBuffer），
+//           并新增无损线性 Radiance .hdr 导出供 Phase 4 科研同色域误差评估使用。
+// ============================================================================
 #pragma once
 
 #include <string>
 
 class ColorBuffer;
 
-// ============================================================
-// GPU 截图工具（R1 诊断基础设施）
-// ------------------------------------------------------------
-// 为什么需要它：
-//   用 PrintWindow / CopyFromScreen 抓 DX12 窗口时，拿到的可能是陈旧内容
-//   （实测两次完全不同的 Shader 输出得到了字节完全相同的 PNG）。
-//   这会直接导致「改了代码以为没生效」的误判。
-//
-// 做法：把 GPU 上的 ColorBuffer 通过 ReadbackBuffer 回读到 CPU，
-// 再用 DirectXTex 的 WIC 编码器写成真正的 PNG。
-// 这是 GPU 真实输出，可作为可复现的视觉证据。
-//
-// 限制：要求源缓冲当前处于可 CopySource 的状态，函数内部会做状态转换；
-//       必须在 Render 之后、且不在其它已开启的 GraphicsContext 中间调用。
-// ============================================================
 namespace Renderer::DebugCapture
 {
-	// 把 ColorBuffer 内容导出为 PNG。返回是否成功。
-	// 支持 R8G8B8A8_UNORM / R16G16B16A16_FLOAT（后者会先做简单 tonemap 压缩到 8bit）。
+	// 把 ColorBuffer 内容导出为 8-bit PNG（支持 R8G8B8A8_UNORM / R16G16B16A16_FLOAT / R16G16_FLOAT）。
 	bool SaveColorBufferToPNG(ColorBuffer& source, const std::wstring& filePath);
+
+	// [WP-2C / TD-10c] 将 Linear HDR (R16G16B16A16_FLOAT) 按与 TonemapPS 相同的 Exposure+ACES+sRGB 链
+	// 导出为便于人眼检查的 8-bit PNG。
+	bool SaveHDRBufferToPNG(ColorBuffer& source, const std::wstring& filePath,
+		float exposure = 1.0f, bool applyACES = true, bool applySRGB = true);
+
+	// [WP-2C / TD-10c] 将 Linear HDR (R16G16B16A16_FLOAT) 无损转为 R32G32B32A32_FLOAT 并导出为
+	// Radiance .hdr 线性参考图（不做 tonemap/gamma 截断）。
+	bool SaveHDRBufferToHDR(ColorBuffer& source, const std::wstring& filePath);
 }

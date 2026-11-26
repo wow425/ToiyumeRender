@@ -48,16 +48,17 @@ void UploadBuffer::Create(const std::wstring& name, size_t BufferSize)
 
 void* UploadBuffer::Map(void)
 {
-
-    void* Memory; // void* 万能指针，存储纯粹内存地址
+    ASSERT(m_pResource != nullptr, "UploadBuffer::Map called on destroyed or uninitialized buffer");
+    void* Memory = nullptr; // void* 万能指针，存储纯粹内存地址
     // 子资源索引， 读取区间， 输出指针
     CD3DX12_RANGE readRange(0, 0);
-    m_pResource->Map(0, &readRange, &Memory);
+    ASSERT_SUCCEEDED(m_pResource->Map(0, &readRange, &Memory));
     return Memory;
 }
 
 void UploadBuffer::Unmap(size_t begin, size_t end)
 {
-    CD3DX12_RANGE writtenRange(begin, std::min(end, m_BufferSize));
+    ASSERT(m_pResource != nullptr, "UploadBuffer::Unmap called on destroyed or uninitialized buffer");
+    CD3DX12_RANGE writtenRange(begin, (std::min)(end, m_BufferSize));
     m_pResource->Unmap(0, &writtenRange);
 }

@@ -21,6 +21,8 @@ public:
 
 	Texture() { m_hCpuDescriptorHandle.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN; }
 	Texture(D3D12_CPU_DESCRIPTOR_HANDLE Handle) : m_hCpuDescriptorHandle(Handle) {}
+	// [TD-03d] 派生类析构主动调用 Destroy()，归还由本对象分配的 CPU SRV 槽位。
+	virtual ~Texture() override { Destroy(); }
 
 	void Create2D(size_t RowPitchBytes, size_t Width, size_t Height, DXGI_FORMAT Format, const void* InitData);
 	void CreateCube(size_t RowPitchBytes, size_t Width, size_t Height, DXGI_FORMAT Format, const void* InitData);
@@ -30,11 +32,8 @@ public:
 	bool CreateDDSFromMemory(const void* memBuffer, size_t fileSize, bool sRGB);
 	void CreatePIXImageFromMemory(const void* memBuffer, size_t fileSize);
 
-	virtual void Destroy() override
-	{
-		GpuResource::Destroy();
-		m_hCpuDescriptorHandle.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
-	}
+	// [TD-03d] 释放 GPU 资源并将 m_OwnsDescriptor==true 的 CPU SRV 槽归还 g_DescriptorAllocator。
+	virtual void Destroy() override;
 
 	const D3D12_CPU_DESCRIPTOR_HANDLE& GetSRV() const { return m_hCpuDescriptorHandle; }
 
@@ -43,11 +42,12 @@ public:
 	uint32_t GetDepth() const { return m_Depth; }
 protected:
 
-	uint32_t m_Width;
-	uint32_t m_Height;
-	uint32_t m_Depth;
+	uint32_t m_Width = 0;
+	uint32_t m_Height = 0;
+	uint32_t m_Depth = 0;
 	// m成员，h句柄
 	D3D12_CPU_DESCRIPTOR_HANDLE m_hCpuDescriptorHandle;
+	bool m_OwnsDescriptor = false;
 };
 
 class TextureCube : public GpuResource
@@ -58,6 +58,7 @@ public:
 
 	TextureCube() { m_hCpuDescriptorHandle.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN; }
 	TextureCube(D3D12_CPU_DESCRIPTOR_HANDLE Handle) : m_hCpuDescriptorHandle(Handle) {}
+	virtual ~TextureCube() override { Destroy(); }
 
 	void CreateCube(size_t RowPitchBytes, size_t Width, size_t Height, DXGI_FORMAT Format, const void* InitData);
 	// 加载纹理
@@ -65,11 +66,7 @@ public:
 	bool CreateDDSFromMemory(const void* memBuffer, size_t fileSize, bool sRGB);
 	void CreatePIXImageFromMemory(const void* memBuffer, size_t fileSize);
 
-	virtual void Destroy() override
-	{
-		GpuResource::Destroy();
-		m_hCpuDescriptorHandle.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
-	}
+	virtual void Destroy() override;
 
 	const D3D12_CPU_DESCRIPTOR_HANDLE& GetSRV() const { return m_hCpuDescriptorHandle; }
 
@@ -78,10 +75,10 @@ public:
 	uint32_t GetDepth() const { return m_Depth; }
 protected:
 
-	uint32_t m_Width;
-	uint32_t m_Height;
-	uint32_t m_Depth;
+	uint32_t m_Width = 0;
+	uint32_t m_Height = 0;
+	uint32_t m_Depth = 0;
 	// m成员，h句柄
 	D3D12_CPU_DESCRIPTOR_HANDLE m_hCpuDescriptorHandle;
+	bool m_OwnsDescriptor = false;
 };
-

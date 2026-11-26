@@ -5,7 +5,7 @@
 #include "02_RHI/Resource/Texture.h"
 #include "02_RHI/Pipeline/PipelineState.h"
 #include "02_RHI/Pipeline/RootSignature.h"
-#include "04_Renderer/BufferManager.h"
+// [TD-01a] 移除未使用的 04_Renderer/BufferManager.h，保持 02_RHI 零反向依赖。
 
 
 
@@ -49,6 +49,7 @@ namespace Graphics
 	D3D12_DEPTH_STENCIL_DESC DepthStateReadWrite;
 	D3D12_DEPTH_STENCIL_DESC DepthStateReadOnly;
 	D3D12_DEPTH_STENCIL_DESC DepthStateReadOnlyReversed;
+	D3D12_DEPTH_STENCIL_DESC DepthStateReadWriteReversed;
 	D3D12_DEPTH_STENCIL_DESC DepthStateTestEqual;
 
 
@@ -152,7 +153,19 @@ void Graphics::InitializeCommonState(void)
 	DepthStateReadOnly.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
 	DepthStateReadOnly.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
 
+	// [WP-1D / TD-06e] 补齐 DepthStateReadOnlyReversed 与 DepthStateTestEqual，避免 extern 声明却保留零初始化非法状态。
+	DepthStateReadOnlyReversed = DepthStateReadOnly;
+	DepthStateReadOnlyReversed.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+
+	DepthStateReadWriteReversed = DepthStateReadWrite;
+	DepthStateReadWriteReversed.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+
+	DepthStateTestEqual = DepthStateReadOnly;
+	DepthStateTestEqual.DepthFunc = D3D12_COMPARISON_FUNC_EQUAL;
+
 	// --- 5. 基础混合状态 ---
+	// [WP-1D / TD-06e] 补齐全部 6 组 Blend 预设（原实现仅初始化了 BlendDisable，其余 5 组为全 0，
+	// 导致 D3D12_BLEND=0 非法枚举；Deferred/Forward 的 Depth/AlphaBlend PSO 一旦触发立即创建失败）。
 	D3D12_BLEND_DESC alphaBlend = {};
 	alphaBlend.IndependentBlendEnable = FALSE;
 	alphaBlend.RenderTarget[0].BlendEnable = FALSE;
@@ -162,9 +175,24 @@ void Graphics::InitializeCommonState(void)
 	alphaBlend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
 	alphaBlend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
 	alphaBlend.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	alphaBlend.RenderTarget[0].RenderTargetWriteMask = 0;
+	BlendNoColorWrite = alphaBlend; // 仅写深度（Depth / Shadow Pass），禁止颜色写入
 
 	alphaBlend.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	BlendDisable = alphaBlend; // 禁用混合，直接覆盖写入颜色
+
+	alphaBlend.RenderTarget[0].BlendEnable = TRUE;
+	BlendTraditional = alphaBlend; // 标准 Alpha 混合：Src * SrcA + Dst * (1 - SrcA)
+
+	alphaBlend.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+	BlendPreMultiplied = alphaBlend; // 预乘 Alpha 混合：Src * 1 + Dst * (1 - SrcA)
+
+	alphaBlend.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	alphaBlend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
+	BlendAdditive = alphaBlend; // 纯加法混合：Src + Dst
+
+	alphaBlend.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	BlendTraditionalAdditive = alphaBlend; // 传统加法混合：Src * SrcA + Dst
 
 
 	// --- 6. 全局根签名 ---
@@ -183,4 +211,6 @@ void Graphics::DestroyCommonState(void)
 {
 	for (uint32_t i = 0; i < kNumDefaultTextures; ++i)
 		DefaultTextures[i].Destroy();
+	// [TD-08b] 同步复位全局根签名壳状态，支持同进程二次 InitializeCommonState。
+	g_CommonRS.Reset(0, 0);
 }

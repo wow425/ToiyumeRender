@@ -52,6 +52,10 @@ namespace Graphics
 		static void DestroyAll();
 		static void DestroyColorBuffer(const std::wstring& ResourceID);
 		static void DestroyDepthBuffer(const std::wstring& ResourceID);
+		// [TD-08a] 精准解绑并释放某个 Renderer 自持有的缓冲，避免在「先建新后替换」双驻留期间
+		// 误用全局 DestroyAll() 把候选新 Renderer 刚创建的 RT 一起抹掉。
+		static void ReleaseColorBuffer(const std::wstring& ResourceID, const std::shared_ptr<ColorBuffer>& expected);
+		static void ReleaseDepthBuffer(const std::wstring& ResourceID, const std::shared_ptr<DepthBuffer>& expected);
 
 
 	private:

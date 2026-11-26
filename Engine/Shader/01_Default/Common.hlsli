@@ -6,31 +6,23 @@
 
 #pragma warning(disable : 3557) // single-iteration loop
 
-// 1.shader编译时优化资源布局。2. 编译时验证
+// [WP-1D / TD-06e] 与 ForwardRenderer::BuildRootSignature() 保持 1:1 严格一致（6 个根参数 + 1 个静态采样器 s10）。
+// 为什么必须对齐：DefaultVS/DefaultPS 通过 [RootSignature(Renderer_RootSig)] 把根签名字节码内嵌到 DXIL 中，
+// 同时 C++ 侧也显式传入 m_RootSig 创建 PSO；旧宏多了 t20 (VS SRV) 与 s11/s12，会与 C++ 侧 6 参数布局漂移。
 #define Renderer_RootSig \
     "RootFlags(ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT), " \
     "CBV(b0, visibility = SHADER_VISIBILITY_VERTEX), " \
     "CBV(b0, visibility = SHADER_VISIBILITY_PIXEL), " \
-    "DescriptorTable(SRV(t0, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL)," \
-    "DescriptorTable(Sampler(s0, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL)," \
-    "DescriptorTable(SRV(t10, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL)," \
+    "DescriptorTable(SRV(t0, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL), " \
+    "DescriptorTable(Sampler(s0, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL), " \
+    "DescriptorTable(SRV(t10, numDescriptors = 10), visibility = SHADER_VISIBILITY_PIXEL), " \
     "CBV(b1), " \
-    "SRV(t20, visibility = SHADER_VISIBILITY_VERTEX), " \
-    "StaticSampler(s10, maxAnisotropy = 8, visibility = SHADER_VISIBILITY_PIXEL)," \
-    "StaticSampler(s11, visibility = SHADER_VISIBILITY_PIXEL," \
-        "addressU = TEXTURE_ADDRESS_CLAMP," \
-        "addressV = TEXTURE_ADDRESS_CLAMP," \
-        "addressW = TEXTURE_ADDRESS_CLAMP," \
-        "comparisonFunc = COMPARISON_GREATER_EQUAL," \
-        "filter = FILTER_MIN_MAG_LINEAR_MIP_POINT)," \
-    "StaticSampler(s12, maxAnisotropy = 8, visibility = SHADER_VISIBILITY_PIXEL)"
+    "StaticSampler(s10, maxAnisotropy = 8, visibility = SHADER_VISIBILITY_PIXEL)"
 
 // CB 网格0，材质1，全局2
 
-// common static samplers
+// common static sampler（与 ForwardRenderer::BuildRootSignature 的 s10 对齐）
 SamplerState defaultSampler : register(s10);
-SamplerComparisonState shadowSampler : register(s11); // PCF
-SamplerState cubeMapSampler : register(s12);
 
 #ifndef ENABLE_TRIANGLE_ID
 #define ENABLE_TRIANGLE_ID 0

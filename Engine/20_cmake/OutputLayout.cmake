@@ -13,7 +13,6 @@
 #
 # 镜像规则（相对路径 = 源码里的相对路径）：
 #   Engine/CMakeLists.txt          -> out/<Config>/Engine/TooiyumeEngine.lib
-#   ThirdParty/imgui/CMakeLists.txt-> out/<Config>/ThirdParty/imgui/imgui.lib
 #   Demos/DeferredApp/CMakeLists   -> out/<Config>/Demos/DeferredApp/DeferredApp.exe (+ 运行期 DLL)
 #   Engine/Shader/02_Deferred/GBufferPS.hlsl
 #                                  -> out/<Config>/Engine/Shader/02_Deferred/GBufferPS.cso
@@ -24,7 +23,7 @@
 # ==========================================================
 
 if(NOT DEFINED TOOIYUME_OUT_ROOT)
-    set(TOOIYUME_OUT_ROOT "${CMAKE_SOURCE_DIR}/out"
+    set(TOOIYUME_OUT_ROOT "${CMAKE_SOURCE_DIR}/out/build"
         CACHE PATH "所有构建产物的根目录")
 endif()
 
@@ -80,16 +79,16 @@ function(tooiyume_set_output_dirs target relative_dir)
         endforeach()
     endforeach()
 
-    # PDB 与 exe/lib 同目录更方便定位崩溃栈；不设的话 MSVC 默认也落在输出目录，
-    # 这里显式写出来，避免将来有人改用 /Fd 后 PDB 无声漂移。
+    # 仅重定向链接器 PDB（与 exe/lib 同目录方便定位崩溃栈）；
+    # 绝不重定向 COMPILE_PDB_OUTPUT_DIRECTORY（vc140.pdb 属于编译器中间产物，
+    # 必须与 .obj / cmake_pch.cxx.pch 一同留在 CMakeFiles/<target>.dir 下，
+    # 否则清理或切换 VS/CLI 构建时极易触发 MSVC C2859 预编译头 PDB 不匹配错误）。
     set_target_properties(${target} PROPERTIES
         PDB_OUTPUT_DIRECTORY "${_dir}"
-        COMPILE_PDB_OUTPUT_DIRECTORY "${_dir}"
     )
     foreach(_cfg DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
         set_target_properties(${target} PROPERTIES
             PDB_OUTPUT_DIRECTORY_${_cfg} "${_dir}"
-            COMPILE_PDB_OUTPUT_DIRECTORY_${_cfg} "${_dir}"
         )
     endforeach()
 endfunction()

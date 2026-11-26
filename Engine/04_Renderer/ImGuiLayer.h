@@ -34,12 +34,20 @@
 class ColorBuffer;
 class GraphicsContext;
 
+namespace Renderer
+{
+	class UnifiedDescriptorHeap;
+}
+
 namespace Renderer::ImGuiLayer
 {
-	// 创建 ImGui 上下文并初始化 Win32/DX12 两个后端，同时建立本模块私有的描述符堆。
+	// 创建 ImGui 上下文并初始化 Win32/DX12 两个后端。
+	// [WP-1B / 契约 1] 传入 unifiedHeap 时，ImGui 字体与 UI SRV 直接落入 4 分区单可见堆
+	// Zone D [49152, 49408)，与主渲染路径共享同一张 CBV_SRV_UAV 堆，彻底消除独立堆切换；
+	// 仅在未传入 unifiedHeap 时回退自建 64 槽兼容私有堆。
 	// hwnd 是 Win32 后端需要的窗口句柄（void* 是为了让头文件不依赖 Windows.h）。
 	// 重复调用返回 false；g_Device 为空或 hwnd 为空时返回 false。
-	bool Initialize(void* hwnd);
+	bool Initialize(void* hwnd, UnifiedDescriptorHeap* unifiedHeap = nullptr);
 
 	// 逆序销毁：DX12 后端 -> Win32 后端 -> ImGui 上下文 -> 自建描述符堆。可重复调用。
 	void Shutdown(void);

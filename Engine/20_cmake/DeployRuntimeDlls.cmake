@@ -55,7 +55,7 @@ function(tooiyume_deploy_runtime_dlls target)
     set(_dbg_dir "${_root}/debug/bin")
     set(_rel_dir "${_root}/bin")
 
-    set(_dlls DirectXTex.dll DirectXMesh.dll dxcompiler.dll dxil.dll)
+    set(_dlls DirectXTex.dll DirectXMesh.dll dxcompiler.dll dxil.dll WinPixEventRuntime.dll)
 
     foreach(_dll ${_dlls})
         if(EXISTS "${_dbg_dir}/${_dll}" AND EXISTS "${_rel_dir}/${_dll}")
@@ -86,13 +86,11 @@ function(tooiyume_deploy_runtime_dlls target)
         endif()
     endforeach()
 
-    set(_pix "${CMAKE_SOURCE_DIR}/ThirdParty/PIX/bin/WinPixEventRuntime.dll")
-    if(EXISTS "${_pix}")
-        add_custom_command(TARGET ${target} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${_pix}" "$<TARGET_FILE_DIR:${target}>"
-            COMMENT "部署 WinPixEventRuntime.dll -> ${target}")
-    else()
-        message(WARNING "缺少 PIX 运行库：${_pix}")
-    endif()
+    # PIX 与 imgui 现在由 vcpkg 管理（见 vcpkg.json 的 winpixevent / imgui）。
+    # 这里**不再**手工拷 WinPixEventRuntime.dll：
+    #   winpixevent 的 CMake config 导出 Microsoft::WinPixEventRuntime（SHARED
+    #   IMPORTED），消费方只要 target_link_libraries 连上它，CMake/vcpkg 的
+    #   applocal 机制（VCPKG_APPLOCAL_DEPS 或 CMake 3.x 的 RUNTIME 依赖传播）
+    #   就会把 DLL 放到 $<TARGET_FILE_DIR>。
+    # 保留这条注释是为了防止有人"顺手补回来"，造成同一 DLL 两个来源、版本漂移。
 endfunction()

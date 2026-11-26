@@ -9,7 +9,11 @@
 
 namespace glTF { class Asset; struct Mesh; }
 
-#define CURRENT_MINI_FILE_VERSION 2
+// [TD-05b] 版本 2 -> 3：修复 CompileMesh 多 draw 合并时 VB/IB 字节偏移漏乘 stride/indexSize 的
+// 数据覆写 Bug，递增版本号强制旧 .ty 缓存自动重新烘焙。
+// [GFL2 / M1] 版本 3 -> 4：MeshConvert 支持 COLOR_0 (kVertex_Color0, R32G32B32A32_FLOAT)，
+// 递增版本号以触发 .ty 缓存重烘并支持 -RebuildModels 验收。
+#define CURRENT_MINI_FILE_VERSION 4
 
 namespace Scene::Model
 {

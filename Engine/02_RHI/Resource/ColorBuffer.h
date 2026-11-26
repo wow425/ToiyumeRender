@@ -134,7 +134,12 @@ public:
 	const D3D12_CPU_DESCRIPTOR_HANDLE& GetSRV(void) const { return m_SRVHandle; }
 	const D3D12_CPU_DESCRIPTOR_HANDLE& GetRTV(void) const { return m_RTVHandle; }
 	const D3D12_CPU_DESCRIPTOR_HANDLE& GetUAV(void) const { return m_UAVHandle[0]; }
-	const D3D12_CPU_DESCRIPTOR_HANDLE& GetUAV(uint32_t MipSlice) const { return m_UAVHandle[MipSlice]; }
+	const D3D12_CPU_DESCRIPTOR_HANDLE& GetUAV(uint32_t MipSlice) const
+	{
+		// [TD-05c] 防止越界读取 UAV 句柄槽位（DX12 最大 2D 纹理 16384px 为 15 级 mip，kMaxMipLevels=16）。
+		ASSERT(MipSlice < _countof(m_UAVHandle), "ColorBuffer::GetUAV MipSlice out of range");
+		return m_UAVHandle[MipSlice];
+	}
 
 	void SetClearColor(Color ClearColor) { m_ClearColor = ClearColor; }
 
@@ -169,12 +174,20 @@ protected:
 		return D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | Flags; // 按位或，混合打包
 	}
 
+	// [TD-05c / DX12 Mip 上限不变量] D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION = 16384，对应完整 mip 链
+	// D3D12_REQ_MIP_LEVELS = 15。原固定长度 12 在 4096px（13 级 mip）自动生成 mip 时就会越界写穿
+	// 紧随其后的 m_NumMipMaps 等成员变量。扩至 16 槽可完整覆盖 DX12 规范内一切 2D/Cube 纹理尺寸。
+	static constexpr uint32_t kMaxMipLevels = 16;
+
 	// 计算给定宽高的纹理在生成完整的多级渐远纹理(Mipmap / ミップマップ) 时，总共需要多少个层级的函数。
 	static inline uint32_t ComputeNumMips(uint32_t Width, uint32_t Height)
 	{
-		uint32_t HighBit;
-		_BitScanReverse((unsigned long*)&HighBit, Width | Height);
-		return HighBit + 1;
+		const uint32_t maxDim = Width | Height;
+		if (maxDim == 0)
+			return 1;
+		unsigned long HighBit = 0;
+		_BitScanReverse(&HighBit, maxDim);
+		return static_cast<uint32_t>(HighBit) + 1;
 	}
 
 
@@ -184,7 +197,7 @@ protected:
 	Color m_ClearColor;
 	D3D12_CPU_DESCRIPTOR_HANDLE m_SRVHandle;
 	D3D12_CPU_DESCRIPTOR_HANDLE m_RTVHandle;
-	D3D12_CPU_DESCRIPTOR_HANDLE m_UAVHandle[12];
+	D3D12_CPU_DESCRIPTOR_HANDLE m_UAVHandle[kMaxMipLevels];
 	uint32_t m_NumMipMaps;
 	uint32_t m_FragmentCount;
 	uint32_t m_SampleCount;

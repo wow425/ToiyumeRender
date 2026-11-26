@@ -41,30 +41,45 @@
 #include "00_Core/SystemTime.h"
 #include "00_Core/Utility/AssetRoot.h"
 #include "00_Core/Utility/CommandLineArg.h"
+#ifdef _DEBUG
+#include <crtdbg.h>
+#endif
 
 #include "01_Application/GameCore.h"
 #include "01_Application/Display.h"
 #include "01_Application/GameInput.h"
 
+#include "02_RHI/Resource/ColorBuffer.h"
 #include "02_RHI/Command/CommandContext.h"
+#include "02_RHI/GraphicsCaps.h"
 #include "02_RHI/GraphicsCore.h"
 #include "02_RHI/Descriptor/DescriptorHeap.h"
 
 #include "04_Renderer/DebugCapture.h"
 #include "04_Renderer/GpuTimer.h"
 #include "04_Renderer/ImGuiLayer.h"
+#include "04_Renderer/RenderConfig.h"
 #include "04_Renderer/RenderParams.h"
+#include <fstream>
+#include <sstream>
+#include "04_Renderer/RenderServices.h"
+#include "04_Renderer/PrimarySurfaceDesc.h"
+#include "04_Renderer/RendererHost.h"
 #include "04_Renderer/Renderer/Base/BaseRenderer.h"
 #include "04_Renderer/Renderer/Base/RendererRegistry.h"
-#include "04_Renderer/Renderer/Deferred/DeferredRenderer.h"
-#include "04_Renderer/Renderer/Forward/ForwardRenderer.h"
-#include "04_Renderer/Renderer/RayTracing/RayTracingRenderer.h"
 
 #include "05_Scene/Camera/Camera.h"
 #include "05_Scene/Camera/CameraController.h"
 #include "05_Scene/Lighting/LightingSystem.h"
 #include "05_Scene/Model/Model.h"
 #include "05_Scene/Model/ModelLoader.h"
+
+#include "Demos/Common/DemoSceneHelpers.h"
+#include "Demos/Common/IDemoModule.h"
+#include "Demos/DeferredRenderDemo/DeferredRenderDemoModule.h"
+#include "Demos/ForwardRenderDemo/ForwardRenderDemoModule.h"
+#include "Demos/GFL2RenderDemo/GFL2RenderDemoModule.h"
+#include "Demos/RayTracingRenderDemo/RayTracingRenderDemoModule.h"
 
 #include "imgui.h"
 
@@ -171,25 +186,33 @@ private:
 	// 所以这里不做通配扫描（Assets/Model 下还有只有 .pmx 的目录，加载器不支持），
 	// 而是显式列出已经验证过的条目。
 	// ------------------------------------------------------------
-	struct ModelEntry
-	{
-		const char*    name;          // UI 显示名（ASCII）
-		const wchar_t* relativePath;  // 相对 Assets 根的路径
-	};
-	static const ModelEntry  kModelCatalog[];
-	static const uint32_t    kModelCount;
-
-	// ---- Renderer 生命周期 ----
-	void SwitchRenderer(const std::wstring& name);
+	// ---- Renderer 生命周期（主控管理器仅调度 IDemoModule，不实现具体管线） ----
+	bool SwitchRenderer(const std::wstring& name, bool simulateFailure = false);
+	DemoCommon::IDemoModule* FindModule(const std::wstring& nameOrPipeline) const;
+	DemoCommon::DemoHostContext BuildDemoContext(void);
 	void BindRendererOutput(void);
 	void UnloadModel(void);
 	bool LoadModelByIndex(uint32_t index, bool forceRebuild);
 
 	// R4.6：多模型操作（全部在帧边界调用）
-	void   AddModel(uint32_t catalogIndex);
+	void   AddModel(uint32_t catalogIndex, bool forceRebuild = false);
 	void   RemoveModel(int32_t sceneIndex);
 	void   ClearAllModels(void);
 	void ApplyPendingActions(void);
+
+	// [WP-0B] 自动化管线反复热切换压测（-SwitchTest <N>）：
+	// 每隔数帧在 Deferred / Forward / RayTracing 间轮换 N 次，Debug 下同步执行 _CrtCheckMemory()
+	// 校验 CRT 堆完整性（验证 TD-03a / TD-05d 修复后反复切换不崩、无堆损坏）。
+	void RunSwitchTest(void);
+	// [WP-1B / TD-08a] 模拟新 Renderer Initialize() 返回 false 时的保底回归验证（-SwitchFailTest <dir>）
+	void RunSwitchFailTest(void);
+	// [WP-1C / TD-09c] DXR 删除全部模型后清屏验收（-EmptyDxrTest <dir>）
+	void RunEmptyDxrTest(void);
+	// [WP-3B / 契约 7.2] 自动化 F5 热重载验收（语法错回滚 + 实时画面变化 + >=5 次重载零泄漏）
+	void RunHotReloadTest(void);
+	void ExportStatsIfRequested(void);
+	bool SavePresetToFile(const std::wstring& path);
+	bool LoadPresetFromFile(const std::wstring& path, bool switchPipeline);
 
 	// ---- R3 脚本化验收（-R3Test <dir>）----
 	// 依次做「切模型 / 改参数 / 切 Renderer / 切回」并在每步之后做一次 GPU 回读。
@@ -225,59 +248,35 @@ private:
 	//   A5d 贴图开 + GGX 开 -> P0 的最终画面
 	// 另外单独取证 BaseColor 调试通道（与 DeferredRenderer 的同一通道逐像素比对）。
 	void RunR7Test(void);
+	// [WP-3C] 自动化 Shadow(Simple/CSM) + SSAO + TAA A/B 验收（-WP3CTest <dir>）
+	void RunWp3cTest(void);
+	// [契约 4] 统一主表面契约跨管线自动化验收（-PrimarySurfaceTest <dir>）
+	void RunPrimarySurfaceTest(void);
 
-	// ---- 每帧 ----
+	// ---- 每帧（管理器只绘制 Performance / Demo Manager / DevTools，其余委托活跃模块） ----
 	void DrawPanels(void);
 	void DrawPerformancePanel(void);
-	void DrawScenePanel(void);
 	void DrawRendererPanel(void);
-	void DrawRayTracingPanel(void);
-	void DrawLightingPanel(void);
-	void DrawDebugViewPanel(void);
 	void DrawDevToolsPanel(void);
 	bool SaveCapture(const std::wstring& directory, const wchar_t* prefix, int index);
 
 	static bool WndProcThunk(void* hwnd, unsigned msg, uint64_t wParam, int64_t lParam);
 
 private:
-	// Renderer 实例（唯一真源，切 Renderer 就是换这个指针）
-	Renderer::RendererPtr m_Renderer;
-	std::wstring          m_RendererName;
-	std::vector<std::string> m_RendererNames;   // 注册表快照（ASCII）
+	// [WP-2B / 契约 2] 统一渲染宿主：托管 RenderServices 与活跃 IPipeline，内置先备后切协议，
+	// 消除 Demo 侧 3 路 dynamic_cast（TD-01d）。
+	Renderer::RendererHost m_Host;
+	Renderer::IPipeline*   m_Renderer = nullptr; // 指向 m_Host.GetActivePipeline() 的非拥有视图
+	std::wstring           m_RendererName;
+	std::vector<std::unique_ptr<DemoCommon::IDemoModule>> m_Modules;
+	DemoCommon::IDemoModule* m_ActiveModule = nullptr;
+	std::vector<std::string> m_RendererNames;   // Demo 模块名称列表（ASCII）
 
 	// RenderParams：唯一 CPU 真源。面板只写这里，每帧作为指针交给 Renderer，
 	// 由 LightingSystem::ApplyParams 做"内容相同就不重传"的去重。
 	Renderer::RenderParams m_Params;
 
-	// ============================================================
-	// R4.6：多模型场景
-	// ------------------------------------------------------------
-	// 从"单个 m_Model"升级为模型列表，以支持 UI 里增删/拖动模型。
-	//
-	// 为什么用 vector<ModelInstance> 而不是指针数组：
-	//   ModelInstance 内部持有 UploadBuffer / ByteAddressBuffer /
-	//   unique_ptr<AffineTransform[]>，拷贝语义有明确规定（有拷贝构造）。
-	//   用值语义能让"删除一个模型"自动释放它的 GPU 缓冲，
-	//   不需要手工管理生命周期。
-	//
-	// 注意：vector 扩容会搬移元素，而 RenderFrameDesc 里传的是
-	// **元素指针**。因此本容器只在帧边界（ApplyPendingActions）里修改，
-	// 绝不在渲染过程中增删 —— 否则指针会失效。
-	// ============================================================
-	// 注意这里用 unique_ptr 持有 ModelInstance。
-	// 原因：ModelInstance 没有拷贝赋值（内含 UploadBuffer / unique_ptr 成员），
-	// 而 std::vector 扩容时要求元素可移动或可拷贝 —— 直接放值类型会让
-	// vector<SceneModel> 无法编译。用 unique_ptr 后，元素本身只是指针，
-	// 可自由移动，且模型的生命周期仍然由本容器独占管理。
-	struct SceneModel
-	{
-		std::unique_ptr<Scene::Model::ModelInstance> instance;
-		std::string  catalogName;   // 来自哪个 catalog 条目（用于 UI 显示）
-		uint32_t     catalogIndex = 0;
-		float        targetRadius = 1.0f;
-	};
-
-	std::vector<SceneModel> m_SceneModels;
+	std::vector<DemoCommon::SceneModel> m_SceneModels;
 	int32_t  m_SelectedModel = -1;       // UI 里选中的那一项
 	int32_t  m_CurrentModelIndex = -1;   // 兼容 R3Test 的"最近加载的 catalog 索引"
 	float    m_TargetRadius = 1.0f;
@@ -332,22 +331,64 @@ private:
 	// 含 UI 的完整画面、且新一帧还没清屏）再回读。
 	std::wstring m_PendingUICapturePath;
 
-	// 面板临时状态
+	// [WP-3A] 模拟无 DXR 与启动失败非零退出码支持
+	bool         m_StrictStartRenderer = false;
+	int          m_FatalExitCode = 0;
+	bool         m_LoggedWp3aTelemetry = false;
+
+	// [WP-3B] 分域 RenderConfig / -Preset / -StatsOut / -Experiment / F5 热重载
+	Renderer::RenderConfig m_Config;
+	std::wstring           m_StatsOutPath;
+	bool                   m_StatsWritten = false;
+	bool                   m_ExperimentMode = false;
+	std::string            m_PresetStatus;
+	static bool            s_PendingHotReload;
+	static bool            s_PendingHotReloadForceAll;
+
+	// [WP-3B] -HotReloadTest <dir> 自动化 F5 实测状态
+	bool                   m_HotReloadTestMode = false;
+	std::wstring           m_HotReloadTestDir;
+	int                    m_HotReloadTestFrame = 0;
+	std::wstring           m_HotReloadTargetFile;
+	std::string            m_HotReloadBackupBytes;
+	bool                   m_HotReloadBackupValid = false;
+	uint32_t               m_HotReloadSuccessCount = 0;
+
+	// [WP-0B] -SwitchTest <N> 反复切换压测状态
+	bool         m_SwitchTestMode = false;
+	uint32_t     m_SwitchTestTarget = 0;
+	uint32_t     m_SwitchTestCount = 0;
+	int          m_SwitchTestFrame = 0;
+
+	// [WP-1B] -SwitchFailTest <dir> 失败保底验收状态与 SetDescriptorHeaps 帧内计数
+	bool         m_SwitchFailTestMode = false;
+	std::wstring m_SwitchFailTestDir;
+	int          m_SwitchFailTestFrame = 0;
+	bool         m_SwitchFailTriggered = false;
+	uint32_t     m_LastRenderSceneHeapBindCount = 0;
+	std::wstring m_LoggedHeapBindForRenderer;
+
+	// [WP-1C / TD-09c] -EmptyDxrTest <dir> DXR 空场景清屏验收状态
+	bool         m_EmptyDxrTestMode = false;
+	std::wstring m_EmptyDxrTestDir;
+	int          m_EmptyDxrTestFrame = 0;
+
+	// [WP-3C] -WP3CTest <dir> 延迟管线 Shadow/SSAO/TAA 自动化 A/B 验收状态
+	bool         m_Wp3cTestMode = false;
+	std::wstring m_Wp3cTestDir;
+	int          m_Wp3cTestStep = 0;
+	int          m_Wp3cTestFrame = 0;
+
+	// [契约 4] -PrimarySurfaceTest <dir> 统一表面契约跨管线验收状态
+	bool         m_PrimarySurfaceTestMode = false;
+	std::wstring m_PrimarySurfaceTestDir;
+	int          m_PrimarySurfaceTestStep = 0;
+	int          m_PrimarySurfaceTestFrame = 0;
+
+	// 面板临时状态（[TD-10b] 移除冗余 m_DebugViewIndex 副本，UI 直接绑定 m_Params.Debug 唯一真源）
 	int m_RendererComboIndex = 0;
 	int m_ModelComboIndex = 0;
-	int m_DebugViewIndex = 0;
 };
-
-const RendererDemoApp::ModelEntry RendererDemoApp::kModelCatalog[] = {
-	{ "merlin",              L"Model/Merlin/merlin.gltf" },
-	{ "leimiaier",           L"Model/leimiaier/leimiaierALL.gltf" },
-	{ "saber_emiya",         L"Model/Saber/saber_emiya.glb" },
-	{ "saberCaster3NoArmor", L"Model/saberCaster/saberCaster3NoArmor.gltf" },
-	{ "ChosenSword",         L"Model/saberCaster/ChosenSword.gltf" },
-	{ "KyomachiyaA",         L"Model/Kyomachiya/KyomachiyaA.gltf" },
-	{ "toneriko1",           L"Model/toneriko/toneriko1.gltf" },
-};
-const uint32_t RendererDemoApp::kModelCount = (uint32_t)(sizeof(kModelCatalog) / sizeof(kModelCatalog[0]));
 
 
 // ============================================================
@@ -357,219 +398,130 @@ const uint32_t RendererDemoApp::kModelCount = (uint32_t)(sizeof(kModelCatalog) /
 // （imgui_impl_win32 的 handler 一律 return 0，返回值不能用来判断"是否消费"）。
 // 所以真正决定"要不要把输入交给相机"的是 io.WantCaptureMouse/Keyboard。
 // ============================================================
+bool RendererDemoApp::s_PendingHotReload = false;
+bool RendererDemoApp::s_PendingHotReloadForceAll = false;
+
 bool RendererDemoApp::WndProcThunk(void* hwnd, unsigned msg, uint64_t wParam, int64_t lParam)
 {
+	// [WP-3B / 契约 7.2] 捕获 F5（增量热重载）与 Shift+F5（强制全量重编），延迟至帧边界单线程执行
+	if (msg == WM_KEYDOWN && wParam == VK_F5)
+	{
+		s_PendingHotReload = true;
+		s_PendingHotReloadForceAll = ((::GetKeyState(VK_SHIFT) & 0x8000) != 0);
+	}
 	return Renderer::ImGuiLayer::WndProcHandler(hwnd, msg, wParam, lParam);
 }
 
 
 // ============================================================
-// Renderer 切换
+// Renderer 切换（WP-1B / TD-01b / TD-08a：先建新后替换 + 零模型重载）
 // ============================================================
-void RendererDemoApp::SwitchRenderer(const std::wstring& name)
+DemoCommon::DemoHostContext RendererDemoApp::BuildDemoContext(void)
 {
-	if (name.empty())
-		return;
-	if (!Renderer::RendererRegistry::Instance().HasRenderer(name))
+	DemoCommon::DemoHostContext ctx;
+	ctx.Host                 = &m_Host;
+	ctx.Params               = &m_Params;
+	ctx.Camera               = &m_Camera;
+	ctx.CameraController     = &m_CameraController;
+	ctx.GpuTimer             = &m_GpuTimer;
+	ctx.SceneModels          = &m_SceneModels;
+	ctx.SelectedModel        = &m_SelectedModel;
+	ctx.CurrentModelIndex    = &m_CurrentModelIndex;
+	ctx.TargetRadius         = &m_TargetRadius;
+	ctx.ForceRebuildOnLoad   = &m_ForceRebuildOnLoad;
+	ctx.PendingAddModelIndex = &m_PendingAddModelIndex;
+	ctx.PendingRemoveModel   = &m_PendingRemoveModel;
+	ctx.ModelComboIndex      = &m_ModelComboIndex;
+	ctx.FreezeCameraForScreenshot = !ScreenshotDirectory().empty();
+	ctx.WantCaptureKeyboard  = Renderer::ImGuiLayer::IsInitialized() && Renderer::ImGuiLayer::WantCaptureKeyboard();
+	ctx.CpuFrameMs           = m_CpuFrameMs;
+	ctx.GpuFrameMs           = m_GpuFrameMs;
+	ctx.LastHeapBindCount    = m_LastRenderSceneHeapBindCount;
+	return ctx;
+}
+
+DemoCommon::IDemoModule* RendererDemoApp::FindModule(const std::wstring& nameOrPipeline) const
+{
+	const std::string narrowQuery = Narrow(nameOrPipeline);
+	for (const auto& mod : m_Modules)
 	{
-		LOG_INFO(L"[R3] 未知 Renderer：%ws（注册表里没有这个名字）\n", name.c_str());
-		return;
+		if (mod->GetPipelineName() == nameOrPipeline || narrowQuery == mod->GetDisplayName())
+			return mod.get();
 	}
-	if (m_Renderer && m_Renderer->IsInitialized() && m_RendererName == name)
-		return;
+	return nullptr;
+}
 
-	LOG_INFO(L"[R3] 切换 Renderer：%ws -> %ws\n", m_RendererName.c_str(), name.c_str());
+bool RendererDemoApp::SwitchRenderer(const std::wstring& name, bool simulateFailure)
+{
+	DemoCommon::IDemoModule* targetMod = FindModule(name);
+	const std::wstring pipelineName = (targetMod != nullptr) ? targetMod->GetPipelineName() : name;
+	const bool isFirstActivation = (m_ActiveModule == nullptr);
 
-	// 1) 等旧 Renderer 的 GPU 工作全部完成
-	Graphics::g_CommandManager.IdleGPU();
+	if (!m_Host.SwitchPipeline(pipelineName, g_DisplayWidth, g_DisplayHeight, simulateFailure))
+		return false;
 
-	// 2) 断开输出绑定（shared_ptr 会拦住旧 SceneColor 的析构）
-	Display::SceneColorBuffer = nullptr;
+	DemoCommon::DemoHostContext ctx = BuildDemoContext();
+	if (m_ActiveModule != nullptr && m_ActiveModule != targetMod)
+		m_ActiveModule->OnDeactivate(ctx);
 
-	// 3) 先卸模型：Model 持有 TextureRef，而 Shutdown 会清空纹理缓存
-	UnloadModel();
+	m_ActiveModule = targetMod;
+	m_Renderer     = m_Host.GetActivePipeline();
+	m_RendererName = m_Host.GetActivePipelineName();
+	m_LoggedHeapBindForRenderer.clear();
 
-	// 4) 关掉旧 Renderer
-	if (m_Renderer)
+	for (size_t i = 0; i < m_Modules.size(); ++i)
 	{
-		m_Renderer->Shutdown();
-		m_Renderer.reset();
+		if (m_Modules[i].get() == m_ActiveModule)
+		{
+			m_RendererComboIndex = static_cast<int>(i);
+			break;
+		}
 	}
 
-	// 5) 通过注册表真实创建（这是 R3 的核心：CreateRenderer 必须是真的创建路径）
-	std::wstring mutableName = name;   // CreateRenderer 的入参是非 const 左值（接口限制）
-	m_Renderer = Renderer::RendererRegistry::Instance().CreateRenderer(mutableName);
-	if (!m_Renderer)
-	{
-		LOG_INFO(L"[R3] CreateRenderer 返回空：%ws\n", name.c_str());
-		Display::SceneColorBuffer = nullptr;
-		return;
-	}
-
-	Renderer::RendererCreateDesc desc;
-	desc.width = g_DisplayWidth;
-	desc.height = g_DisplayHeight;
-	if (!m_Renderer->Initialize(desc))
-	{
-		LOG_INFO(L"[R3] Renderer::Initialize 失败：%ws\n", name.c_str());
-		m_Renderer.reset();
-		return;
-	}
-	m_RendererName = name;
-
-	// 6) 重新绑定输出 + 相机宽高比归位
 	BindRendererOutput();
-	m_Camera.SetAspectRatio((float)g_DisplayHeight / (float)g_DisplayWidth);
-	m_Camera.Update();
+	if (m_ActiveModule != nullptr)
+		m_ActiveModule->OnActivate(ctx, isFirstActivation);
 
-	// 7) 重新加载模型
-	const uint32_t reloadIndex = (m_CurrentModelIndex >= 0) ? (uint32_t)m_CurrentModelIndex : 0u;
-	LoadModelByIndex(reloadIndex, false);
-
-	LOG_INFO(L"[R3] 切换完成：%ws（输出 %ws）\n", m_RendererName.c_str(),
-		Display::SceneColorBuffer ? L"已重绑" : L"为空");
+	LOG_INFO(L"[Manager] 切换完成：%hs (%ws)（输出 %ws，场景保留模型数=%zu）\n",
+		m_ActiveModule ? m_ActiveModule->GetDisplayName() : "<Unknown>",
+		m_RendererName.c_str(),
+		Display::SceneColorBuffer ? L"已重绑" : L"为空",
+		m_SceneModels.size());
+	return true;
 }
 
 void RendererDemoApp::BindRendererOutput(void)
 {
-	Display::SceneColorBuffer = nullptr;
-	if (!m_Renderer)
-		return;
-
-	// 两个 Renderer 的输出缓冲区在各自的子类里，这里按具体类型取。
-	// 用 dynamic_cast 而不是按名字分支：名字可以被改，类型不会。
-	if (auto* deferred = dynamic_cast<Renderer::Deferred::DeferredRenderer*>(m_Renderer.get()))
-	{
-		Display::SceneColorBuffer = deferred->GetDeferredBuffer().SceneColorBuffer;
-	}
-	else if (auto* forward = dynamic_cast<Renderer::Forward::ForwardRenderer*>(m_Renderer.get()))
-	{
-		// ForwardBuffer::SceneColorBuffer 是数组，[0] 才是实际渲染目标
-		Display::SceneColorBuffer = forward->GetForwardBuffer().SceneColorBuffer[0];
-	}
-	else if (auto* raytracing = dynamic_cast<Renderer::RayTracing::RayTracingRenderer*>(m_Renderer.get()))
-	{
-		// R5：DXR 输出。RayTracingRenderer 自己持有一张 R8G8B8A8_UNORM 的
-		// SceneColorBuffer（格式与 Deferred 相同），由 RayGen 通过 UAV 写入。
-		// 绑定到 Display::SceneColorBuffer 后就走 Display::PreparePresentSDR
-		// 的统一 Present 路径 —— 与光栅路径共用同一条上屏通道。
-		Display::SceneColorBuffer = raytracing->GetSceneColorBuffer();
-	}
+	Display::SceneColorBuffer = m_Host.GetOutputColorBuffer();
 }
 
-
-// ============================================================
-// 模型
-// ============================================================
-// ============================================================
-// R4.6：多模型管理
-// ------------------------------------------------------------
-// 所有改动场景模型的操作都必须在**帧边界**执行（ApplyPendingActions），
-// 原因：RenderFrameDesc.Models 里放的是 ModelInstance 的**元素指针**，
-// 而 std::vector 扩容/删除会让这些指针失效。
-//
-// GPU 生命周期：删除模型时它的 UploadBuffer / ByteAddressBuffer 会被析构，
-// 而上一帧的命令列表可能仍在读这些缓冲 —— 必须先 IdleGPU()，
-// 否则命中 D3D12 #921 OBJECT_DELETED_WHILE_STILL_IN_USE。
-// ============================================================
 void RendererDemoApp::UnloadModel(void)
 {
-	// 兼容 R3Test 的旧语义：「卸载全部模型」。
 	ClearAllModels();
 }
 
 void RendererDemoApp::ClearAllModels(void)
 {
-	if (m_SceneModels.empty())
-		return;
-
-	g_CommandManager.IdleGPU();
-	m_SceneModels.clear();
-	m_SelectedModel = -1;
-	m_CurrentModelIndex = -1;
-	LOG_INFO(L"[R4.6] 已清空所有模型\n");
+	DemoCommon::DemoHostContext ctx = BuildDemoContext();
+	DemoCommon::ClearAllModels(ctx);
 }
 
-void RendererDemoApp::AddModel(uint32_t catalogIndex)
+void RendererDemoApp::AddModel(uint32_t catalogIndex, bool forceRebuild)
 {
-	if (catalogIndex >= kModelCount)
-		return;
-
-	const std::wstring path = Asset::Resolve(kModelCatalog[catalogIndex].relativePath);
-
-	// LoadModel 返回 shared_ptr<const Model>（模型数据本身，可被多个实例共享），
-	// ModelInstance 才是"场景里的一个摆放"。两者不是一回事：
-	//   - 同一份 Model 可以被多个 ModelInstance 引用（共享几何/贴图，省显存）
-	//   - 每个 ModelInstance 有独立的变换和 MeshConstants 缓冲
-	std::shared_ptr<Scene::Model::Model> source = Scene::Model::LoadModel(path, m_ForceRebuildOnLoad);
-	if (source == nullptr)
-	{
-		LOG_INFO(L"[R4.6] 模型加载失败：%ws\n", path.c_str());
-		return;
-	}
-
-	// 注意：ModelInstance 只有拷贝**构造**，没有拷贝**赋值**（内含
-	// UploadBuffer / ByteAddressBuffer / unique_ptr 等成员）。
-	// 因此不能用 "先构造临时对象再 entry.instance = ..." 的写法，
-	// 必须就地构造 —— 用 emplace_back 把参数直接转给 SceneModel 的聚合初始化。
-	const float radius = source->m_BoundingSphere.GetRadius();
-
-	// 新模型按数量横向排开，避免全部叠在原点看不见。
-	// 间距取包围球半径的 2.5 倍，保证彼此不穿插。
-	const float x = (float)m_SceneModels.size() * radius * 2.5f;
-
-	m_SceneModels.emplace_back();
-	SceneModel& entry = m_SceneModels.back();
-	entry.catalogIndex = catalogIndex;
-	entry.catalogName  = kModelCatalog[catalogIndex].name;
-	entry.targetRadius = radius;
-	entry.instance     = std::make_unique<Scene::Model::ModelInstance>(source);
-	entry.instance->SetWorldPosition(Math::Vector3(x, 0.0f, 0.0f));
-	m_SelectedModel = (int32_t)m_SceneModels.size() - 1;
-	m_CurrentModelIndex = (int32_t)catalogIndex;
-
-	LOG_INFO(L"[R4.6] 已添加模型：%hs（第 %d 个，半径 %.3f）\n",
-		kModelCatalog[catalogIndex].name, (int)m_SceneModels.size(), radius);
+	DemoCommon::DemoHostContext ctx = BuildDemoContext();
+	DemoCommon::AddModel(ctx, catalogIndex, forceRebuild);
 }
 
 void RendererDemoApp::RemoveModel(int32_t sceneIndex)
 {
-	if (sceneIndex < 0 || sceneIndex >= (int32_t)m_SceneModels.size())
-		return;
-
-	// 被删模型持有的 GPU 缓冲上一帧可能还在被读，必须先等 GPU。
-	g_CommandManager.IdleGPU();
-
-	const std::string name = m_SceneModels[(size_t)sceneIndex].catalogName;
-	m_SceneModels.erase(m_SceneModels.begin() + sceneIndex);
-
-	if (m_SelectedModel >= (int32_t)m_SceneModels.size())
-		m_SelectedModel = (int32_t)m_SceneModels.size() - 1;
-
-	LOG_INFO(L"[R4.6] 已删除模型：%hs（剩余 %d 个）\n", name.c_str(), (int)m_SceneModels.size());
+	DemoCommon::DemoHostContext ctx = BuildDemoContext();
+	DemoCommon::RemoveModel(ctx, sceneIndex);
 }
 
 bool RendererDemoApp::LoadModelByIndex(uint32_t index, bool forceRebuild)
 {
-	if (index >= kModelCount)
-		return false;
-
-	// R3Test / -ModelIndex 的语义是「场景里只保留这一个模型」。
-	// 保留该语义可以让既有的验收脚本继续工作。
-	(void)forceRebuild;   // 实际重建开关由 m_ForceRebuildOnLoad 控制
-
-	ClearAllModels();
-	AddModel(index);
-
-	if (m_SceneModels.empty())
-	{
-		m_CurrentModelIndex = -1;
-		return false;
-	}
-
-	m_TargetRadius = m_SceneModels.back().targetRadius;
-	m_ModelComboIndex = (int)index;
-	return true;
+	DemoCommon::DemoHostContext ctx = BuildDemoContext();
+	return DemoCommon::LoadModelByIndex(ctx, index, forceRebuild);
 }
 
 
@@ -611,6 +563,16 @@ void RendererDemoApp::ApplyPendingActions(void)
 			ClearAllModels();
 		else
 			RemoveModel(target);
+	}
+
+	// [WP-3B / 契约 7.2] 帧边界单线程执行 F5 / Shift+F5 Shader 热重载（无后台线程、零竞态）
+	if (s_PendingHotReload)
+	{
+		const bool forceAll = s_PendingHotReloadForceAll;
+		s_PendingHotReload = false;
+		s_PendingHotReloadForceAll = false;
+		const auto rep = m_Host.TriggerShaderHotReload(forceAll);
+		LOG_INFO(L"[HotReload] F5 trigger (forceAll=%d): %hs\n", forceAll ? 1 : 0, rep.Summary.c_str());
 	}
 }
 
@@ -704,6 +666,10 @@ void RendererDemoApp::RunR3Test(void)
 
 	case 7:
 		// 切 Renderer：Deferred -> Forward。这是 R3 的核心验收项。
+		// 若上一步可选资产 saber_emiya 缺失导致场景变空，先补回模型 0 再切管线，
+		// 保持与 Golden 基线一致的同时验证 SwitchRenderer 本身不重载已加载模型。
+		if (m_SceneModels.empty())
+			LoadModelByIndex(0, false);
 		SwitchRenderer(L"ForwardRenderer");
 		LogState(L"[7] after switch to Forward");
 		RequestShot(L"r3_07_forward.png");
@@ -908,11 +874,10 @@ void RendererDemoApp::RunR6Test(void)
 			m_Params.RTReflectionIntensity,
 			(int)m_Params.RTDebugView);
 
-		// 渲染器自报的射线计数：这是"真的发出去了多少条"的唯一证据。
-		// 用 dynamic_cast 而不是按名字分支 —— 与 BindRendererOutput 同一理由。
-		if (auto* raytracing = dynamic_cast<Renderer::RayTracing::RayTracingRenderer*>(m_Renderer.get()))
+		// [WP-2B / TD-01d] 通过 IPipeline::QueryRayTracingStats 无 RTTI 读取光追统计
+		Renderer::RayTracingFrameStats stats = {};
+		if (m_Renderer != nullptr && m_Renderer->QueryRayTracingStats(stats))
 		{
-			const Renderer::RayTracing::RayTracingFrameStats& stats = raytracing->GetFrameStats();
 			LOG_INFO(L"[R6-Test]   rays: primary=%llu shadow=%llu reflection=%llu total=%llu | geo: tri=%u blas=%u inst=%u\n",
 				(unsigned long long)stats.PrimaryRays,
 				(unsigned long long)stats.ShadowRays,
@@ -1081,9 +1046,9 @@ void RendererDemoApp::RunR7Test(void)
 			m_Params.EnableRTShadow ? 1 : 0,
 			m_Params.EnableRTReflection ? 1 : 0);
 
-		if (auto* raytracing = dynamic_cast<Renderer::RayTracing::RayTracingRenderer*>(m_Renderer.get()))
+		Renderer::RayTracingFrameStats stats = {};
+		if (m_Renderer != nullptr && m_Renderer->QueryRayTracingStats(stats))
 		{
-			const Renderer::RayTracing::RayTracingFrameStats& stats = raytracing->GetFrameStats();
 			LOG_INFO(L"[R7-Test]   rays: primary=%llu shadow=%llu reflection=%llu total=%llu | geo: tri=%u blas=%u inst=%u\n",
 				(unsigned long long)stats.PrimaryRays,
 				(unsigned long long)stats.ShadowRays,
@@ -1169,7 +1134,6 @@ void RendererDemoApp::RunR7Test(void)
 		//   完整着色画面而不是 BaseColor 通道，看起来像"两边基色完全不同"，
 		//   极易被误判成 DXR 贴图链路错了。这是本轮踩到的最隐蔽的一个坑。
 		m_Params.EnableRTReflection = false;
-		m_DebugViewIndex = (int)Renderer::DebugView::BaseColor;
 		m_Params.Debug = Renderer::DebugView::BaseColor;
 		SwitchRenderer(L"DeferredRenderer");
 		LogState(L"[5] A7 deferred BaseColor (same model, same frame)");
@@ -1178,9 +1142,7 @@ void RendererDemoApp::RunR7Test(void)
 
 	case 6:
 		// 切回 DXR 并恢复通道。这一步同时验证「切走再切回」后贴图仍正确
-		// （s_TextureHeap 在新渲染器里被 Destroy + Create，描述符偏移全部重算，
-		//  若 DXR 侧缓存了旧偏移，这里会立刻表现为基色全白或全黑）。
-		m_DebugViewIndex = (int)Renderer::DebugView::Final;
+		// （WP-1B 后统一堆与模型全程不卸载，直接复用 Zone A 材质块）。
 		m_Params.Debug = Renderer::DebugView::Final;
 		SwitchRenderer(L"RayTracingRenderer");
 		m_Params.EnableMaterialTextures = true;
@@ -1229,64 +1191,708 @@ void RendererDemoApp::RunR7Test(void)
 }
 
 // ============================================================
+// [WP-0B] 管线反复热切换压测（-SwitchTest <N>）
+// ------------------------------------------------------------
+// 目的：以自动化方式验证 TD-03a（Shutdown 反序）与 TD-05d（PSO InputLayout
+// new[]/delete[] 配对）在反复切换 Renderer >= 5 次后无崩溃、无 CRT 堆损坏、
+// Debug Layer 0 ERROR。每步间隔 3 帧，保证至少提交并呈现完整帧。
+// ============================================================
+void RendererDemoApp::RunSwitchTest(void)
+{
+	static const int kFramesPerSwitch = 3;
+	if ((m_SwitchTestFrame++ % kFramesPerSwitch) != 0)
+		return;
+
+	if (m_SwitchTestCount >= m_SwitchTestTarget)
+	{
+		LOG_INFO(L"[SwitchTest] PASS: completed %u renderer switches without crash/heap corruption\n", m_SwitchTestCount);
+		PostQuitMessage(0);
+		return;
+	}
+
+	static const wchar_t* kCycle[] = { L"ForwardRenderer", L"DeferredRenderer", L"GFL2CharacterPipeline", L"RayTracingRenderer" };
+	const wchar_t* targetName = kCycle[m_SwitchTestCount % _countof(kCycle)];
+	// 若当前恰好已是该渲染器则顺延一位，确保每步都触发真实的 Shutdown + Initialize。
+	if (m_RendererName == targetName)
+		targetName = kCycle[(m_SwitchTestCount + 1) % _countof(kCycle)];
+
+	++m_SwitchTestCount;
+	LOG_INFO(L"[SwitchTest] switch %u/%u -> %ws\n", m_SwitchTestCount, m_SwitchTestTarget, targetName);
+	SwitchRenderer(targetName);
+
+#ifdef _DEBUG
+	const int heapOk = _CrtCheckMemory();
+	ASSERT(heapOk != 0, "CRT debug heap corruption detected after SwitchRenderer");
+	LOG_INFO(L"[SwitchTest] switch %u/%u CRT heap check = %d\n", m_SwitchTestCount, m_SwitchTestTarget, heapOk);
+#endif
+}
+
+// ============================================================
+// [WP-1B / TD-08a] 模拟新 Renderer Initialize() 失败时的保底验收（-SwitchFailTest <dir>）
+// ------------------------------------------------------------
+// 流程：
+//   frame 5  : 拍摄故障前含 UI 画面 before_fail_ui.png 与纯场景 before_fail_scene.png
+//   frame 8  : 尝试切换到 ForwardRenderer（simulateFailure=true），断言返回 false、
+//              旧 Renderer（DeferredRenderer）、SceneColor 与已加载模型均原封不动
+//   frame 12 : 拍摄故障后纯场景 after_fail_scene.png 与含 UI 画面 after_fail_ui.png
+//   frame 15 : 打印 PASS 并优雅退出（exit 0）
+// ============================================================
+void RendererDemoApp::RunSwitchFailTest(void)
+{
+	++m_SwitchFailTestFrame;
+	auto MakePath = [this](const wchar_t* name) {
+		wchar_t buf[512] = {};
+		swprintf_s(buf, L"%ws\\%ws", m_SwitchFailTestDir.c_str(), name);
+		return std::wstring(buf);
+	};
+
+	if (m_SwitchFailTestFrame == 5)
+	{
+		m_PendingCapturePath = MakePath(L"before_fail_scene.png");
+	}
+	else if (m_SwitchFailTestFrame == 6)
+	{
+		m_PendingUICapturePath = MakePath(L"before_fail_ui.png");
+	}
+	else if (m_SwitchFailTestFrame == 8 && !m_SwitchFailTriggered)
+	{
+		m_SwitchFailTriggered = true;
+		const std::wstring prevRenderer = m_RendererName;
+		const size_t prevModelCount = m_SceneModels.size();
+		const Scene::Model::Model* prevModelPtr = prevModelCount > 0 ? m_SceneModels[0].instance->GetModel() : nullptr;
+
+		const bool switched = SwitchRenderer(L"ForwardRenderer", /*simulateFailure=*/true);
+		const bool intact =
+			(!switched) &&
+			(m_RendererName == prevRenderer) &&
+			(m_Renderer != nullptr && m_Renderer->IsInitialized()) &&
+			(Display::SceneColorBuffer != nullptr && Display::SceneColorBuffer->GetResource() != nullptr) &&
+			(m_SceneModels.size() == prevModelCount) &&
+			(prevModelCount == 0 || m_SceneModels[0].instance->GetModel() == prevModelPtr) &&
+			Renderer::ImGuiLayer::IsInitialized();
+
+		LOG_INFO(L"[SwitchFailTest] switched=%d renderer=%ws models=%zu uiInit=%d intact=%d\n",
+			switched ? 1 : 0, m_RendererName.c_str(), m_SceneModels.size(),
+			Renderer::ImGuiLayer::IsInitialized() ? 1 : 0, intact ? 1 : 0);
+		ASSERT(intact, "TD-08a SwitchRenderer failure rollback violated!");
+		if (!intact)
+		{
+			LOG_ERROR(L"[SwitchFailTest] FAIL: old renderer/model/UI not preserved!\n");
+			PostQuitMessage(1);
+		}
+	}
+	else if (m_SwitchFailTestFrame == 12)
+	{
+		m_PendingCapturePath = MakePath(L"after_fail_scene.png");
+	}
+	else if (m_SwitchFailTestFrame == 13)
+	{
+		m_PendingUICapturePath = MakePath(L"after_fail_ui.png");
+	}
+	else if (m_SwitchFailTestFrame == 16)
+	{
+		LOG_INFO(L"[SwitchFailTest] PASS: simulated Initialize() failure preserved old renderer, model and UI\n");
+		PostQuitMessage(0);
+	}
+}
+
+// ============================================================
+// [WP-1C / TD-09c] DXR 删空全部模型后清屏验收（-EmptyDxrTest <dir>）
+// ============================================================
+void RendererDemoApp::RunEmptyDxrTest(void)
+{
+	++m_EmptyDxrTestFrame;
+	auto MakePath = [this](const wchar_t* name) {
+		wchar_t buf[512] = {};
+		swprintf_s(buf, L"%ws\\%ws", m_EmptyDxrTestDir.c_str(), name);
+		return std::wstring(buf);
+	};
+
+	if (m_EmptyDxrTestFrame == 5)
+	{
+		m_PendingCapturePath = MakePath(L"dxr_before_clear.png");
+	}
+	else if (m_EmptyDxrTestFrame == 8)
+	{
+		ClearAllModels();
+		LOG_INFO(L"[EmptyDxrTest] Cleared all models in DXR mode (count=%zu)\n", m_SceneModels.size());
+	}
+	else if (m_EmptyDxrTestFrame == 12)
+	{
+		m_PendingCapturePath = MakePath(L"dxr_after_clear.png");
+	}
+	else if (m_EmptyDxrTestFrame == 15)
+	{
+		LOG_INFO(L"[EmptyDxrTest] PASS: DXR empty scene clear capture finished\n");
+		PostQuitMessage(0);
+	}
+}
+
+bool RendererDemoApp::SavePresetToFile(const std::wstring& path)
+{
+	m_Config.SetPipelineFromRendererName(m_RendererName);
+	m_Config.FromRenderParams(m_Params);
+	std::string err;
+	if (!m_Config.SaveToFile(path, &err))
+	{
+		m_PresetStatus = "Save failed: " + err;
+		LOG_ERROR(L"[Preset] 保存失败 %ws：%hs\n", path.c_str(), err.c_str());
+		return false;
+	}
+	m_PresetStatus = "Saved: " + Narrow(path);
+	LOG_INFO(L"[Preset] 已保存配置至 %ws\n", path.c_str());
+	return true;
+}
+
+bool RendererDemoApp::LoadPresetFromFile(const std::wstring& path, bool switchPipeline)
+{
+	Renderer::RenderConfig loaded;
+	std::string err;
+	if (!loaded.LoadFromFile(path, &err))
+	{
+		m_PresetStatus = "Load failed: " + err;
+		LOG_ERROR(L"[Preset] 加载失败 %ws（已安全拦截不崩溃）：%hs\n", path.c_str(), err.c_str());
+		return false;
+	}
+	m_Config = loaded;
+	m_Params = m_Config.ToRenderParams();
+	if (switchPipeline)
+	{
+		const std::wstring targetPipe = m_Config.GetPipelineRendererName();
+		if (!targetPipe.empty() && targetPipe != m_RendererName)
+			m_PendingRendererName = targetPipe;
+	}
+	m_PresetStatus = "Loaded: " + Narrow(path);
+	LOG_INFO(L"[Preset] 已加载配置 %ws (pipeline=%hs, exposure=%.2f)\n",
+		path.c_str(), m_Config.pipeline.c_str(), m_Params.Exposure);
+	return true;
+}
+
+void RendererDemoApp::ExportStatsIfRequested(void)
+{
+	if (m_StatsOutPath.empty() || m_StatsWritten)
+		return;
+	if (m_GpuTimer.GetPassTimings().empty() && Graphics::GetFrameCount() < 15)
+		return;
+
+	Renderer::FrameStatsReport rep;
+	rep.Pipeline     = Narrow(m_RendererName);
+	rep.Width        = g_DisplayWidth;
+	rep.Height       = g_DisplayHeight;
+	rep.FrameIndex   = Graphics::GetFrameCount();
+	rep.CpuFrameMs   = m_CpuFrameMs;
+	rep.GpuFrameMs   = m_GpuFrameMs;
+	const Graphics::VramUsageInfo vram = Graphics::QueryVramUsage();
+	rep.VramUsageMB  = static_cast<double>(vram.CurrentUsageBytes) / (1024.0 * 1024.0);
+	rep.VramBudgetMB = static_cast<double>(vram.BudgetBytes) / (1024.0 * 1024.0);
+	rep.BindlessSM66 = m_Host.GetServices().IsBindlessSM66Ready();
+	rep.SetHeapCalls = m_LastRenderSceneHeapBindCount;
+	for (const auto& pt : m_GpuTimer.GetPassTimings())
+		rep.Passes.push_back({ pt.Name, pt.GpuMs });
+
+	std::string err;
+	if (Renderer::WriteStatsReportJson(m_StatsOutPath, rep, &err))
+	{
+		m_StatsWritten = true;
+		LOG_INFO(L"[StatsOut] 已写出客观性能报告：%ws (GPU=%.3fms, passes=%zu)\n",
+			m_StatsOutPath.c_str(), rep.GpuFrameMs, rep.Passes.size());
+	}
+	else
+	{
+		LOG_ERROR(L"[StatsOut] 写出失败 %ws：%hs\n", m_StatsOutPath.c_str(), err.c_str());
+	}
+}
+
+// ============================================================
+// [WP-3B / 契约 7.2] 自动化 F5 Shader 热重载验收（-HotReloadTest <dir>）
+// ------------------------------------------------------------
+// 严格执行任务卡双场景验证，并保证退出前 100% 字节级还原原 HLSL 文件：
+//   1) Case 1：故意写入 HLSL 语法错误 -> 按 F5 触发增量重编 -> 必须失败并生成非空红字
+//      LastError、零崩溃、旧 PSO 保持渲染（hr_01_after_syntax_error.png vs hr_00_baseline.png RMSE==0）；
+//   2) Case 2：修改输出颜色公式为反色 -> F5 即时变色（hr_02_live_edited.png）；连续热重载 >= 5 次
+//      经 DeferredReleaseQueue 退休旧 PSO -> 还原原始源码并 F5（hr_03_restored.png RMSE==0），
+//      退出校验 Debug Layer 0 ERROR 与 Device::Release refcount==0。
+// ============================================================
+void RendererDemoApp::RunHotReloadTest(void)
+{
+	++m_HotReloadTestFrame;
+	auto MakePath = [this](const wchar_t* name) {
+		wchar_t buf[512] = {};
+		swprintf_s(buf, L"%ws\\%ws", m_HotReloadTestDir.c_str(), name);
+		return std::wstring(buf);
+	};
+	auto WriteAllText = [](const std::wstring& path, const std::string& content) -> bool {
+		std::ofstream ofs(path, std::ios::out | std::ios::binary | std::ios::trunc);
+		if (!ofs.is_open()) return false;
+		ofs.write(content.data(), static_cast<std::streamsize>(content.size()));
+		ofs.flush();
+		// 将文件 mtime 前推 2 秒，确保 100% 跨越文件系统时间戳粒度触发 F5 增量检出
+		ofs.close();
+		HANDLE hFile = ::CreateFileW(path.c_str(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE,
+			nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (hFile != INVALID_HANDLE_VALUE)
+		{
+			FILETIME ft = {};
+			::GetSystemTimeAsFileTime(&ft);
+			ULARGE_INTEGER ui = {};
+			ui.LowPart = ft.dwLowDateTime; ui.HighPart = ft.dwHighDateTime;
+			static uint64_t s_Bump = 1;
+			ui.QuadPart += (s_Bump++) * 20000000ull; // +2s/step
+			ft.dwLowDateTime = ui.LowPart; ft.dwHighDateTime = ui.HighPart;
+			::SetFileTime(hFile, nullptr, nullptr, &ft);
+			::CloseHandle(hFile);
+		}
+		return true;
+	};
+
+	if (m_HotReloadTestFrame == 2)
+	{
+		const bool bindless = m_Host.GetServices().IsBindlessSM66Ready();
+		const std::wstring rel = bindless
+			? L"Engine\\Shader\\04_PostProcess\\TonemapBindlessPS.hlsl"
+			: L"Engine\\Shader\\04_PostProcess\\TonemapPS.hlsl";
+		m_HotReloadTargetFile = m_Host.GetHotReloader().GetRepoRootDir() + L"\\" + rel;
+		std::ifstream ifs(m_HotReloadTargetFile, std::ios::in | std::ios::binary);
+		if (!ifs.is_open())
+		{
+			LOG_ERROR(L"[HotReloadTest] FAIL: cannot open %ws\n", m_HotReloadTargetFile.c_str());
+			PostQuitMessage(3);
+			return;
+		}
+		std::ostringstream ss;
+		ss << ifs.rdbuf();
+		m_HotReloadBackupBytes = ss.str();
+		m_HotReloadBackupValid = true;
+		LOG_INFO(L"[HotReloadTest] Target=%ws (%zu bytes backed up)\n",
+			m_HotReloadTargetFile.c_str(), m_HotReloadBackupBytes.size());
+	}
+	else if (m_HotReloadTestFrame == 5)
+	{
+		m_PendingCapturePath = MakePath(L"hr_00_baseline.png");
+	}
+	else if (m_HotReloadTestFrame == 8 && m_HotReloadBackupValid)
+	{
+		// Case 1：故意注入 HLSL 语法错误，触发 F5 增量重编
+		const std::string broken = m_HotReloadBackupBytes + "\nSYNTAX_ERROR_INTENTIONAL_WP3B;;;\n";
+		WriteAllText(m_HotReloadTargetFile, broken);
+		const auto rep = m_Host.TriggerShaderHotReload(/*forceAll=*/false);
+		LOG_INFO(L"[HotReloadTest] Case1 (syntax error): ok=%u fail=%u hasErr=%d\n",
+			rep.Succeeded, rep.Failed, rep.LastError.empty() ? 0 : 1);
+		if (rep.Failed == 0 || rep.LastError.empty())
+		{
+			LOG_ERROR(L"[HotReloadTest] FAIL: expected DXC syntax error!\n");
+			WriteAllText(m_HotReloadTargetFile, m_HotReloadBackupBytes);
+			PostQuitMessage(4);
+		}
+	}
+	else if (m_HotReloadTestFrame == 12)
+	{
+		m_PendingCapturePath = MakePath(L"hr_01_after_syntax_error.png");
+	}
+	else if (m_HotReloadTestFrame == 15 && m_HotReloadBackupValid)
+	{
+		// Case 2：修改颜色公式（1.0 - displayColor 反色）并 F5 增量热重载
+		std::string edited = m_HotReloadBackupBytes;
+		const std::string needle = "return float4(displayColor, 1.0f);";
+		const size_t pos = edited.find(needle);
+		if (pos != std::string::npos)
+			edited.replace(pos, needle.size(), "return float4(1.0f - displayColor, 1.0f);");
+		WriteAllText(m_HotReloadTargetFile, edited);
+		const auto rep = m_Host.TriggerShaderHotReload(/*forceAll=*/false);
+		m_HotReloadSuccessCount += rep.Succeeded;
+		LOG_INFO(L"[HotReloadTest] Case2 reload #1 (live invert): ok=%u fail=%u totalOk=%u\n",
+			rep.Succeeded, rep.Failed, m_HotReloadSuccessCount);
+		if (rep.Succeeded == 0 || rep.Failed != 0)
+		{
+			LOG_ERROR(L"[HotReloadTest] FAIL: live edit reload failed: %hs\n", rep.LastError.c_str());
+			WriteAllText(m_HotReloadTargetFile, m_HotReloadBackupBytes);
+			PostQuitMessage(5);
+		}
+	}
+	else if (m_HotReloadTestFrame == 19)
+	{
+		m_PendingCapturePath = MakePath(L"hr_02_live_edited.png");
+	}
+	else if (m_HotReloadTestFrame >= 21 && m_HotReloadTestFrame <= 24 && m_HotReloadBackupValid)
+	{
+		// 连续触发 4 次额外热重载（合计 >= 5 次），压测 DeferredReleaseQueue 旧 PSO 退休零泄漏
+		const auto rep = m_Host.TriggerShaderHotReload(/*forceAll=*/true);
+		m_HotReloadSuccessCount += rep.Succeeded;
+		LOG_INFO(L"[HotReloadTest] Stress reload frame %d: ok=%u fail=%u totalOk=%u\n",
+			m_HotReloadTestFrame, rep.Succeeded, rep.Failed, m_HotReloadSuccessCount);
+		if (rep.Failed != 0)
+		{
+			WriteAllText(m_HotReloadTargetFile, m_HotReloadBackupBytes);
+			PostQuitMessage(6);
+		}
+	}
+	else if (m_HotReloadTestFrame == 27 && m_HotReloadBackupValid)
+	{
+		// 还原原始 HLSL 字节并再次 F5 热重载恢复原画面
+		WriteAllText(m_HotReloadTargetFile, m_HotReloadBackupBytes);
+		const auto rep = m_Host.TriggerShaderHotReload(/*forceAll=*/false);
+		m_HotReloadSuccessCount += rep.Succeeded;
+		LOG_INFO(L"[HotReloadTest] Restored original HLSL: ok=%u fail=%u totalOk=%u\n",
+			rep.Succeeded, rep.Failed, m_HotReloadSuccessCount);
+		if (rep.Succeeded == 0 || rep.Failed != 0)
+		{
+			PostQuitMessage(7);
+		}
+	}
+	else if (m_HotReloadTestFrame == 31)
+	{
+		m_PendingCapturePath = MakePath(L"hr_03_restored.png");
+	}
+	else if (m_HotReloadTestFrame == 34)
+	{
+		LOG_INFO(L"[HotReloadTest] PASS: syntax error rollback + live edit + %u reloads + exact restore\n",
+			m_HotReloadSuccessCount);
+		PostQuitMessage(0);
+	}
+}
+
+// ============================================================
+// [WP-3C] 自动化 Shadow(Simple/CSM) + SSAO + TAA A/B 验收（-WP3CTest <dir>）
+// ------------------------------------------------------------
+// 通过与 UI 勾选框完全一致的 RenderParams 真源路径依次切换：
+//   0: 全关基线 (Shadow=0 SSAO=0 TAA=0) -> 须与 golden_p2 RMSE==0
+//   1: Shadow SimpleShadowMap (2048) ON
+//   2: Shadow 热切至 CSM (4 cascades, 2048) ON（不重启、延迟回收旧深度图）
+//   3: Shadow 连续热切 Simple(1024) -> CSM(2, 2048) 压测无崩无漏
+//   4: SSAO ON (Blur ON)
+//   5: SSAO ON + DebugView::AO 直接取证遮蔽图
+//   6: TAA ON（连续累积 10 帧 Halton(2,3) 亚像素抖动）
+//   7: Shadow(CSM) + SSAO + TAA 三者全开组合验证
+//   8: 含 ImGui 面板截图（验证 Renderer Feature Toggles 含 TAA 与 WP-3C 控制面板）
+//   9: 全部关闭复原 -> 须与 step 0 逐像素 RMSE==0
+// ============================================================
+void RendererDemoApp::RunWp3cTest(void)
+{
+	static const int kFramesPerStep = 10;
+	if ((m_Wp3cTestFrame++ % kFramesPerStep) != 0)
+		return;
+
+	auto MakePath = [this](const wchar_t* fileName) {
+		wchar_t path[512] = {};
+		swprintf_s(path, L"%ws\\%ws", m_Wp3cTestDir.c_str(), fileName);
+		return std::wstring(path);
+	};
+
+	auto LogState = [this](const wchar_t* tag) {
+		const uint32_t dsvLive = Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_DSV].GetLiveAllocated();
+		const uint32_t srvLive = Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV].GetLiveAllocated();
+		LOG_INFO(L"[WP3C-Test] %ws shadow=%d(alg=%u,res=%u,cas=%u) ssao=%d(blur=%d) taa=%d debug=%u DSV=%u SRV=%u heaps=%u\n",
+			tag,
+			m_Params.EnableShadow ? 1 : 0, m_Params.ShadowAlgorithm, m_Params.ShadowResolution, m_Params.ShadowCascadeCount,
+			m_Params.EnableSSAO ? 1 : 0, m_Params.SSAOEnableBlur ? 1 : 0,
+			m_Params.EnableTAA ? 1 : 0, (uint32_t)m_Params.Debug,
+			dsvLive, srvLive, m_LastRenderSceneHeapBindCount);
+	};
+
+	switch (m_Wp3cTestStep++)
+	{
+	case 0:
+		m_Params.EnableShadow = false;
+		m_Params.EnableSSAO   = false;
+		m_Params.EnableTAA    = false;
+		m_Params.Debug        = Renderer::DebugView::Final;
+		LogState(L"[0] baseline all OFF");
+		m_PendingCapturePath = MakePath(L"wp3c_00_baseline_off.png");
+		break;
+
+	case 1:
+		m_Params.EnableShadow     = true;
+		m_Params.ShadowAlgorithm  = 0; // SimpleShadowMap
+		m_Params.ShadowResolution = 2048;
+		LogState(L"[1] Shadow SimpleShadowMap 2048");
+		m_PendingCapturePath = MakePath(L"wp3c_01_shadow_simple.png");
+		break;
+
+	case 2:
+		m_Params.ShadowAlgorithm    = 1; // CSM
+		m_Params.ShadowCascadeCount = 4;
+		m_Params.ShadowResolution   = 2048;
+		LogState(L"[2] Shadow CSM 4-cascade 2048");
+		m_PendingCapturePath = MakePath(L"wp3c_02_shadow_csm.png");
+		break;
+
+	case 3:
+		// 额外热切换验证：Simple(1024)
+		m_Params.ShadowAlgorithm  = 0;
+		m_Params.ShadowResolution = 1024;
+		LogState(L"[3] Shadow hot-switch Simple 1024");
+		break;
+
+	case 4:
+		m_Params.EnableShadow   = false;
+		m_Params.EnableSSAO     = true;
+		m_Params.SSAOEnableBlur = true;
+		LogState(L"[4] SSAO ON (blur ON)");
+		m_PendingCapturePath = MakePath(L"wp3c_03_ssao_on.png");
+		break;
+
+	case 5:
+		m_Params.Debug = Renderer::DebugView::AO;
+		LogState(L"[5] SSAO DebugView::AO");
+		m_PendingCapturePath = MakePath(L"wp3c_04_ssao_debug_ao.png");
+		break;
+
+	case 6:
+		m_Params.Debug      = Renderer::DebugView::Final;
+		m_Params.EnableSSAO = false;
+		m_Params.EnableTAA  = true;
+		LogState(L"[6] TAA ON warmup");
+		break;
+
+	case 7:
+		LogState(L"[7] TAA ON converged capture");
+		m_PendingCapturePath = MakePath(L"wp3c_05_taa_on.png");
+		break;
+
+	case 8:
+		m_Params.EnableShadow       = true;
+		m_Params.ShadowAlgorithm    = 1;
+		m_Params.ShadowCascadeCount = 4;
+		m_Params.ShadowResolution   = 2048;
+		m_Params.EnableSSAO         = true;
+		m_Params.EnableTAA          = true;
+		LogState(L"[8] ALL ON (CSM + SSAO + TAA) warmup");
+		break;
+
+	case 9:
+		LogState(L"[9] ALL ON capture");
+		m_PendingCapturePath = MakePath(L"wp3c_06_all_on.png");
+		break;
+
+	case 10:
+		LogState(L"[10] ImGui panels capture (ALL ON)");
+		m_PendingUICapturePath = MakePath(L"wp3c_07_imgui_panel.png");
+		break;
+
+	case 11:
+		m_Params.EnableShadow = false;
+		m_Params.EnableSSAO   = false;
+		m_Params.EnableTAA    = false;
+		m_Params.Debug        = Renderer::DebugView::Final;
+		LogState(L"[11] restored all OFF");
+		m_PendingCapturePath = MakePath(L"wp3c_08_restored_off.png");
+		break;
+
+	case 12:
+		LogState(L"[12] final");
+		LOG_INFO(L"[WP3C-Test] PASS: Shadow(Simple/CSM) + SSAO + TAA A/B and hot-switch checks completed\n");
+		PostQuitMessage(0);
+		break;
+
+	default:
+		break;
+	}
+}
+
+// ============================================================
+// [契约 4] 统一 PrimarySurfaceDesc 跨管线验收（-PrimarySurfaceTest <dir>）
+// ------------------------------------------------------------
+// 1. DeferredRenderer：校验 Source=RasterGBuffer + IsBindlessReady，回读 Albedo/Normal/Material PNG；
+// 2. 帧边界热切至 RayTracingRenderer：校验 Source=DxrPrimaryRay + IsBindlessReady，回读 Depth/Albedo/Normal/Material PNG；
+// 3. 切回 DeferredRenderer 并干净退出，供脚本验证光栅与 DXR 表面轮廓重合、深度范围合法且 0 泄漏。
+// ============================================================
+void RendererDemoApp::RunPrimarySurfaceTest(void)
+{
+	static const int kFramesPerStep = 8;
+	if ((m_PrimarySurfaceTestFrame++ % kFramesPerStep) != 0)
+		return;
+
+	auto MakePath = [this](const wchar_t* fileName) {
+		wchar_t path[512] = {};
+		swprintf_s(path, L"%ws\\%ws", m_PrimarySurfaceTestDir.c_str(), fileName);
+		return std::wstring(path);
+	};
+
+	auto VerifyAndDump = [this, &MakePath](Renderer::PrimarySurfaceSource expectedSource, const wchar_t* prefix, bool dumpDepth) -> bool {
+		if (!m_Renderer)
+			return false;
+		const Renderer::PrimarySurfaceDesc* surf = m_Renderer->GetPrimarySurface();
+		if (surf == nullptr || surf->Source != expectedSource || !surf->IsBindlessReady())
+		{
+			LOG_ERROR(L"[PrimarySurfaceTest] FAIL: %ws surface invalid (ptr=%p src=%u bindless=%d)\n",
+				prefix, (void*)surf, surf ? (unsigned)surf->Source : 0u, surf && surf->IsBindlessReady() ? 1 : 0);
+			m_FatalExitCode = 1;
+			return false;
+		}
+		const auto packed = surf->PackBindlessIndices();
+		LOG_INFO(L"[PrimarySurfaceTest] %ws OK: source=%hs size=%ux%u idx(D=%u,A=%u,N=%u,M=%u,E=%u) heaps=%u\n",
+			prefix, Renderer::PrimarySurfaceSourceName(surf->Source), packed.Width, packed.Height,
+			packed.DepthSrvIdx, packed.AlbedoAoSrvIdx, packed.NormalSrvIdx, packed.MaterialSrvIdx,
+			packed.EmissionSrvIdx, m_LastRenderSceneHeapBindCount);
+
+		auto DumpColor = [&](const Renderer::PrimarySurfaceSlot& slot, const wchar_t* suffix) {
+			if (!slot.IsValid()) return false;
+			wchar_t fname[128] = {};
+			swprintf_s(fname, L"%ws_%ws.png", prefix, suffix);
+			return Renderer::DebugCapture::SaveColorBufferToPNG(*static_cast<ColorBuffer*>(slot.Resource), MakePath(fname));
+		};
+		bool ok = DumpColor(surf->AlbedoAO, L"albedo")
+			&& DumpColor(surf->Normal,   L"normal")
+			&& DumpColor(surf->Material, L"material");
+		if (dumpDepth)
+			ok = ok && DumpColor(surf->Depth, L"depth");
+		if (!ok)
+		{
+			LOG_ERROR(L"[PrimarySurfaceTest] FAIL: DebugCapture export failed for %ws\n", prefix);
+			m_FatalExitCode = 1;
+		}
+		return ok;
+	};
+
+	switch (m_PrimarySurfaceTestStep++)
+	{
+	case 0:
+		// 预热 DeferredRenderer 若干帧后在 step 1 验收并回读
+		break;
+
+	case 1:
+		if (!VerifyAndDump(Renderer::PrimarySurfaceSource::RasterGBuffer, L"deferred", /*dumpDepth=*/false))
+			return;
+		m_PendingRendererName = L"RayTracingRenderer";
+		break;
+
+	case 2:
+		if (!VerifyAndDump(Renderer::PrimarySurfaceSource::DxrPrimaryRay, L"dxr", /*dumpDepth=*/true))
+			return;
+		m_PendingRendererName = L"DeferredRenderer";
+		break;
+
+	case 3:
+		// 确认切回光栅管线后 PrimarySurface 重新指向 RasterGBuffer 且无残余状态
+		if (m_Renderer == nullptr || m_Renderer->GetPrimarySurface() == nullptr ||
+			m_Renderer->GetPrimarySurface()->Source != Renderer::PrimarySurfaceSource::RasterGBuffer)
+		{
+			LOG_ERROR(L"[PrimarySurfaceTest] FAIL: switch back to DeferredRenderer did not restore RasterGBuffer surface\n");
+			m_FatalExitCode = 1;
+			return;
+		}
+		LOG_INFO(L"[PrimarySurfaceTest] PASS: RasterGBuffer + DxrPrimaryRay unified surface contract verified\n");
+		PostQuitMessage(0);
+		break;
+
+	default:
+		break;
+	}
+}
+
+
+// ============================================================
 // 生命周期
 // ============================================================
 void RendererDemoApp::Startup(void)
 {
-	// ---- Renderer：默认 Deferred，必须通过注册表创建 ----
-	// 两个 Renderer 的 .cpp 里各有一个 RendererAutoRegister 静态对象。
-	// 静态库的链接器只保留"被引用"的目标文件，所以这里先确认注册表里真的有它们；
-	// 下面的 dynamic_cast 会 odr-use 这两个类型，保证它们的 TU 被链接进来。
+	// ---- [TD-10b / WP-3B] 阶段 1：先集中解析全部 CLI 参数（含 -Preset/-Experiment/-StatsOut/-HotReloadTest） ----
+	bool cliSpecifiedStartRenderer = false;
+	// 原实现先调用 SwitchRenderer()（其内部会用默认 model 0 且 m_ForceRebuildOnLoad==false
+	// 加载模型），随后才读取 -RebuildModels 与 -ModelIndex 再加载第二次，导致 -RebuildModels
+	// 对首帧首次加载完全失效且启动白白加载两次模型。
+	std::wstring startRendererName = L"DeferredRenderer";
 	{
-		auto& registry = Renderer::RendererRegistry::Instance();
-		m_RendererNames.clear();
-		for (const std::wstring& registered : registry.GetRegisteredNames())
-			m_RendererNames.push_back(Narrow(registered));
-
-		LOG_INFO(L"[R3] 已注册 Renderer 数量：%u\n", (uint32_t)m_RendererNames.size());
-		for (const std::string& registered : m_RendererNames)
-			LOG_INFO(L"[R3]   - %hs\n", registered.c_str());
-
-		if (!registry.HasRenderer(L"DeferredRenderer"))
-			LOG_INFO(L"[R3] 错误：注册表里没有 DeferredRenderer（RendererAutoRegister 未被链接）\n");
-	}
-
-	// -StartRenderer <名字>：直接从指定 Renderer 起步（诊断/验收用）。
-	// 默认仍然是 DeferredRenderer。
-	{
-		std::wstring startName;
-		if (CommandLineArgs::GetString(L"StartRenderer", startName) && !startName.empty())
+		std::wstring cliRenderer;
+		if (CommandLineArgs::GetString(L"StartRenderer", cliRenderer) && !cliRenderer.empty())
 		{
-			LOG_INFO(L"[R3] -StartRenderer %ws\n", startName.c_str());
-			SwitchRenderer(startName);
-		}
-		else
-		{
-			SwitchRenderer(L"DeferredRenderer");
+			startRendererName = cliRenderer;
+			cliSpecifiedStartRenderer = true;
+			LOG_INFO(L"[R3] -StartRenderer %ws\n", startRendererName.c_str());
 		}
 	}
 
-	// ---- GPU 计时 ----
-	m_GpuTimer.Initialize(Graphics::g_Device, 3);
+	if (CommandLineArgs::HasFlag(L"SimulateNoDXR"))
+	{
+		Graphics::SetSimulatedNoDxrForTest(true);
+		m_StrictStartRenderer = true;
+		LOG_INFO(L"[WP-3A] -SimulateNoDXR enabled: forcing RaytracingTier=NOT_SUPPORTED for CheckSupport verification\n");
+	}
+	if (CommandLineArgs::HasFlag(L"StrictStartRenderer"))
+	{
+		m_StrictStartRenderer = true;
+	}
 
-	// ---- 模型 ----
-	// -ModelIndex <n>：诊断/验收用，直接从指定模型起步（默认 0）。
-	// 存在的意义：区分「切 renderer 残留」与「模型本身顶点布局不兼容」两类问题。
+	{
+		std::wstring statsPath;
+		if (CommandLineArgs::GetString(L"StatsOut", statsPath) && !statsPath.empty())
+		{
+			m_StatsOutPath = statsPath;
+			LOG_INFO(L"[CLI] -StatsOut %ws\n", m_StatsOutPath.c_str());
+		}
+	}
+	{
+		std::wstring hrDir;
+		if (CommandLineArgs::GetString(L"HotReloadTest", hrDir) && !hrDir.empty())
+		{
+			m_HotReloadTestMode = true;
+			m_HotReloadTestDir = hrDir;
+			LOG_INFO(L"[HotReloadTest] 自动化 F5 热重载验收启用，输出目录：%ws\n", m_HotReloadTestDir.c_str());
+		}
+	}
+	{
+		std::wstring expPath;
+		if (CommandLineArgs::GetString(L"Experiment", expPath) && !expPath.empty())
+		{
+			m_ExperimentMode = true;
+			if (LoadPresetFromFile(expPath, /*switchPipeline=*/false) && !cliSpecifiedStartRenderer)
+				startRendererName = m_Config.GetPipelineRendererName();
+		}
+	}
+	{
+		std::wstring presetPath;
+		if (CommandLineArgs::GetString(L"Preset", presetPath) && !presetPath.empty())
+		{
+			if (LoadPresetFromFile(presetPath, /*switchPipeline=*/false) && !cliSpecifiedStartRenderer)
+				startRendererName = m_Config.GetPipelineRendererName();
+		}
+	}
+
 	m_ForceRebuildOnLoad = CommandLineArgs::HasFlag(L"RebuildModels");
+	if (m_ForceRebuildOnLoad)
+		LOG_INFO(L"[CLI] -RebuildModels enabled (will force rebuild .ty on initial model load)\n");
+
+	uint32_t startModel = 0;
 	{
-		uint32_t startModel = 0;
-		if (CommandLineArgs::GetInteger(L"ModelIndex", startModel) && startModel < kModelCount)
+		uint32_t cliModel = 0;
+		uint32_t catalogCount = 0;
+		DemoCommon::GetModelCatalog(catalogCount);
+		if (CommandLineArgs::GetInteger(L"ModelIndex", cliModel) && cliModel < catalogCount)
 		{
+			startModel = cliModel;
 			LOG_INFO(L"[R3] -ModelIndex %u\n", startModel);
-			LoadModelByIndex(startModel, m_ForceRebuildOnLoad);
-		}
-		else
-		{
-			LoadModelByIndex(0, m_ForceRebuildOnLoad);
 		}
 	}
 
-	// ---- R3 脚本化验收 ----
+	{
+		uint32_t switchCount = 0;
+		if (CommandLineArgs::GetInteger(L"SwitchTest", switchCount) && switchCount > 0)
+		{
+			m_SwitchTestMode = true;
+			m_SwitchTestTarget = switchCount;
+			LOG_INFO(L"[SwitchTest] 管线反复切换压测启用，目标次数：%u\n", m_SwitchTestTarget);
+		}
+	}
+	{
+		std::wstring failTestDir;
+		if (CommandLineArgs::GetString(L"SwitchFailTest", failTestDir) && !failTestDir.empty())
+		{
+			m_SwitchFailTestMode = true;
+			m_SwitchFailTestDir = failTestDir;
+			LOG_INFO(L"[SwitchFailTest] TD-08a 失败保底验收启用，输出目录：%ws\n", m_SwitchFailTestDir.c_str());
+		}
+	}
+	{
+		std::wstring emptyDxrDir;
+		if (CommandLineArgs::GetString(L"EmptyDxrTest", emptyDxrDir) && !emptyDxrDir.empty())
+		{
+			m_EmptyDxrTestMode = true;
+			m_EmptyDxrTestDir = emptyDxrDir;
+			LOG_INFO(L"[EmptyDxrTest] TD-09c DXR 空场景清屏验收启用，输出目录：%ws\n", m_EmptyDxrTestDir.c_str());
+		}
+	}
+
+	// ---- R3/R4/R6/R7 脚本化验收参数 ----
 	{
 		std::wstring testDir;
 		if (CommandLineArgs::GetString(L"R3Test", testDir) && !testDir.empty())
@@ -1296,8 +1902,6 @@ void RendererDemoApp::Startup(void)
 			LOG_INFO(L"[R3-Test] 脚本化验收开始，输出目录 %ws\n", m_R3TestDir.c_str());
 		}
 	}
-
-	// ---- R4 脚本化验收 ----
 	{
 		std::wstring testDir;
 		if (CommandLineArgs::GetString(L"R4Test", testDir) && !testDir.empty())
@@ -1307,8 +1911,6 @@ void RendererDemoApp::Startup(void)
 			LOG_INFO(L"[R4-Test] 脚本化验收开始，输出目录 %ws\n", m_R4TestDir.c_str());
 		}
 	}
-
-	// ---- R6 脚本化验收 ----
 	{
 		std::wstring testDir;
 		if (CommandLineArgs::GetString(L"R6Test", testDir) && !testDir.empty())
@@ -1318,8 +1920,6 @@ void RendererDemoApp::Startup(void)
 			LOG_INFO(L"[R6-Test] 脚本化验收开始，输出目录 %ws\n", m_R6TestDir.c_str());
 		}
 	}
-
-	// ---- R7 脚本化验收 ----
 	{
 		std::wstring testDir;
 		if (CommandLineArgs::GetString(L"R7Test", testDir) && !testDir.empty())
@@ -1329,19 +1929,73 @@ void RendererDemoApp::Startup(void)
 			LOG_INFO(L"[R7-Test] 脚本化验收开始，输出目录 %ws\n", m_R7TestDir.c_str());
 		}
 	}
+	{
+		std::wstring testDir;
+		if (CommandLineArgs::GetString(L"WP3CTest", testDir) && !testDir.empty())
+		{
+			m_Wp3cTestMode = true;
+			m_Wp3cTestDir = testDir;
+			LOG_INFO(L"[WP3C-Test] 延迟管线 Shadow/SSAO/TAA 验收开始，输出目录 %ws\n", m_Wp3cTestDir.c_str());
+		}
+	}
+	{
+		std::wstring testDir;
+		if (CommandLineArgs::GetString(L"PrimarySurfaceTest", testDir) && !testDir.empty())
+		{
+			m_PrimarySurfaceTestMode = true;
+			m_PrimarySurfaceTestDir = testDir;
+			LOG_INFO(L"[PrimarySurfaceTest] 统一表面契约跨管线验收开始，输出目录 %ws\n", m_PrimarySurfaceTestDir.c_str());
+		}
+	}
 
-	// ---- 相机 ----
-	// R1 的顺序要求：先摆好相机，再创建控制器（控制器构造时会读相机朝向作为初值）。
-	m_Camera.SetEyeAtUp(Vector3(0.0f, 0.0f, 5.0f), Vector3(0.0f, 0.0f, -5.0f), Vector3(kYUnitVector));
-	m_Camera.SetZRange(0.1f, 1000.0f);
-	m_Camera.SetAspectRatio((float)g_DisplayHeight / (float)g_DisplayWidth);   // 参数是 height/width
-	m_Camera.Update();
-	m_CameraController.reset(new Scene::Camera::FlyingFPSCamera(m_Camera, Vector3(kYUnitVector)));
+	// ---- 阶段 2：注册具体 Demo 模块并初始化 RenderServices ----
+	{
+		m_Modules.clear();
+		m_Modules.push_back(std::make_unique<DemoModules::DeferredRenderDemoModule>());
+		m_Modules.push_back(std::make_unique<DemoModules::ForwardRenderDemoModule>());
+		m_Modules.push_back(std::make_unique<DemoModules::RayTracingRenderDemoModule>());
+		m_Modules.push_back(std::make_unique<DemoModules::GFL2RenderDemoModule>());
 
-	// ---- ImGui ----
-	// 必须在 Graphics::Initialize 之后（需要 g_Device）与窗口创建之后（需要 hwnd）。
-	if (!Renderer::ImGuiLayer::Initialize(GameCore::GetWindowHandle()))
-		LOG_INFO(L"[R3] 错误：ImGuiLayer::Initialize 失败，UI 不可用\n");
+		m_RendererNames.clear();
+		for (const auto& mod : m_Modules)
+			m_RendererNames.push_back(mod->GetDisplayName());
+
+		auto& registry = Renderer::RendererRegistry::Instance();
+		LOG_INFO(L"[Manager] 已加载 Demo 模块数量：%u (底层 Renderer 注册数：%u)\n",
+			static_cast<uint32_t>(m_Modules.size()),
+			static_cast<uint32_t>(registry.GetRegisteredNames().size()));
+	}
+
+	const bool enableHotReload = m_HotReloadTestMode || (!m_ExperimentMode && ScreenshotDirectory().empty());
+	if (!m_Host.InitializeServices(enableHotReload))
+	{
+		LOG_ERROR(L"[WP-2B] 致命：RendererHost::InitializeServices 失败\n");
+		return;
+	}
+
+	const bool startOk = SwitchRenderer(startRendererName, /*simulateFailure=*/false);
+	if (!startOk && m_StrictStartRenderer)
+	{
+		LOG_ERROR(L"[WP-3A][CheckSupport] 请求的启动管线 %ws 不可用（原因：%hs），严禁冒名回退，将以非零退出码 2 优雅中止\n",
+			startRendererName.c_str(), m_Host.GetLastSwitchError().c_str());
+		m_FatalExitCode = 2;
+		PostQuitMessage(m_FatalExitCode);
+		return;
+	}
+
+	m_GpuTimer.Initialize(Graphics::g_Device, 3);
+	if (m_ActiveModule == nullptr || m_ActiveModule->ShouldEnsureDefaultModelOnActivate() || cliSpecifiedStartRenderer || m_ForceRebuildOnLoad)
+		LoadModelByIndex(startModel, m_ForceRebuildOnLoad);
+
+	if (!m_CameraController)
+	{
+		DemoCommon::DemoHostContext ctx = BuildDemoContext();
+		DemoCommon::SetupStandardRightHandedCamera(ctx, /*resetPose=*/true);
+	}
+
+	// ---- ImGui（WP-1B：复用 RenderServices 的 4 分区单可见堆 Zone D） ----
+	if (!Renderer::ImGuiLayer::Initialize(GameCore::GetWindowHandle(), &m_Host.GetServices().GetDescriptorHeap()))
+		LOG_ERROR(L"[R3] 错误：ImGuiLayer::Initialize 失败，UI 不可用\n");
 	GameCore::SetWndProcHook(&RendererDemoApp::WndProcThunk);
 
 	LOG_INFO(L"[R3] RendererDemoApp 启动完成\n");
@@ -1349,29 +2003,39 @@ void RendererDemoApp::Startup(void)
 
 void RendererDemoApp::Cleanup(void)
 {
-	// 关闭顺序与创建顺序相反：先摘掉消息钩子，再关 UI，再拆 GPU 资源。
+	// 安全兜底：若 -HotReloadTest 异常提前退出，务必还原磁盘上的原始 HLSL 字节
+	if (m_HotReloadBackupValid && !m_HotReloadTargetFile.empty())
+	{
+		std::ofstream ofs(m_HotReloadTargetFile, std::ios::out | std::ios::binary | std::ios::trunc);
+		if (ofs.is_open())
+			ofs.write(m_HotReloadBackupBytes.data(), static_cast<std::streamsize>(m_HotReloadBackupBytes.size()));
+		m_HotReloadBackupValid = false;
+	}
+	ExportStatsIfRequested();
+
+	// [WP-1B / 契约 2 严格反序关闭]
+	// 1. 消息钩子 -> 2. ImGuiLayer（归还 Zone D）-> 3. GpuTimer -> 4. IdleGPU ->
+	// 5. Renderer（含 EnvLighting HDR TextureRef）-> 6. 场景模型（清 Model/TextureRef/Zone A）->
+	// 7. RenderServices（LightingSystem -> TextureManager -> UnifiedDescriptorHeap）
 	GameCore::SetWndProcHook(nullptr);
 	Renderer::ImGuiLayer::Shutdown();
 
 	m_GpuTimer.Shutdown();
 
-	UnloadModel();
+	Graphics::g_CommandManager.IdleGPU();
+	Display::SceneColorBuffer = nullptr;
 
-	if (m_Renderer)
-	{
-		Graphics::g_CommandManager.IdleGPU();
-		Display::SceneColorBuffer = nullptr;
-		m_Renderer->Shutdown();
-		m_Renderer.reset();
-	}
+	m_Host.ShutdownPipeline();
+	m_Renderer = nullptr;
+	UnloadModel();
+	m_Host.ShutdownServices();
 }
 
 void RendererDemoApp::OnResize(uint32_t width, uint32_t height)
 {
 	LOG_INFO(L"[R3] OnResize %ux%u\n", width, height);
 
-	if (m_Renderer && m_Renderer->IsInitialized())
-		m_Renderer->OnResize(width, height);
+	m_Host.OnResize(width, height);
 
 	// Renderer 重建了内部 RT，Display 里的 shared_ptr 必须重绑，否则它会指向旧对象。
 	BindRendererOutput();
@@ -1400,6 +2064,28 @@ void RendererDemoApp::Update(float deltaT)
 		SaveCaptureTo(path);
 	}
 
+	// [WP-0B] -SwitchTest <N>：帧边界反复切换 Renderer（Deferred -> Forward -> RayTracing 循环），
+	// 每次切换后在 Debug 下调用 _CrtCheckMemory() 校验堆完整性（验证 TD-03a / TD-05d 修复）。
+	if (m_SwitchTestMode)
+		RunSwitchTest();
+	if (m_SwitchFailTestMode)
+		RunSwitchFailTest();
+	if (m_EmptyDxrTestMode)
+		RunEmptyDxrTest();
+	if (m_HotReloadTestMode)
+		RunHotReloadTest();
+	ExportStatsIfRequested();
+
+	// [TD-11b] 记录前 3 帧实测 dt，确认首帧无历史 uptime 尖峰（<= 0.1s）
+	{
+		static int s_dtLogFrames = 0;
+		if (s_dtLogFrames < 3)
+		{
+			LOG_INFO(L"[WP-1C][TD-11b] frame %d deltaT=%.6f s\n", s_dtLogFrames, deltaT);
+			++s_dtLogFrames;
+		}
+	}
+
 	// R3 脚本化验收（-R3Test）：它内部调用的就是 UI 按钮调用同一批函数，
 	// 因此必须同样在任何 GraphicsContext 之前执行。
 	if (m_R3TestMode)
@@ -1410,34 +2096,65 @@ void RendererDemoApp::Update(float deltaT)
 		RunR6Test();
 	if (m_R7TestMode)
 		RunR7Test();
+	if (m_Wp3cTestMode)
+		RunWp3cTest();
+	if (m_PrimarySurfaceTestMode)
+		RunPrimarySurfaceTest();
 
 	// 帧边界动作：切 Renderer / 换模型。必须在任何 GraphicsContext 之前。
 	ApplyPendingActions();
 
+	if (m_FatalExitCode != 0)
+	{
+		PostQuitMessage(m_FatalExitCode);
+		return;
+	}
+
 	m_CpuFrameMs = Graphics::GetFrameTime() * 1000.0f;
-	m_GpuTimer.TryGetElapsedMs(m_GpuFrameMs);
+	if (m_GpuTimer.TryGetElapsedMs(m_GpuFrameMs) && !m_LoggedWp3aTelemetry && !m_GpuTimer.GetPassTimings().empty())
+	{
+		m_LoggedWp3aTelemetry = true;
+		const Graphics::VramUsageInfo vram = Graphics::QueryVramUsage();
+		std::string passSummary;
+		for (const auto& pt : m_GpuTimer.GetPassTimings())
+		{
+			char item[128] = {};
+			snprintf(item, sizeof(item), "%s=%.3fms ", pt.Name.c_str(), pt.GpuMs);
+			passSummary += item;
+		}
+		LOG_INFO(L"[WP-3A][Telemetry] Renderer=%ws GPU=%.3fms Passes=[%hs] VRAM=%.1f/%.1fMB BindlessSM66=%d\n",
+			m_RendererName.c_str(), m_GpuFrameMs, passSummary.c_str(),
+			static_cast<double>(vram.CurrentUsageBytes) / (1024.0 * 1024.0),
+			static_cast<double>(vram.BudgetBytes) / (1024.0 * 1024.0),
+			m_Host.GetServices().IsBindlessSM66Ready() ? 1 : 0);
+	}
 
 	// ImGui 捕获键盘时不驱动相机，否则在输入框里打字会把相机一起拖着走。
 	// 注意：io.WantCaptureKeyboard 是在 ImGui::NewFrame 里算出来的，
 	// 而 NewFrame 发生在本帧稍后的 RenderUI 里，所以这里拿到的是上一帧的状态。
 	// 一帧的判定延迟对输入门控没有可见影响（而且这是 ImGui 官方推荐的用法）。
-	if (Renderer::ImGuiLayer::IsInitialized() && Renderer::ImGuiLayer::WantCaptureKeyboard())
-		m_Camera.Update();          // 无脏标记时是空操作，只是保证状态一致
+	if (m_ActiveModule != nullptr)
+	{
+		DemoCommon::DemoHostContext ctx = BuildDemoContext();
+		m_ActiveModule->Update(ctx, deltaT);
+	}
 	else if (m_CameraController)
+	{
 		m_CameraController->Update(deltaT);
+	}
 
 	if (!m_Renderer || !m_Renderer->IsInitialized())
 		return;
+
+	// [WP-2B] 每帧经 RendererHost 推进 4 分区可见堆 Zone B 的 3 帧环形槽区
+	m_Host.GetServices().BeginFrame(Graphics::GetFrameCount());
 
 	GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Update");
 
 	Renderer::RenderFrameDesc desc;
 	desc.Camera = &m_Camera;
 	desc.delatT = deltaT;
-	// R4.6：把所有场景模型都交给渲染器。
-	// 注意取地址的是 vector 元素 —— 这就是为什么增删模型必须放在
-	// 帧边界的 ApplyPendingActions 里（扩容会让这里的指针失效）。
-	for (SceneModel& m : m_SceneModels)
+	for (DemoCommon::SceneModel& m : m_SceneModels)
 	{
 		if (m.instance && !m.instance->IsNull())
 			desc.Models.push_back(m.instance.get());
@@ -1459,18 +2176,32 @@ void RendererDemoApp::RenderScene(void)
 	Renderer::RenderFrameDesc desc;
 	desc.Camera = &m_Camera;
 	desc.delatT = 0.0f;
-	for (SceneModel& m : m_SceneModels)
+	for (DemoCommon::SceneModel& m : m_SceneModels)
 	{
 		if (m.instance && !m.instance->IsNull())
 			desc.Models.push_back(m.instance.get());
 	}
 	desc.Params = &m_Params;
+	desc.Timer  = &m_GpuTimer;
 
 	// GPU 计时：Begin/End 必须在同一个命令列表内，且 End 要包住全部绘制。
 	m_GpuTimer.Begin(gfxContext);
 
 	m_Renderer->Render(gfxContext, desc, Renderer::DrawPass::kOpaque);
 	m_Renderer->EndFrame(gfxContext, desc);
+
+	// [WP-1B / 契约 1 门禁] 校验主渲染命令列表内 SetDescriptorHeaps 调用次数 <= 1
+	m_LastRenderSceneHeapBindCount = gfxContext.GetSetDescriptorHeapsCount();
+	ASSERT(m_LastRenderSceneHeapBindCount <= 1, "RenderScene SetDescriptorHeaps count exceeded 1!");
+	if (m_LoggedHeapBindForRenderer != m_RendererName)
+	{
+		m_LoggedHeapBindForRenderer = m_RendererName;
+		LOG_INFO(L"[WP-1B] RenderScene SetDescriptorHeaps count = %u (renderer=%ws, ZoneA=%u, ZoneB=%u, ZoneD=%u)\n",
+			m_LastRenderSceneHeapBindCount, m_RendererName.c_str(),
+			m_Host.GetServices().GetDescriptorHeap().GetZoneALiveCount(),
+			m_Host.GetServices().GetDescriptorHeap().GetZoneBUsedInCurrentFrame(),
+			m_Host.GetServices().GetDescriptorHeap().GetZoneDLiveCount());
+	}
 
 	m_GpuTimer.End(gfxContext);
 
@@ -1550,12 +2281,13 @@ void RendererDemoApp::RenderUI(GraphicsContext& context)
 void RendererDemoApp::DrawPanels(void)
 {
 	DrawPerformancePanel();
-	DrawScenePanel();
 	DrawRendererPanel();
-	DrawRayTracingPanel();
-	DrawLightingPanel();
-	DrawDebugViewPanel();
 	DrawDevToolsPanel();
+	if (m_ActiveModule != nullptr)
+	{
+		DemoCommon::DemoHostContext ctx = BuildDemoContext();
+		m_ActiveModule->DrawPanels(ctx);
+	}
 }
 
 void RendererDemoApp::DrawPerformancePanel(void)
@@ -1576,6 +2308,11 @@ void RendererDemoApp::DrawPerformancePanel(void)
 	if (m_GpuTimer.IsInitialized())
 	{
 		ImGui::Text("GPU frame: %.3f ms", m_GpuFrameMs);
+		const auto& passTimings = m_GpuTimer.GetPassTimings();
+		for (const auto& pt : passTimings)
+		{
+			ImGui::Text("  %-18s: %.3f ms", pt.Name.c_str(), pt.GpuMs);
+		}
 		bool enabled = m_GpuTimer.IsEnabled();
 		if (ImGui::Checkbox("GPU timer enabled", &enabled))
 			m_GpuTimer.SetEnabled(enabled);
@@ -1595,115 +2332,20 @@ void RendererDemoApp::DrawPerformancePanel(void)
 	                        + Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV].GetHeapPoolSize();
 	ImGui::Text("Desc live: RTV %u / SRV %u", rtvLive, srvLive);
 	ImGui::Text("Desc heap pool: %u", heapPool);
-
-	ImGui::End();
-}
-
-// ============================================================
-// Scene / Model 面板（R4.6：任意增删 + 拖动摆放）
-// ------------------------------------------------------------
-// 交互约定：
-//   1. 上方 Combo 选 catalog 条目 → "Add" 把它加入场景（可重复添加同一模型）
-//   2. 中间列表显示场景里所有模型，点击选中、按钮删除
-//   3. 选中项有 Position 拖动条（DragFloat3），直接改世界坐标
-//
-// 关键约束：**增删都必须延迟到帧边界**。
-//   UI 回调运行在 ImGui::NewFrame 与 Render 之间，此刻渲染器还没消费
-//   本帧的 RenderFrameDesc；如果在回调里直接改 m_SceneModels，
-//   vector 扩容会让上一刻取到的 &m.instance 指针失效 —— 下一帧渲染
-//   就会读到已释放内存。所以这里只登记 m_PendingAddModelIndex /
-//   m_PendingRemoveModel，由 ApplyPendingActions 真正执行。
-//
-// 位置拖动是**立即生效**的（不需要延迟）：
-//   它只改 ModelInstance 内部的 m_Locator 并置脏，不改变容器结构，
-//   不涉及 vector 扩容，也不涉及 GPU 资源增删。
-// ============================================================
-void RendererDemoApp::DrawScenePanel(void)
-{
-	ImGui::SetNextWindowPos(ImVec2(16, 214), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(360, 400), ImGuiCond_FirstUseEver);
-	if (!ImGui::Begin("Scene / Model"))
+	ImGui::Text("SetDescriptorHeaps/frame: %u", m_LastRenderSceneHeapBindCount);
+	if (m_Host.GetServices().IsInitialized())
 	{
-		ImGui::End();
-		return;
+		const auto& uheap = m_Host.GetServices().GetDescriptorHeap();
+		ImGui::Text("UnifiedHeap A:%u B:%u C:%u D:%u",
+			uheap.GetZoneALiveCount(), uheap.GetZoneBUsedInCurrentFrame(),
+			uheap.GetZoneCLiveCount(), uheap.GetZoneDLiveCount());
+		ImGui::Text("Bindless SM6.6: %s", m_Host.GetServices().IsBindlessSM66Ready() ? "ACTIVE" : "Fallback SM6.4");
 	}
-
-	// ---------- 1. 添加模型 ----------
 	{
-		std::vector<const char*> names;
-		names.reserve(kModelCount);
-		for (uint32_t i = 0; i < kModelCount; ++i)
-			names.push_back(kModelCatalog[i].name);
-
-		ImGui::Combo("Catalog", &m_ModelComboIndex, names.data(), (int)names.size());
-		ImGui::Checkbox("Force rebuild (.ty)", &m_ForceRebuildOnLoad);
-
-		if (ImGui::Button("Add to scene"))
-			m_PendingAddModelIndex = m_ModelComboIndex;   // 帧边界执行
-		ImGui::SameLine();
-		ImGui::TextDisabled("(adds at frame start)");
-	}
-
-	ImGui::Separator();
-
-	// ---------- 2. 场景模型列表 ----------
-	ImGui::Text("Scene models: %d", (int)m_SceneModels.size());
-
-	if (m_SceneModels.empty())
-	{
-		ImGui::TextDisabled("(empty — use Add to scene)");
-	}
-	else
-	{
-		for (int i = 0; i < (int)m_SceneModels.size(); ++i)
-		{
-			SceneModel& item = m_SceneModels[(size_t)i];
-
-			char label[128];
-			// 用 ##id 保证同名模型（重复添加同一 catalog）也能各自独立选中
-			snprintf(label, sizeof(label), "%d: %s##sm%d", i, item.catalogName.c_str(), i);
-
-			if (ImGui::Selectable(label, m_SelectedModel == i))
-				m_SelectedModel = i;
-		}
-
-		ImGui::BeginDisabled(m_SelectedModel < 0 || m_SelectedModel >= (int)m_SceneModels.size());
-		if (ImGui::Button("Remove selected"))
-			m_PendingRemoveModel = m_SelectedModel;   // 帧边界执行
-		ImGui::EndDisabled();
-		ImGui::SameLine();
-		if (ImGui::Button("Clear all"))
-			m_PendingRemoveModel = -2;                // 约定：-2 表示清空
-	}
-
-	ImGui::Separator();
-
-	// ---------- 3. 选中模型的属性 ----------
-	if (m_SelectedModel >= 0 && m_SelectedModel < (int)m_SceneModels.size())
-	{
-		SceneModel& item = m_SceneModels[(size_t)m_SelectedModel];
-
-		ImGui::Text("Selected: %s", item.catalogName.c_str());
-		ImGui::Text("Bounding radius: %.3f", item.instance ? (float)item.instance->GetRadius() : 0.0f);
-
-		// 位置：立即生效（只改变换，不动容器/GPU 资源）
-		Math::Vector3 pos = item.instance ? item.instance->GetWorldPosition() : Math::Vector3(kOrigin);
-		float xyz[3] = { (float)pos.GetX(), (float)pos.GetY(), (float)pos.GetZ() };
-		if (ImGui::DragFloat3("Position", xyz, 0.02f, -100.0f, 100.0f))
-		{
-			if (item.instance) item.instance->SetWorldPosition(Math::Vector3(xyz[0], xyz[1], xyz[2]));
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Reset pos"))
-			if (item.instance) item.instance->SetWorldPosition(Math::Vector3(kOrigin));
-
-		// 缩放：同样立即生效
-		if (ImGui::DragFloat("Target radius", &item.targetRadius, 0.01f, 0.05f, 50.0f))
-			if (item.instance) item.instance->Resize(item.targetRadius);
-	}
-	else
-	{
-		ImGui::TextDisabled("Select a model above to edit position/scale.");
+		const Graphics::VramUsageInfo vram = Graphics::QueryVramUsage();
+		const double curMB    = static_cast<double>(vram.CurrentUsageBytes) / (1024.0 * 1024.0);
+		const double budgetMB = static_cast<double>(vram.BudgetBytes) / (1024.0 * 1024.0);
+		ImGui::Text("VRAM (local): %.1f / %.1f MB", curMB, budgetMB);
 	}
 
 	ImGui::End();
@@ -1719,7 +2361,9 @@ void RendererDemoApp::DrawRendererPanel(void)
 		return;
 	}
 
-	ImGui::Text("Current: %s", Narrow(m_RendererName).c_str());
+	const char* activeModuleName = m_ActiveModule ? m_ActiveModule->GetDisplayName() : "<none>";
+	ImGui::Text("Active Demo: %s", activeModuleName);
+	ImGui::TextDisabled("Pipeline:    %s", Narrow(m_RendererName).c_str());
 
 	std::vector<const char*> names;
 	names.reserve(m_RendererNames.size());
@@ -1729,11 +2373,12 @@ void RendererDemoApp::DrawRendererPanel(void)
 		ImGui::Combo("Available", &m_RendererComboIndex, names.data(), (int)names.size());
 
 	const bool sameAsCurrent =
+		m_ActiveModule != nullptr &&
 		m_RendererComboIndex >= 0 && m_RendererComboIndex < (int)m_RendererNames.size() &&
-		m_RendererNames[(size_t)m_RendererComboIndex] == Narrow(m_RendererName);
+		m_RendererNames[(size_t)m_RendererComboIndex] == m_ActiveModule->GetDisplayName();
 
 	ImGui::BeginDisabled(sameAsCurrent || m_RendererNames.empty());
-	if (ImGui::Button("Switch renderer"))
+	if (ImGui::Button("Switch demo"))
 		m_PendingRendererName = std::wstring(m_RendererNames[(size_t)m_RendererComboIndex].begin(),
 		                                     m_RendererNames[(size_t)m_RendererComboIndex].end());
 	ImGui::EndDisabled();
@@ -1747,321 +2392,38 @@ void RendererDemoApp::DrawRendererPanel(void)
 		ImGui::TextWrapped("%s", FeaturesToString(m_Renderer->GetFeatures()).c_str());
 		const D3D12_VIEWPORT viewport = m_Renderer->GetMainViewport();
 		ImGui::Text("Viewport: %.0f x %.0f", viewport.Width, viewport.Height);
-	}
-	else
-	{
-		ImGui::TextDisabled("No renderer instance");
-	}
 
-	// ============================================================
-	// R4.6：Feature 开关
-	// ------------------------------------------------------------
-	// 与 DevTools 的 sRGB encode 是**同一套机制**：
-	//   UI 只写 RenderParams（唯一 CPU 真源），渲染器每帧从
-	//   RenderFrameDesc::Params 读取，不做任何 UI 侧缓存。
-	//
-	// 诚实标注（路线图明确禁止"拨了没反应"的假控件）：
-	//   DeferredRenderer::Render 里 Shadow / SSAO / Transparent / PostProcess
-	//   这四段目前只有 PIXBeginEvent/PIXEndEvent，**没有任何 GPU 命令**。
-	//   所以这些开关现在控制的是"允不允许这个 Pass 参与"，
-	//   打开它们不会改变画面 —— 面板上逐项标注 [空壳]。
-	//   等对应 Pass 真正实现后，这些开关无需改动就会开始生效。
-	// ============================================================
-	ImGui::Separator();
-	ImGui::TextDisabled("Feature toggles (written to RenderParams)");
-
-	if (m_Renderer)
-	{
-		const Renderer::RendererFeature mask = m_Renderer->GetFeatures();
-
-		auto Row = [&](const char* label, bool declared, bool* value)
+		const Renderer::PrimarySurfaceDesc* surf = m_Renderer->GetPrimarySurface();
+		if (surf != nullptr && surf->IsComplete())
 		{
-			if (!declared)
-			{
-				// 当前渲染器根本不声明该能力：禁用并说明原因，
-				// 而不是显示一个能拨但无意义的开关。
-				ImGui::BeginDisabled(true);
-				bool dummy = false;
-				ImGui::Checkbox(label, &dummy);
-				ImGui::EndDisabled();
-				ImGui::SameLine();
-				ImGui::TextDisabled("(not supported by %s)", Narrow(m_RendererName).c_str());
-				return;
-			}
-
-			// 空壳标记：这四项在 Deferred 里还没有 GPU 命令
-			const bool shellOnly = (!*value && declared) || *value; // 仅用于文案
-			(void)shellOnly;
-			ImGui::Checkbox(label, value);
-			ImGui::SameLine();
-			ImGui::TextDisabled("[stub: no GPU commands yet]");
-		};
-
-		Row("Shadow",      HasFeature(mask, Renderer::RendererFeature::Shadow),      &m_Params.EnableShadow);
-		Row("SSAO",        HasFeature(mask, Renderer::RendererFeature::SSAO),        &m_Params.EnableSSAO);
-		Row("Transparent", HasFeature(mask, Renderer::RendererFeature::Transparent), &m_Params.EnableTransparent);
-		Row("PostProcess", HasFeature(mask, Renderer::RendererFeature::PostProcess), &m_Params.EnablePostProcess);
-	}
-	else
-	{
-		ImGui::TextDisabled("No renderer instance");
-	}
-
-	// ============================================================
-	// R5/R6：DXR 能力状态 + 光追算法开关
-	// ------------------------------------------------------------
-	// 路线图 D0 验收：「无 DXR 支持时禁用相应 UI 项并继续运行光栅模式」，
-	// 并且要「日志显示真实查询到的 Raytracing Tier」。
-	// 这里把查询结果原样显示出来 —— 是硬件真实值，不是写死的文案。
-	//
-	// R6 起这一段同时承担 D3 的验收要求：
-	//   「每个算法都应有可比较的光栅/光追场景、明确采样与偏差策略、
-	//     性能统计和开关」。
-	// 因此下面的控件都**真的接到了 GPU 命令**（RayTracingRenderer::Render
-	// 把这些字段原样塞进 b0 根常量），与上面那四个 [stub] 项性质完全不同 ——
-	// 拨动它们会改变画面，这一点由 -R6Test 的 md5 A/B 证明。
-	// ============================================================
-	ImGui::Separator();
-	{
-		const Graphics::RaytracingCapability cap = Graphics::QueryRaytracingCapability();
-		const bool isRaytracingRenderer =
-			m_Renderer && HasFeature(m_Renderer->GetFeatures(), Renderer::RendererFeature::Raytracing);
-
-		if (cap.supported)
-		{
-			const char* tierText = (cap.tier >= D3D12_RAYTRACING_TIER_1_1) ? "1.1" : "1.0";
-			ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f),
-				"DXR: supported (tier %s)", tierText);
-			ImGui::TextDisabled("inline raytracing: %s", cap.inlineRaytracing ? "yes" : "no");
+			ImGui::TextColored(ImVec4(0.45f, 0.85f, 1.0f, 1.0f),
+				"PrimarySurface: %s (%ux%u, Bindless=%s)",
+				Renderer::PrimarySurfaceSourceName(surf->Source),
+				surf->Width, surf->Height,
+				surf->IsBindlessReady() ? "OK" : "OFF");
 		}
 		else
 		{
-			ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f), "DXR: not supported on this device");
-			ImGui::TextDisabled("RayTracingRenderer will refuse to initialize.");
+			ImGui::TextDisabled("PrimarySurface: N/A (%s)", Narrow(m_RendererName).c_str());
 		}
-
-		if (!isRaytracingRenderer)
-		{
-			if (cap.supported)
-				ImGui::TextDisabled("Switch to RayTracingRenderer above to enable R6 controls.");
-			ImGui::End();
-			return;
-		}
-
-		ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f),
-			"Active path: DispatchRays (hard shadow + 1-bounce reflection)");
-		ImGui::TextDisabled("R7 material: BaseColor texture + GGX, see 'Ray Tracing (R7)'.");
-	}
-
-	ImGui::End();
-}
-
-void RendererDemoApp::DrawRayTracingPanel(void)
-{
-	// R6/D3 的验收要求是「每个算法都应有...明确采样与偏差策略、性能统计和开关」。
-	// 这几项放在独立面板里，而不是塞进 Renderer 面板底部：
-	//   1) Renderer 面板在 1080p 下已经顶到屏幕底部，继续加内容会被裁掉；
-	//   2) 这是**光追专属**控件，与上面那四个光栅 [stub] 开关性质完全不同，
-	//      放在一起会让读者误以为它们也都是空壳。
-	// 只有当前渲染器声明了 Raytracing 能力时才画这个面板。
-	const bool isRaytracingRenderer =
-		m_Renderer && HasFeature(m_Renderer->GetFeatures(), Renderer::RendererFeature::Raytracing);
-	if (!isRaytracingRenderer)
-		return;
-
-	// 1920 宽下留 16px 右边距：窗口宽 340，起点 1564 => 右边缘 1904。
-	// 再往右会被屏幕裁掉，滑块右侧的数值就会看不到（ImGui 不会自动换行）。
-	// R7 加了「材质」两行开关与 BaseColor 调试通道，窗口高度 470 -> 560。
-	ImGui::SetNextWindowPos(ImVec2(1564, 16), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(340, 560), ImGuiCond_FirstUseEver);
-	if (!ImGui::Begin("Ray Tracing (R7)"))
-	{
-		ImGui::End();
-		return;
-	}
-
-	ImGui::TextDisabled("Real GPU work: toggling these changes pixels.");
-	ImGui::TextDisabled("(raster comparison: switch to DeferredRenderer)");
-	ImGui::Separator();
-
-	// ---- 算法开关 ----
-	ImGui::Checkbox("RT hard shadow", &m_Params.EnableRTShadow);
-	ImGui::Checkbox("RT reflection", &m_Params.EnableRTReflection);
-
-	// ---- R7 / D4：材质两个正交开关 ----
-	// 为什么必须是**两个**而不是一个「材质总开关」：
-	//   R7 P0 同时引入了「贴图」与「GGX」两个变量。若合并成一个开关，
-	//   画面变化时无法判断是贴图接错了还是 BRDF 变了。-R7Test 用 2×2 矩阵
-	//   （A5a/A5b/A5c）把两个变量解耦，其中"全关"必须逐字节等于 R6 基线
-	//   md5 a43b6059…，否则说明 R7 动到了不该动的着色路径。
-	ImGui::Separator();
-	ImGui::TextDisabled("Material (R7): both feed b0 root constants");
-	ImGui::Checkbox("Material textures", &m_Params.EnableMaterialTextures);
-	ImGui::Checkbox("GGX (Cook-Torrance)", &m_Params.EnableGGX);
-
-	// 调试通道：直接用 RTDebugView 本身作为状态，不额外加一个 bool
-	// （RenderParams 是唯一真源，多一个开关就多一处可能与它不同步的地方）。
-	int rtDebug = (int)m_Params.RTDebugView;
-	static const char* kRTDebugNames[] = { "Shaded", "Normal", "Shadow", "Reflection", "HitDistance", "BaseColor" };
-	if (ImGui::Combo("Debug channel", &rtDebug, kRTDebugNames, 6))
-		m_Params.RTDebugView = (Renderer::RayTracingDebugView)rtDebug;
-
-	// ---- 偏差策略（D3 要求"明确采样与偏差策略"）----
-	// 只暴露一个法线偏差，不提供沿光线的位移：两个偏差同时存在时，
-	// 出问题无法归因到哪一个。这一点在 -R6Test 第 9 步用放大偏差
-	// 到 0.05 m 的方式显式验证过（画面变白 = 接触阴影被漏掉）。
-	ImGui::Separator();
-	ImGui::TextDisabled("Bias: normal-only, single knob");
-	// 收窄控件宽度，把右侧留给标签文字 —— ImGui 的滑块标签画在控件右边，
-	// 面板靠屏幕右缘时默认宽度会把标签挤到屏幕外。
-	ImGui::PushItemWidth(150.0f);
-	ImGui::SliderFloat("Normal bias (m)", &m_Params.RTShadowNormalBias, 0.0f, 0.05f, "%.4f");
-	ImGui::SliderFloat("Shadow max dist", &m_Params.RTShadowMaxDistance, 1.0f, 500.0f, "%.0f");
-	ImGui::SliderFloat("Reflect max dist", &m_Params.RTReflectionMaxDistance, 1.0f, 500.0f, "%.0f");
-	ImGui::SliderFloat("Reflect intensity", &m_Params.RTReflectionIntensity, 0.0f, 1.0f, "%.2f");
-	ImGui::PopItemWidth();
-
-	// ---- 性能统计（D3 要求"性能统计"）----
-	// 这些是**发射数**（= 分辨率 × 打开的射线种类），不是命中数。
-	// 命中率要回读 UAV 累加器，属于性能分析工具范畴，本阶段不做 ——
-	// 与其给一个可能被误读的"命中率"，不如只报能精确算出的上界。
-	ImGui::Separator();
-	if (auto* raytracing = dynamic_cast<Renderer::RayTracing::RayTracingRenderer*>(m_Renderer.get()))
-	{
-		const Renderer::RayTracing::RayTracingFrameStats& s = raytracing->GetFrameStats();
-		ImGui::Text("Rays/frame (dispatched)");
-		ImGui::TextDisabled("  primary %llu   shadow %llu",
-			(unsigned long long)s.PrimaryRays, (unsigned long long)s.ShadowRays);
-		ImGui::TextDisabled("  reflect %llu   total %llu",
-			(unsigned long long)s.ReflectionRays, (unsigned long long)s.TotalRays);
-		ImGui::Text("Geometry: %u tri / %u BLAS / %u inst",
-			s.TriangleCount, s.BlasCount, s.InstanceCount);
-		ImGui::Text("GPU frame: %.3f ms", m_GpuFrameMs);
 	}
 	else
 	{
-		ImGui::TextDisabled("Stats unavailable (renderer cast failed)");
+		ImGui::TextDisabled("No renderer instance");
 	}
-
-	ImGui::End();
-}
-
-void RendererDemoApp::DrawLightingPanel(void)
-{
-	ImGui::SetNextWindowPos(ImVec2(390, 400), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
-	if (!ImGui::Begin("Material / Lighting"))
-	{
-		ImGui::End();
-		return;
-	}
-
-	// Forward 的 DefaultPS 只输出 baseColor，完全不消费 Light UBO（见 DefaultPS.hlsl 的 MainPS）。
-	// 与其让用户拖动滑杆却毫无反应，不如显式禁用并说明原因 —— 路线图要求
-	// "只放真实接通的控件，未实现的显示禁用或 Not Implemented"。
-	// R6 更新：DXR 路径**确实**消费太阳参数（RayTracingRenderer::Render 把
-	// SunDirection / SunIntensity / SunColor 原样传进 b0 根常量，HLSL 里
-	// 用它算 Lambert 主光与阴影射线方向），所以太阳这一段在 DXR 下必须可编辑。
-	// 但点光源与 IBL 在 DXR 里**没有**消费点（HLSL 只有一个方向光 + 程序化
-	// SkyColor 环境项），因此这两段在 DXR 下保持禁用 —— 宁可显示禁用，
-	// 也不给一个拨了没反应的滑杆。
-	const bool deferredConnected = m_Renderer && (m_Renderer->GetFeatures() & RendererFeature::Deferred) != RendererFeature::None;
-	const bool raytracingConnected = m_Renderer && (m_Renderer->GetFeatures() & RendererFeature::Raytracing) != RendererFeature::None;
-	const bool sunConnected = deferredConnected || raytracingConnected;
-	const bool fullLightingConnected = deferredConnected;
-
-	if (!sunConnected)
-	{
-		ImGui::TextDisabled("Current renderer does not consume light params.");
-		ImGui::TextDisabled("ForwardRenderer's DefaultPS outputs baseColor only.");
-		ImGui::Separator();
-	}
-	else if (raytracingConnected)
-	{
-		ImGui::TextDisabled("DXR consumes the SUN only (point light / IBL not wired yet).");
-		ImGui::Separator();
-	}
-
-	ImGui::BeginDisabled(!sunConnected);
-	ImGui::Checkbox("Sun light", &m_Params.EnableSunLight);
-	ImGui::SliderFloat("Sun intensity", &m_Params.SunIntensity, 0.0f, 10.0f);
-	ImGui::ColorEdit3("Sun color", m_Params.SunColor);
-	ImGui::DragFloat3("Sun direction", m_Params.SunDirection, 0.01f, -1.0f, 1.0f);
 
 	ImGui::Separator();
-	ImGui::BeginDisabled(!fullLightingConnected);
-	ImGui::Checkbox("Point light", &m_Params.EnablePointLight);
-	ImGui::SliderFloat("Point intensity", &m_Params.PointLightIntensity, 0.0f, 20.0f);
-	ImGui::SliderFloat("Point range", &m_Params.PointLightRange, 0.1f, 100.0f);
-	ImGui::DragFloat3("Point position", m_Params.PointLightPosition, 0.05f, -50.0f, 50.0f);
-	ImGui::ColorEdit3("Point color", m_Params.PointLightColor);
-
-	ImGui::Separator();
-	ImGui::Checkbox("IBL", &m_Params.EnableIBL);
-	ImGui::SliderFloat("IBL intensity", &m_Params.IBLIntensity, 0.0f, 4.0f);
-	ImGui::EndDisabled();   // end of point-light/IBL block
-
-	ImGui::EndDisabled();   // end of sun block
-
-	// ============================================================
-	// R4.6：恢复默认值
-	// ------------------------------------------------------------
-	// 实现只有一个赋值：m_Params.ResetToDefaults()，它内部是
-	// `*this = RenderParams{}`。
-	//
-	// 为什么不用"逐字段写一遍默认值"：
-	//   RenderParams 有十几个字段，且以后还会加。逐字段手写每加一个就要
-	//   记得在 Reset 里补一行，漏掉的那个就永远恢复不了 —— 而且这种漏
-	//   很难被发现（只有用户按 Reset 时才会撞上）。
-	//   用默认构造的临时对象整体赋值，天然与字段定义保持同步。
-	//
-	// 为什么不需要额外通知 GPU：
-	//   LightingSystem::ApplyParams 每帧做 memcmp，参数一变就自动重传；
-	//   面板直接改 m_Params 与 Reset 走的是同一条数据链。
-	// ============================================================
-	ImGui::Separator();
-	if (ImGui::Button("Reset to defaults"))
+	const Graphics::RaytracingCapability cap = Graphics::QueryRaytracingCapability();
+	if (cap.supported)
 	{
-		m_Params.ResetToDefaults();
-		LOG_INFO(L"[R4.6] Material/Lighting 参数已恢复默认值\n");
+		const char* tierText = (cap.tier >= D3D12_RAYTRACING_TIER_1_1) ? "1.1" : "1.0";
+		ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f),
+			"DXR: supported (tier %s, inline=%s)", tierText, cap.inlineRaytracing ? "yes" : "no");
 	}
-	ImGui::SameLine();
-	ImGui::TextDisabled("(restores every param in this panel)");
-
-	ImGui::Separator();
-	ImGui::Text("Light param uploads: %llu", (unsigned long long)Scene::LightingSystem::GetUploadCount());
-
-	ImGui::End();
-}
-
-void RendererDemoApp::DrawDebugViewPanel(void)
-{
-	ImGui::SetNextWindowPos(ImVec2(390, 16), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(300, 150), ImGuiCond_FirstUseEver);
-	if (!ImGui::Begin("Debug View"))
+	else
 	{
-		ImGui::End();
-		return;
+		ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f), "DXR: not supported on this device");
 	}
-
-	const char* kViewNames[] = {
-		"Final", "BaseColor", "Normal", "Metallic", "Roughness", "AO", "Emission", "Depth"
-	};
-	static_assert((int)(sizeof(kViewNames) / sizeof(kViewNames[0])) == (int)Renderer::DebugView::Count,
-		"Debug View 名称表必须与 Renderer::DebugView 枚举一一对应");
-
-	const bool debugConnected = m_Renderer && (m_Renderer->GetFeatures() & RendererFeature::Deferred) != RendererFeature::None;
-	if (!debugConnected)
-	{
-		ImGui::TextDisabled("Debug view requires the deferred lighting pass.");
-		ImGui::BeginDisabled(true);
-	}
-	ImGui::Combo("View", &m_DebugViewIndex, kViewNames, (int)(sizeof(kViewNames) / sizeof(kViewNames[0])));
-	if (!debugConnected)
-		ImGui::EndDisabled();
-	m_Params.Debug = (Renderer::DebugView)m_DebugViewIndex;
-
-	ImGui::TextWrapped("Debug view replaces the lighting output in LightingPS; it does not affect the Forward path.");
 
 	ImGui::End();
 }
@@ -2076,7 +2438,8 @@ void RendererDemoApp::DrawDevToolsPanel(void)
 		return;
 	}
 
-	const bool postConnected = m_Renderer && (m_Renderer->GetFeatures() & RendererFeature::Deferred) != RendererFeature::None;
+	// [WP-2C / 契约 5] Deferred 与 DXR 均已接入统一共享 TonemapPass，按真实 PostProcess 特征位开放曝光/ACES/sRGB 控件
+	const bool postConnected = m_Renderer && Renderer::HasFeature(m_Renderer->GetFeatures(), Renderer::RendererFeature::PostProcess);
 	ImGui::BeginDisabled(!postConnected);
 	ImGui::SliderFloat("Exposure", &m_Params.Exposure, 0.05f, 8.0f);
 	ImGui::Checkbox("Tonemap (ACES)", &m_Params.EnableTonemap);
@@ -2085,7 +2448,7 @@ void RendererDemoApp::DrawDevToolsPanel(void)
 	ImGui::Checkbox("sRGB encode", &m_Params.EnableSRGBEncode);
 	ImGui::EndDisabled();
 	if (!postConnected)
-		ImGui::TextDisabled("Post params live in the deferred lighting pass.");
+		ImGui::TextDisabled("TonemapPass is bypassed on the unlit Forward path.");
 
 	// R4：IBL 烘焙产物的真实 mip 上界。只读 —— 它不是用户参数，
 	// 而是 PrefilterCube 的资产事实（渲染器烘焙后回填）。
@@ -2101,6 +2464,49 @@ void RendererDemoApp::DrawDevToolsPanel(void)
 
 	if (ImGui::Button("Toggle ImGui demo"))
 		m_ShowDemoWindow = !m_ShowDemoWindow;
+
+	// [WP-3B / 契约 6] JSON Preset 保存 / 加载（手写精简 UI，零反射）
+	ImGui::Separator();
+	ImGui::Text("Preset (RenderConfig JSON):");
+	static const wchar_t kDefaultPresetPath[] = L"preset_last.json";
+	if (ImGui::Button("Save Preset"))
+		SavePresetToFile(kDefaultPresetPath);
+	ImGui::SameLine();
+	if (ImGui::Button("Load Preset"))
+		LoadPresetFromFile(kDefaultPresetPath, /*switchPipeline=*/true);
+	if (!m_PresetStatus.empty())
+		ImGui::TextWrapped("%s", m_PresetStatus.c_str());
+
+	// [WP-3B / 契约 7.2] 开发期按键 Shader 热重载（F5 / Shift+F5）与红字报错条
+	ImGui::Separator();
+	ImGui::Text("Shader Hot Reload (dev):");
+	if (m_Host.IsShaderHotReloadEnabled())
+	{
+		if (ImGui::Button("Reload Shaders (F5)"))
+		{
+			s_PendingHotReload = true;
+			s_PendingHotReloadForceAll = false;
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Force All (Shift+F5)"))
+		{
+			s_PendingHotReload = true;
+			s_PendingHotReloadForceAll = true;
+		}
+		const auto& rep = m_Host.GetLastReloadReport();
+		if (!rep.Summary.empty())
+			ImGui::TextDisabled("%s", rep.Summary.c_str());
+		if (!rep.LastError.empty())
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.25f, 0.25f, 1.0f));
+			ImGui::TextWrapped("DXC ERROR: %s", rep.LastError.c_str());
+			ImGui::PopStyleColor();
+		}
+	}
+	else
+	{
+		ImGui::TextDisabled("Disabled (batch/screenshot/shipping mode)");
+	}
 
 	ImGui::Separator();
 	ImGui::Text("Captures: %d", m_CaptureCounter);

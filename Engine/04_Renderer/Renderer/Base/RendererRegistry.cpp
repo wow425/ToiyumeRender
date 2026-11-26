@@ -1,4 +1,5 @@
 #include "RendererRegistry.h"
+#include "00_Core/Utility/Utility.h"
 
 #include <algorithm>
 
@@ -19,6 +20,8 @@
 // R5：DXR 渲染器同样必须显式拉链接（理由同上：它的 TU 里除了自动注册
 // 静态对象外没有符号被 Demo 侧引用，dynamic_cast 只会 odr-use 类型信息）。
 #include "04_Renderer/Renderer/RayTracing/RayTracingRenderer.h"
+// [GFL2 / M0] 显式链接 GFL2CharacterPipeline，供 GFL2Demo 及 Registry 按名实例化
+#include "04_Renderer/Renderer/GFL2/GFL2CharacterPipeline.h"
 
 #include <memory>
 
@@ -45,6 +48,8 @@ namespace Renderer
 			// 会得到一条明确的失败日志，而不是「名字不存在」这种误导性提示。
 			s_Instance.RegisterRenderer(L"RayTracingRenderer",
 				[]() -> RendererPtr { return std::make_unique<RayTracing::RayTracingRenderer>(); });
+			s_Instance.RegisterRenderer(L"GFL2CharacterPipeline",
+				[]() -> RendererPtr { return std::make_unique<GFL2::GFL2CharacterPipeline>(); });
 		}
 
 		return s_Instance;
@@ -52,7 +57,15 @@ namespace Renderer
 
 	void RendererRegistry::RegisterRenderer(const std::wstring& name, Creator creator)
 	{
-		m_Creators[name] = std::move(creator);
+		// [TD-02b] 禁止同名渲染器重复注册覆盖（消除静默吞掉已有条目）。
+		const bool isDuplicate = (m_Creators.find(name) != m_Creators.end());
+		if (isDuplicate)
+		{
+			LOG_ERROR(L"[RendererRegistry][TD-02b] 重复注册渲染器键：%ws\n", name.c_str());
+			ASSERT(!isDuplicate, "Duplicate RendererRegistry key registered!");
+			return;
+		}
+		m_Creators.emplace(name, std::move(creator));
 	}
 
 	RendererPtr RendererRegistry::CreateRenderer(std::wstring& name) const

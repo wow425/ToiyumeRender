@@ -26,7 +26,20 @@ namespace Renderer
 		Roughness = 4,
 		AO = 5,
 		Emission = 6,
-		Depth = 7,      // 线性化前的深度缓冲
+		Depth = 7,
+
+		// [GFL2 / M2] 少前2 X 光机扩展调试通道 (DeferredRenderer 遇 8..18 输出哨兵色)
+		FaceSDF = 8,
+		StencilMask = 9,
+		SmoothNormal = 10,
+		OutlineWeight = 11,
+		RMO_Channel = 12,
+		ShadingModelID = 13,
+		UV0_UV1 = 14,
+		DirectDiffuseRamp = 15,
+		SpecularGGXRamp = 16,
+		RimAndIBL = 17,
+		ShadowVisibility = 18,
 
 		Count
 	};
@@ -43,6 +56,17 @@ namespace Renderer
 		case DebugView::AO:        return L"AO";
 		case DebugView::Emission:  return L"Emission";
 		case DebugView::Depth:     return L"Depth";
+		case DebugView::FaceSDF:           return L"FaceSDF";
+		case DebugView::StencilMask:       return L"StencilMask";
+		case DebugView::SmoothNormal:      return L"SmoothNormal";
+		case DebugView::OutlineWeight:     return L"OutlineWeight";
+		case DebugView::RMO_Channel:       return L"RMO_Channel";
+		case DebugView::ShadingModelID:    return L"ShadingModelID";
+		case DebugView::UV0_UV1:           return L"UV0_UV1";
+		case DebugView::DirectDiffuseRamp: return L"DirectDiffuseRamp";
+		case DebugView::SpecularGGXRamp:   return L"SpecularGGXRamp";
+		case DebugView::RimAndIBL:         return L"RimAndIBL";
+		case DebugView::ShadowVisibility:  return L"ShadowVisibility";
 		default:                   return L"Unknown";
 		}
 	}
@@ -157,8 +181,30 @@ namespace Renderer
 		// ============================================================
 		bool EnableShadow      = false;
 		bool EnableSSAO        = false;
+		bool EnableTAA         = false;
 		bool EnableTransparent = true;
 		bool EnablePostProcess = false;
+
+		// ---- WP-3C：Shadow Map（SimpleShadowMap / CSM）参数 ----
+		uint32_t ShadowAlgorithm    = 0;       // 0 = SimpleShadowMap (1 cascade), 1 = CSM (2..4 cascades)
+		uint32_t ShadowResolution   = 2048;    // 阴影图边长（1024 / 2048 / 4096）
+		uint32_t ShadowCascadeCount = 4;       // CSM 级联数（2..4）
+		float    ShadowNormalBias   = 0.005f;  // 世界空间法线偏移（抑制 Shadow Acne）
+		float    ShadowDepthBias    = 0.001f;  // 光源空间深度比较偏移
+		float    ShadowPCFRadius    = 1.5f;    // 3x3 PCF 滤波半径（texel 倍率）
+		float    ShadowStrength     = 1.0f;    // 阴影遮挡强度 [0..1]
+
+		// ---- WP-3C：SSAO（屏幕空间环境光遮蔽）参数 ----
+		float    SSAORadius         = 0.5f;    // 采样半球世界空间半径（米）
+		float    SSAOBias           = 0.025f;  // 深度比较容差（米，防平面自遮挡）
+		float    SSAOPower          = 1.5f;    // AO 对比度指数
+		uint32_t SSAOSampleCount    = 16;      // 半球采样数 [8..32]
+		bool     SSAOEnableBlur     = true;    // 5x5 双边深度/法线感知模糊
+
+		// ---- WP-3C：TAA（时域抗锯齿）参数 ----
+		float    TAABlendFactor     = 0.10f;   // 当前帧混合权重 alpha（越小越平滑）
+		float    TAAVarianceGamma   = 1.25f;   // 3x3 YCoCg 方差裁剪盒倍率（防鬼影）
+		float    TAAJitterScale     = 1.0f;    // Halton(2,3) 亚像素抖动倍率 [0..1.5]
 
 		// ============================================================
 		// R6 / D3：DXR 光线效果参数
@@ -225,6 +271,53 @@ namespace Renderer
 		// 把全部参数恢复为默认值。
 		// 实现方式是"整体赋值一个默认构造的 RenderParams"，而不是逐字段手写 ——
 		// 后者每加一个字段就要记得同步，迟早漏掉一个。
+		// [GFL2 / M1+] 少前2 AK-12 复刻管线真源控制参数
+		bool  EnableGFL2CharacterPipeline = true;
+		int   GFL2CameraMode              = 0; // 0=UE5 Orbit, 1=UE5 FreeFly
+		bool  GFL2EnableShadow            = true;
+		float GFL2ShadowNormalBias        = 0.006f;
+		float GFL2ShadowDepthBias         = 0.0012f;
+		float GFL2ShadowPCFRadius         = 1.5f;
+		float GFL2ShadowStrength          = 1.0f;
+		bool  GFL2EnableIBL               = true;
+		bool  GFL2EnableRamp              = true;
+		bool  GFL2EnableSkinSHDCNorm      = true;
+
+		// [GFL2 / M4] 面/发/眼特化与 4 态 Stencil 控制
+		bool  GFL2EnableFaceSDF             = true;
+		float GFL2FaceSdfSmooth             = 0.10f;
+		bool  GFL2EnableHairAniso           = true;
+		float GFL2HairSpecIntensity         = 2.00f;
+		float GFL2HairViewZShift            = 0.05f;
+		bool  GFL2EnableEye                 = true;
+		bool  GFL2EnableBangsStencilShadow  = true;
+		bool  GFL2EnableBangsOverEye        = true;
+		float GFL2BangsOverEyeAlpha         = 0.490196f;
+
+		// [GFL2 / M5] 背面挤出描边与 5 组双面半透明件
+		bool  GFL2EnableOutline             = true;
+		float GFL2OutlineWidthScale         = 1.00f;
+		float GFL2OutlineZBias              = 0.00f;
+		float GFL2OutlineMinPx              = 1.20f;
+		float GFL2OutlineMaxPx              = 2.50f;
+		bool  GFL2EnableTransparent         = true;
+
+		// [GFL2 / M6] 整备室环境、附加光、地板反射与后处理闭环
+		bool  GFL2EnableEnvScene            = true;
+		bool  GFL2EnableFloorReflection     = true;
+		bool  GFL2EnableAdditionalLights    = true;
+		float GFL2AdditionalLightScale      = 1.00f;
+		bool  GFL2EnableSSAO                = true;
+		bool  GFL2BypassSSAOExempt          = false;
+		float GFL2SSAOIntensity             = 0.80f;
+		bool  GFL2EnableTAA                 = true;
+		bool  GFL2EnableBloom               = true;
+		float GFL2BloomThreshold            = 0.90f;
+		float GFL2BloomIntensity            = 1.00f;
+		bool  GFL2Enable3DLUT               = true;
+		float GFL2LUTIntensity              = 1.00f;
+		float GFL2VignetteIntensity         = 0.75f;
+
 		void ResetToDefaults(void) { *this = RenderParams{}; }
 	};
 

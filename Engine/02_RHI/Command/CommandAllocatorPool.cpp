@@ -20,11 +20,17 @@ void CommandAllocatorPool::Create(ID3D12Device* pDevice)
 // 释放池
 void CommandAllocatorPool::Shutdown()
 {
+    std::lock_guard<std::mutex> LockGuard(m_AllocatorMutex);
+    // [TD-08b] 同步清空就绪队列并置空 m_Device，防止二次 Init 复用已释放的旧 CommandAllocator。
+    while (!m_ReadyAllocators.empty())
+        m_ReadyAllocators.pop();
+
     // 命令分配器释放
     for (size_t i = 0; i < m_AllocatorPool.size(); ++i)
         m_AllocatorPool[i]->Release();
     // 池清空
     m_AllocatorPool.clear();
+    m_Device = nullptr;
 }
 
 // 申请命令分配器

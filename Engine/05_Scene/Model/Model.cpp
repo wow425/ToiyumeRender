@@ -9,6 +9,11 @@ using namespace Renderer;
 
 void Scene::Model::Model::Destroy()
 {
+	if (m_ReleaseMaterialDescriptors)
+	{
+		m_ReleaseMaterialDescriptors();
+		m_ReleaseMaterialDescriptors = nullptr;
+	}
 	m_DataBuffer.Destroy();
 	m_MaterialConstants.Destroy();
 	m_NumMeshes = 0;
@@ -64,13 +69,13 @@ Scene::Model::ModelInstance::ModelInstance(std::shared_ptr<const Model> sourceMo
 	// 异步加载。模型实例对象池预分配以确保内存连续性。
 	if (sourceModel == nullptr)
 	{
-		m_MeshConstantsCPU.Destroy();
 		m_MeshConstantsGPU.Destroy();
+		m_NodeWorldMatrices.clear();
 	}
 	else // 创建Mesh CB
 	{
-		m_MeshConstantsCPU.Create(L"Mesh Constant Upload Buffer", sourceModel->m_NumNodes * sizeof(MeshConstants));
 		m_MeshConstantsGPU.Create(L"Mesh Constant GPU Buffer", sourceModel->m_NumNodes, sizeof(MeshConstants));
+		ComputeNodeWorldMatrices();
 	}
 }
 
@@ -101,87 +106,104 @@ Scene::Model::ModelInstance& Scene::Model::ModelInstance::operator= (std::shared
 
 	auto s = m_Locator.GetScale();
 	auto t = m_Locator.GetTranslation();
-
+	(void)s;
+	(void)t;
 
 	if (sourceModel == nullptr)
 	{
-		m_MeshConstantsCPU.Destroy();
 		m_MeshConstantsGPU.Destroy();
+		m_NodeWorldMatrices.clear();
 	}
 	else
 	{
-		m_MeshConstantsCPU.Create(L"Mesh Constans Upload Buffer", sourceModel->m_NumNodes * sizeof(MeshConstants));
 		m_MeshConstantsGPU.Create(L"Mesh Constant GPU Buffer", sourceModel->m_NumNodes, sizeof(MeshConstants));
+		ComputeNodeWorldMatrices();
 	}
 
 	return *this;
 }
 
-void Scene::Model::ModelInstance::Update(GraphicsContext& gfxContext, float deltaTime)
+void Scene::Model::ModelInstance::ComputeNodeWorldMatrices()
 {
-	if (m_Model == nullptr) return;
-	if (!m_IsDirty) return;
+	if (m_Model == nullptr || m_Model->m_NumNodes == 0 || m_Model->m_SceneGraph == nullptr)
+	{
+		m_NodeWorldMatrices.clear();
+		return;
+	}
+
+	m_NodeWorldMatrices.assign(m_Model->m_NumNodes, Math::Matrix4(Math::kIdentity));
 
 	static const size_t kMaxStackDepth = 32;
 	size_t stackIdx = 0;
 	Matrix4 matrixStack[kMaxStackDepth];
-	Matrix4 ParentMaterix = Matrix4((AffineTransform)m_Locator);
+	Matrix4 parentMatrix = Matrix4((AffineTransform)m_Locator);
 
-	// 2. Map CPU 侧上传缓冲（通常是 Upload Heap）映射到CPU内存(Write-Combined)
-	MeshConstants* cb = (MeshConstants*)m_MeshConstantsCPU.Map();
-	const GraphNode* sceneGraph = m_Model->m_SceneGraph.get(); // 取静态场景图。
+	const GraphNode* sceneGraph = m_Model->m_SceneGraph.get();
+	const GraphNode* sceneGraphEnd = sceneGraph + m_Model->m_NumNodes;
 
-	// 3. 层级遍历，目前不做优化。
-	for (const GraphNode* Node = sceneGraph; ; ++Node) // for里不写终止条件，硬件预取友好，分支预测优化，未吃透逻辑
+	// [TD-06c] 展平遍历 GraphNode 层级树，写入每个节点的真实世界矩阵（m_Locator * node->xform）。
+	// 同步增加节点上界与 32 层矩阵栈守卫，防止深层级资产越界。
+	for (const GraphNode* node = sceneGraph; node < sceneGraphEnd; ++node)
 	{
-		// 当前节点的局部变换（local transform）
-		Math::Matrix4 transform = ParentMaterix * Node->xform;
-
-		MeshConstants& cbv = cb[Node->matrixIdx]; // 根据节点 index 找到对应 CB 位置 !!!!!!!!!!!!!!!!
-		cbv.World = transform;
-		cbv.WorldIT = InverseTranspose(transform.Get3x3());
-
-		//m_BoundingSphereTransforms[Node->matrixIdx] = AffineTransform(
-		//    (Vector3)transform.GetX(),
-		//    (Vector3)transform.GetY(),
-		//    (Vector3)transform.GetZ(),
-		//    (Vector3)transform.GetW());
-
-		// 维护矩阵栈以正确处理树状层级
-		if (Node->hasChildren) // 有子（下一层）0
+		const Math::Matrix4 transform = parentMatrix * node->xform;
+		if (node->matrixIdx < m_NodeWorldMatrices.size())
 		{
-			if (Node->hasSibling) // 有兄弟姐妹（同层级）
-			{
-				matrixStack[stackIdx++] = ParentMaterix; // 如果有兄弟节点，保存当前父矩阵（用于回溯）
-			}
-			ParentMaterix = transform; // 进入子节点：当前 transform 成为新的 parent
+			m_NodeWorldMatrices[node->matrixIdx] = transform;
 		}
-		else if (!Node->hasChildren)
+
+		if (node->hasChildren)
 		{
-			// 没有子节点 (叶子节点)
-			if (!Node->hasSibling)
+			if (node->hasSibling)
 			{
-				// 既没有子，也没有兄弟，说明当前分支彻底走完，需要回溯
-				if (stackIdx == 0)
-				{
-					break; // 栈空且没有兄弟，说明整个树遍历完成，安全退出
-				}
-				ParentMaterix = matrixStack[--stackIdx]; // 回溯到上一个保存的父矩阵
+				ASSERT(stackIdx < kMaxStackDepth, "SceneGraph hierarchy depth exceeded 32");
+				if (stackIdx < kMaxStackDepth)
+					matrixStack[stackIdx++] = parentMatrix;
 			}
-			// 【注意】：如果 (!Node->hasChildren) 但 (Node->hasSibling) 是 True
-			// 说明下一个要处理的就是兄弟节点。它应该继续使用当前的 ParentMaterix，
-			// 所以我们什么都不做，直接进入下一次 for 循环。
+			parentMatrix = transform;
+		}
+		else
+		{
+			if (!node->hasSibling)
+			{
+				if (stackIdx == 0)
+					break;
+				parentMatrix = matrixStack[--stackIdx];
+			}
 		}
 	}
+}
 
-	// 4. 解除映射并异步拷贝至GPU
-	m_MeshConstantsCPU.Unmap();
+void Scene::Model::ModelInstance::Update(GraphicsContext& gfxContext, float deltaTime)
+{
+	(void)deltaTime;
+	if (m_Model == nullptr || m_Model->m_NumNodes == 0) return;
+	if (!m_IsDirty) return;
 
-	gfxContext.TransitionResource(m_MeshConstantsGPU, D3D12_RESOURCE_STATE_COPY_DEST, true); // 立即执行资源转换
-	// 每帧更新，直接拷贝整个缓冲区。对于大场景或频繁更新的情况，后续可优化为部分更新（CopyBufferRegion）或双缓冲/环形缓冲。
-	gfxContext.GetCommandList()->CopyBufferRegion(m_MeshConstantsGPU.GetResource(), 0, m_MeshConstantsCPU.GetResource(), 0, m_MeshConstantsCPU.GetBufferSize());
+	// [TD-06c] 统一在 CPU 展平 GraphNode 世界矩阵，供光栅 MeshConstants 与 DXR TLAS 共用。
+	ComputeNodeWorldMatrices();
+
+	// [TD-04b / DX12 三时钟安全上传]
+	// 原实现每帧 Map 覆写单一持久 UploadBuffer（m_MeshConstantsCPU），若连续两帧移动模型，
+	// CPU 会覆写仍在 GPU 命令队列执行 CopyBufferRegion 的同一块上传内存（数据竞态/撕裂）。
+	// 改用 CommandContext::ReserveUploadMemory 从 2 MiB 帧瞬态 LinearAllocator 分配上传区，
+	// 随命令列表提交 Fence 自动退休回收，零跨帧竞态且无需持有多余常驻 UPLOAD 内存。
+	const size_t totalBytes = static_cast<size_t>(m_Model->m_NumNodes) * sizeof(MeshConstants);
+	DynAlloc upload = gfxContext.ReserveUploadMemory(totalBytes);
+	MeshConstants* cb = reinterpret_cast<MeshConstants*>(upload.DataPtr);
+
+	for (uint32_t i = 0; i < m_Model->m_NumNodes; ++i)
+	{
+		const Math::Matrix4& transform = m_NodeWorldMatrices[i];
+		cb[i].World = transform;
+		cb[i].WorldIT = InverseTranspose(transform.Get3x3());
+	}
+
+	gfxContext.TransitionResource(m_MeshConstantsGPU, D3D12_RESOURCE_STATE_COPY_DEST, true);
+	gfxContext.GetCommandList()->CopyBufferRegion(
+		m_MeshConstantsGPU.GetResource(), 0,
+		upload.Buffer.GetResource(), upload.Offset,
+		totalBytes);
 	gfxContext.TransitionResource(m_MeshConstantsGPU, D3D12_RESOURCE_STATE_GENERIC_READ);
-
 }
 
 
@@ -191,6 +213,7 @@ void Scene::Model::ModelInstance::Resize(float newRadius)
 		return;
 
 	m_Locator.SetScale(newRadius / m_Model->m_BoundingSphere.GetRadius());
+	ComputeNodeWorldMatrices();
 
 	m_IsDirty = true;
 }
@@ -214,6 +237,8 @@ void Scene::Model::ModelInstance::SetWorldPosition(const Vector3& position)
 	const Scalar scale = m_Locator.GetScale();
 	const Vector3 localCenter = m_Model->m_BoundingSphere.GetCenter();
 	m_Locator.SetTranslation(position - localCenter * scale);
+	// [TD-06c] 同步刷新展平节点世界矩阵，确保不走光栅 Update() 的 DXR 路径也能立即读到最新世界坐标。
+	ComputeNodeWorldMatrices();
 
 	// 必须置脏：Update() 只处理 dirty 的实例，否则新的 translation
 	// 永远到不了 MeshConstants，表现为"改了位置但模型没动"。
@@ -256,8 +281,3 @@ Math::OrientedBox Scene::Model::ModelInstance::GetBoundingBox() const
 
 	return  m_Model->m_BoundingBox;
 }
-
-
-
-
-

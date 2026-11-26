@@ -85,8 +85,13 @@ void ColorBuffer::CreateDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format, u
 	if (m_FragmentCount > 1)
 		return;
 
+	// [TD-05c] 显式断言并夹紧 UAV mip 循环上界：即使调用方在 Release 构建下传入超限 NumMips，
+	// 也不会越界写穿 m_UAVHandle[] 数组破坏相邻成员内存。
+	ASSERT(NumMips <= _countof(m_UAVHandle), "ColorBuffer UAV mip storage is too small");
+	const uint32_t numUAVMips = (std::min)(NumMips, static_cast<uint32_t>(_countof(m_UAVHandle)));
+
 	// Create the UAVs for each mip level (RWTexture2D)
-	for (uint32_t i = 0; i < NumMips; ++i)
+	for (uint32_t i = 0; i < numUAVMips; ++i)
 	{
 		if (m_UAVHandle[i].ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
 			m_UAVHandle[i] = Graphics::AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);

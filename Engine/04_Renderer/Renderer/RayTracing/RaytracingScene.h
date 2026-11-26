@@ -174,8 +174,9 @@ namespace Renderer::RayTracing
 		void UpdateInstances(GraphicsContext& gfxContext,
 			const std::vector<Scene::Model::ModelInstance*>& models);
 
-		// 用当前实例 desc 重建 TLAS（几何未变但实例变换/数量变化时调用）。
-		void RebuildTopLevel(GraphicsContext& gfxContext);
+		// 用当前实例 desc（由帧瞬态 LinearAllocator 分配的 GPU VA）重建 TLAS。
+		void RebuildTopLevel(GraphicsContext& gfxContext,
+			D3D12_GPU_VIRTUAL_ADDRESS instanceDescsGpuAddress, uint32_t instanceCount);
 
 		void Destroy();
 
@@ -225,12 +226,16 @@ namespace Renderer::RayTracing
 		std::vector<std::unique_ptr<RaytracingBuffer>> m_BlasBuffers;
 
 		std::unique_ptr<RaytracingBuffer> m_TopLevel;      // TLAS 结果
-		std::unique_ptr<RaytracingBuffer> m_Scratch;       // 构建期 scratch（各段互不重叠）
+		// [TD-04a] BLAS 与 TLAS 使用完全独立的 Scratch 缓冲：同命令列表内先建 BLAS 再建 TLAS 时
+		// 彻底杜绝地址区间重叠或 TLAS 扩容时提前销毁仍在被 BLAS Build 引用的旧 Scratch。
+		std::unique_ptr<RaytracingBuffer> m_Scratch;       // BLAS 构建期 scratch（各 BLAS 段互不重叠）
+		std::unique_ptr<RaytracingBuffer> m_TlasScratch;   // TLAS 专用构建期 scratch
 		std::unique_ptr<GpuBuffer>        m_SceneGeometry; // 合并后的 VB/IB（ByteAddressBuffer）
 		std::unique_ptr<GpuBuffer>        m_InstanceDataBuffer; // StructuredBuffer<RaytracingInstanceData>
 
-		UploadBuffer m_InstanceDescsUpload;  // TLAS 的 D3D12_RAYTRACING_INSTANCE_DESC 数组
-		UploadBuffer m_InstanceDataUpload;   // 合并几何后每实例数据的上传源（活到 GPU 执行完）
+		// [TD-04b] 移除跨帧覆写的持久 m_InstanceDescsUpload / m_InstanceDataUpload：
+		// 实例描述与每实例数据改由 CommandContext::ReserveUploadMemory 走帧瞬态 LinearAllocator，
+		// 随提交 Fence 安全退休。SBT 仅在几何/StateObject 重建（IdleGPU 之后）写一次，保留持久 UploadBuffer。
 		UploadBuffer m_SbtUpload;            // SBT
 
 		D3D12_DISPATCH_RAYS_DESC m_DispatchRaysDesc = {};

@@ -3,9 +3,10 @@
 
 #include "02_RHI/GraphicsCore.h"
 #include "02_RHI/Command/CommandContext.h"
-//  R7：为了按 mesh.vertexFlags 推导 UV0 的字节偏移，需要 Renderer::kVertex_* 位标志。
-//  这些位定义在 PipelineDesc.h 里（与光栅 PSO 的顶点布局共用同一份真源）。
+//  R7锛氫负浜嗘寜 mesh.vertexFlags 鎺ㄥ UV0 鐨勫瓧鑺傚亸绉伙紝闇€瑕?Renderer::kVertex_* 浣嶆爣蹇椼€?
+//  杩欎簺浣嶅畾涔夊湪 PipelineDesc.h 閲岋紙涓庡厜鏍?PSO 鐨勯《鐐瑰竷灞€鍏辩敤鍚屼竴浠界湡婧愶級銆?
 #include "04_Renderer/Pipeline/PipelineDesc.h"
+#include "04_Renderer/UnifiedDescriptorHeap.h"
 #include "05_Scene/Model/Model.h"
 
 #include <algorithm>
@@ -13,15 +14,15 @@
 using namespace Graphics;
 
 // ============================================================================
-//  R5 / D1：BLAS / TLAS / SBT 实现
+//  R5 / D1锛欱LAS / TLAS / SBT 瀹炵幇
 // ----------------------------------------------------------------------------
-//  本文件只做「加速结构」，不含任何绘制逻辑。
+//  鏈枃浠跺彧鍋氥€屽姞閫熺粨鏋勩€嶏紝涓嶅惈浠讳綍缁樺埗閫昏緫銆?
 // ============================================================================
 
 namespace
 {
-	// D3D12 要求 AS 结果与 scratch 的地址按 256 字节对齐
-	// （D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT）。
+	// D3D12 瑕佹眰 AS 缁撴灉涓?scratch 鐨勫湴鍧€鎸?256 瀛楄妭瀵归綈
+	// 锛圖3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT锛夈€?
 	constexpr uint64_t kASByteAlignment = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT;
 
 	uint64_t AlignUp64(uint64_t value, uint64_t alignment)
@@ -29,8 +30,8 @@ namespace
 		return (value + alignment - 1) & ~(alignment - 1);
 	}
 
-	// SBT 每个 section 的起始地址要按 D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT（64）对齐，
-	// 每条记录 32 字节（D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES）。
+	// SBT 姣忎釜 section 鐨勮捣濮嬪湴鍧€瑕佹寜 D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT锛?4锛夊榻愶紝
+	// 姣忔潯璁板綍 32 瀛楄妭锛圖3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES锛夈€?
 	constexpr uint32_t kSbtRecordSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES; // 32
 	constexpr uint32_t kSbtSectionAlignment = D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT; // 64
 }
@@ -38,20 +39,20 @@ namespace
 // ============================================================================
 //  RaytracingBuffer::CreateAccelerationStructure
 // ----------------------------------------------------------------------------
-//  为什么不能直接用 GpuBuffer::Create —— 两条硬性约束：
-//    1) 加速结构资源**不允许**用 ResourceBarrier 转换进
-//       D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE。
-//       它必须在 CreateCommittedResource 的 InitialState 参数里就给出该状态。
-//       否则 Debug Layer 报
+//  涓轰粈涔堜笉鑳界洿鎺ョ敤 GpuBuffer::Create 鈥斺€?涓ゆ潯纭€х害鏉燂細
+//    1) 鍔犻€熺粨鏋勮祫婧?*涓嶅厑璁?*鐢?ResourceBarrier 杞崲杩?
+//       D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE銆?
+//       瀹冨繀椤诲湪 CreateCommittedResource 鐨?InitialState 鍙傛暟閲屽氨缁欏嚭璇ョ姸鎬併€?
+//       鍚﹀垯 Debug Layer 鎶?
 //         ERROR #526 RESOURCE_BARRIER_INVALID_COMBINATION
-//       并 break（实测进程以 0x87a 异常终止，日志刚好停在 RebuildGeometry）。
-//    2) 资源描述里必须带 D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE。
-//  GpuBuffer::Create 把这两者都写死成 COMMON / ALLOW_UNORDERED_ACCESS，
-//  因此这里单独开一条创建路径。
+//       骞?break锛堝疄娴嬭繘绋嬩互 0x87a 寮傚父缁堟锛屾棩蹇楀垰濂藉仠鍦?RebuildGeometry锛夈€?
+//    2) 璧勬簮鎻忚堪閲屽繀椤诲甫 D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE銆?
+//  GpuBuffer::Create 鎶婅繖涓よ€呴兘鍐欐鎴?COMMON / ALLOW_UNORDERED_ACCESS锛?
+//  鍥犳杩欓噷鍗曠嫭寮€涓€鏉″垱寤鸿矾寰勩€?
 //
-//  创建后该资源在整个生命周期内**不再发生任何状态转换** ——
-//  BuildRaytracingAccelerationStructure 要求它已是 AS 状态，
-//  DispatchRays 以 root SRV 直接读取它（root SRV 不需要状态转换）。
+//  鍒涘缓鍚庤璧勬簮鍦ㄦ暣涓敓鍛藉懆鏈熷唴**涓嶅啀鍙戠敓浠讳綍鐘舵€佽浆鎹?* 鈥斺€?
+//  BuildRaytracingAccelerationStructure 瑕佹眰瀹冨凡鏄?AS 鐘舵€侊紝
+//  DispatchRays 浠?root SRV 鐩存帴璇诲彇瀹冿紙root SRV 涓嶉渶瑕佺姸鎬佽浆鎹級銆?
 // ============================================================================
 void Renderer::RayTracing::RaytracingBuffer::CreateAccelerationStructure(
 	const std::wstring& name, uint64_t sizeInBytes)
@@ -73,20 +74,20 @@ void Renderer::RayTracing::RaytracingBuffer::CreateAccelerationStructure(
 	desc.SampleDesc.Count = 1;
 	desc.SampleDesc.Quality = 0;
 	desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	// 标志位必须是 ALLOW_UNORDERED_ACCESS —— 两个错误都实测踩过：
-	//   (a) 用 D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE(0x100)：
-	//       本机运行时是 Windows 10 19041 的 D3D12（10.0.19041.5794），
-	//       不认识该位，CreateCommittedResource 报
+	// 鏍囧織浣嶅繀椤绘槸 ALLOW_UNORDERED_ACCESS 鈥斺€?涓や釜閿欒閮藉疄娴嬭俯杩囷細
+	//   (a) 鐢?D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE(0x100)锛?
+	//       鏈満杩愯鏃舵槸 Windows 10 19041 鐨?D3D12锛?0.0.19041.5794锛夛紝
+	//       涓嶈璇嗚浣嶏紝CreateCommittedResource 鎶?
 	//         ERROR #719 CREATERESOURCE_UNRECOGNIZEDLAYOUT
 	//         "Flags has unrecognized bits. The value is 0x100"
-	//       该标志是 Agility SDK 1.7xx 之后才引入的，不是 DXR 1.0 的必需项。
-	//   (b) 用 D3D12_RESOURCE_FLAG_NONE：报
+	//       璇ユ爣蹇楁槸 Agility SDK 1.7xx 涔嬪悗鎵嶅紩鍏ョ殑锛屼笉鏄?DXR 1.0 鐨勫繀闇€椤广€?
+	//   (b) 鐢?D3D12_RESOURCE_FLAG_NONE锛氭姤
 	//         ERROR #524 RESOURCE_BARRIER_MISMATCHING_MISC_FLAGS
 	//         "D3D12_RESOURCE_STATES has bits that mismatch support
 	//          required from D3D12_RESOURCE_FLAGS"
-	//       即「初始状态是 AS」这件事要求资源具备 UAV 能力。
-	// 结论：与微软官方 D3D12 Raytracing 样例一致 ——
-	//       ALLOW_UNORDERED_ACCESS + 初始状态 RAYTRACING_ACCELERATION_STRUCTURE。
+	//       鍗炽€屽垵濮嬬姸鎬佹槸 AS銆嶈繖浠朵簨瑕佹眰璧勬簮鍏峰 UAV 鑳藉姏銆?
+	// 缁撹锛氫笌寰蒋瀹樻柟 D3D12 Raytracing 鏍蜂緥涓€鑷?鈥斺€?
+	//       ALLOW_UNORDERED_ACCESS + 鍒濆鐘舵€?RAYTRACING_ACCELERATION_STRUCTURE銆?
 	desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
 	D3D12_HEAP_PROPERTIES heapProps = {};
@@ -96,7 +97,7 @@ void Renderer::RayTracing::RaytracingBuffer::CreateAccelerationStructure(
 	heapProps.CreationNodeMask = 1;
 	heapProps.VisibleNodeMask = 1;
 
-	// 关键：初始状态直接就是 AS，之后永不转换。
+	// 鍏抽敭锛氬垵濮嬬姸鎬佺洿鎺ュ氨鏄?AS锛屼箣鍚庢案涓嶈浆鎹€?
 	m_UsageState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
 
 	ASSERT_SUCCEEDED(g_Device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE,
@@ -110,27 +111,27 @@ void Renderer::RayTracing::RaytracingBuffer::CreateAccelerationStructure(
 	m_pResource->SetName(name.c_str());
 #endif
 
-	// AS 缓冲不需要 SRV/UAV 描述符（root SRV 直接给 GPU 地址）。
+	// AS 缂撳啿涓嶉渶瑕?SRV/UAV 鎻忚堪绗︼紙root SRV 鐩存帴缁?GPU 鍦板潃锛夈€?
 	CreateDerivedViews();
 }
 
 // ============================================================================
-//  几何聚合
+//  鍑犱綍鑱氬悎
 // ----------------------------------------------------------------------------
-//  为什么要聚合：HLSL 无法解引用「运行时才知道的 GPU 虚拟地址」。
-//  ClosestHit 只拿到 InstanceID()/PrimitiveIndex()，必须能按偏移索引到顶点。
-//  因此把所有实例用到的模型几何，各复制一份到**一块**大 ByteAddressBuffer，
-//  每个实例记录自己那一段的字节偏移。
+//  涓轰粈涔堣鑱氬悎锛欻LSL 鏃犳硶瑙ｅ紩鐢ㄣ€岃繍琛屾椂鎵嶇煡閬撶殑 GPU 铏氭嫙鍦板潃銆嶃€?
+//  ClosestHit 鍙嬁鍒?InstanceID()/PrimitiveIndex()锛屽繀椤昏兘鎸夊亸绉荤储寮曞埌椤剁偣銆?
+//  鍥犳鎶婃墍鏈夊疄渚嬬敤鍒扮殑妯″瀷鍑犱綍锛屽悇澶嶅埗涓€浠藉埌**涓€鍧?*澶?ByteAddressBuffer锛?
+//  姣忎釜瀹炰緥璁板綍鑷繁閭ｄ竴娈电殑瀛楄妭鍋忕Щ銆?
 //
-//  为什么用 GPU→GPU 复制而不是回读：
-//    Mesh 元数据（vbOffset/vbSize/ibOffset/ibSize/vbStride/ibFormat/
-//    draw.startIndex/baseVertex/primCount）已经完整描述了每个区段的位置与长度，
-//    我们不需要知道顶点字节内容就能算偏移。所以只要 CopyBufferRegion 就够，
-//    省掉一次同步回读（回读必须 Finish(true) 等 GPU，代价大且打断录制）。
+//  涓轰粈涔堢敤 GPU鈫扜PU 澶嶅埗鑰屼笉鏄洖璇伙細
+//    Mesh 鍏冩暟鎹紙vbOffset/vbSize/ibOffset/ibSize/vbStride/ibFormat/
+//    draw.startIndex/baseVertex/primCount锛夊凡缁忓畬鏁存弿杩颁簡姣忎釜鍖烘鐨勪綅缃笌闀垮害锛?
+//    鎴戜滑涓嶉渶瑕佺煡閬撻《鐐瑰瓧鑺傚唴瀹瑰氨鑳界畻鍋忕Щ銆傛墍浠ュ彧瑕?CopyBufferRegion 灏卞锛?
+//    鐪佹帀涓€娆″悓姝ュ洖璇伙紙鍥炶蹇呴』 Finish(true) 绛?GPU锛屼唬浠峰ぇ涓旀墦鏂綍鍒讹級銆?
 //
-//  为什么按 Model 指针去重：
-//    同一个模型可以被多个 ModelInstance 共享（RendererDemoApp 允许加多个实例）。
-//    几何是静态的，复制一份即可；不同实例只在 ObjectToWorld 上不同。
+//  涓轰粈涔堟寜 Model 鎸囬拡鍘婚噸锛?
+//    鍚屼竴涓ā鍨嬪彲浠ヨ澶氫釜 ModelInstance 鍏变韩锛圧endererDemoApp 鍏佽鍔犲涓疄渚嬶級銆?
+//    鍑犱綍鏄潤鎬佺殑锛屽鍒朵竴浠藉嵆鍙紱涓嶅悓瀹炰緥鍙湪 ObjectToWorld 涓婁笉鍚屻€?
 // ============================================================================
 bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 	GraphicsContext& gfxContext,
@@ -138,15 +139,23 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 {
 	if (g_DeviceDXR == nullptr)
 	{
-		LOG_INFO(L"[DXR] RebuildGeometry 跳过：g_DeviceDXR 为空（设备不支持 DXR）\n");
+		LOG_INFO(L"[DXR] RebuildGeometry 璺宠繃锛歡_DeviceDXR 涓虹┖锛堣澶囦笉鏀寔 DXR锛塡n");
 		return false;
+	}
+
+	// [TD-04a / 鏃堕挓 1 瀹夊叏閾佸緥] 鑻ュ凡鏈夋棫鐨?BLAS/TLAS/Scratch 姝ｅ湪琚笂涓€甯х殑 DispatchRays
+	// 浣跨敤锛堜緥濡傝繍琛屾湡鍔ㄦ€佸鍒犳ā鍨嬭Е鍙?RebuildGeometry锛夛紝閿€姣佸墠蹇呴』鍏堟帓绌?GPU 闃熷垪锛?
+	// 闃叉瑙﹀彂 Debug Layer #921 OBJECT_DELETED_WHILE_STILL_IN_USE锛圵P-1A 鍚庡皢杩佽嚦 DeferredReleaseQueue锛夈€?
+	if (!m_BlasBuffers.empty() || m_TopLevel != nullptr || m_Scratch != nullptr || m_TlasScratch != nullptr)
+	{
+		g_CommandManager.IdleGPU();
 	}
 
 	DestroyBlasBuffers();
 	DestroySceneBuffers();
 
 	// ------------------------------------------------------------------
-	//  1. 收集唯一模型，算每块几何在合并缓冲里的基址
+	//  1. 鏀堕泦鍞竴妯″瀷锛岀畻姣忓潡鍑犱綍鍦ㄥ悎骞剁紦鍐查噷鐨勫熀鍧€
 	// ------------------------------------------------------------------
 	struct ModelPlacement
 	{
@@ -179,7 +188,7 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 		if (alreadyPlaced)
 			continue;
 
-		// 每块几何按 256 字节对齐，保证 BLAS 的顶点/索引地址天然满足对齐要求。
+		// 姣忓潡鍑犱綍鎸?256 瀛楄妭瀵归綈锛屼繚璇?BLAS 鐨勯《鐐?绱㈠紩鍦板潃澶╃劧婊¤冻瀵归綈瑕佹眰銆?
 		ModelPlacement placement;
 		placement.Model = model;
 		placement.BaseOffset = AlignUp64(totalBytes, kASByteAlignment);
@@ -190,33 +199,33 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 
 	if (placements.empty())
 	{
-		LOG_INFO(L"[DXR] RebuildGeometry：场景里没有可用几何（模型数=%zu）\n", models.size());
+		LOG_INFO(L"[DXR] RebuildGeometry锛氬満鏅噷娌℃湁鍙敤鍑犱綍锛堟ā鍨嬫暟=%zu锛塡n", models.size());
 		return false;
 	}
 
 	totalBytes = AlignUp64(totalBytes, kASByteAlignment);
 
 	// ------------------------------------------------------------------
-	//  2. 建合并几何缓冲并逐模型复制
+	//  2. 寤哄悎骞跺嚑浣曠紦鍐插苟閫愭ā鍨嬪鍒?
 	// ------------------------------------------------------------------
 	m_SceneGeometry = std::make_unique<RaytracingBuffer>();
 	m_SceneGeometry->Create(L"Raytracing Scene Geometry", (uint32_t)totalBytes, 1);
 
 	for (const ModelPlacement& placement : placements)
 	{
-		// 源缓冲是模型自己的 m_DataBuffer（DEFAULT 堆，创建后为 GENERIC_READ）。
-		// CopyBufferRegion 内部会临时把源切到 COPY_SOURCE 再恢复，见 CommandContext.cpp:647-660。
+		// 婧愮紦鍐叉槸妯″瀷鑷繁鐨?m_DataBuffer锛圖EFAULT 鍫嗭紝鍒涘缓鍚庝负 GENERIC_READ锛夈€?
+		// CopyBufferRegion 鍐呴儴浼氫复鏃舵妸婧愬垏鍒?COPY_SOURCE 鍐嶆仮澶嶏紝瑙?CommandContext.cpp:647-660銆?
 		Scene::Model::Model* mutableModel = const_cast<Scene::Model::Model*>(placement.Model);
 		gfxContext.CopyBufferRegion(*m_SceneGeometry, (size_t)placement.BaseOffset,
 			mutableModel->m_DataBuffer, 0, (size_t)placement.ByteSize);
 	}
 
-	// 合并缓冲被 BLAS 构建与命中着色器读取，统一停在 NON_PIXEL_SHADER_RESOURCE。
+	// 鍚堝苟缂撳啿琚?BLAS 鏋勫缓涓庡懡涓潃鑹插櫒璇诲彇锛岀粺涓€鍋滃湪 NON_PIXEL_SHADER_RESOURCE銆?
 	gfxContext.TransitionResource(*m_SceneGeometry, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 	// ------------------------------------------------------------------
-	//  3. 逐 (实例, mesh, draw) 建单几何 BLAS 描述
-	//     同时填充每实例数据（供命中着色器索引顶点）
+	//  3. 閫?(瀹炰緥, mesh, draw) 寤哄崟鍑犱綍 BLAS 鎻忚堪
+	//     鍚屾椂濉厖姣忓疄渚嬫暟鎹紙渚涘懡涓潃鑹插櫒绱㈠紩椤剁偣锛?
 	// ------------------------------------------------------------------
 	std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometries;
 	std::vector<D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS> blasInputs;
@@ -258,8 +267,8 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 				if (primitiveCount == 0 || vertexCount == 0)
 					continue;
 
-				// 把 startIndex / baseVertex 烘焙进地址，这样每个 BLAS 是自包含的，
-				// 命中着色器只需 PrimitiveIndex() 就能定位三角形（Tier 1.0 无 GeometryIndex）。
+				// 鎶?startIndex / baseVertex 鐑樼剻杩涘湴鍧€锛岃繖鏍锋瘡涓?BLAS 鏄嚜鍖呭惈鐨勶紝
+				// 鍛戒腑鐫€鑹插櫒鍙渶 PrimitiveIndex() 灏辫兘瀹氫綅涓夎褰紙Tier 1.0 鏃?GeometryIndex锛夈€?
 				const uint64_t indexAddress = geometryVA + modelBase + mesh.ibOffset
 					+ (uint64_t)draw.startIndex * indexStride;
 				const uint64_t vertexAddress = geometryVA + modelBase + mesh.vbOffset
@@ -283,7 +292,10 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 				inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
 				inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
 				inputs.NumDescs = 1;
-				inputs.pGeometryDescs = &geometries.back();
+				// [TD-05a] 涓ョ鍦?push_back 寰幆鍐呭彇 &geometries.back()锛氬綋鎬?draw 鏁拌秴杩?reserve 瀹归噺瑙﹀彂
+				// vector 鎵╁鎼鏃讹紝姝ゅ墠鎵€鏈?inputs.pGeometryDescs 鍏ㄩ儴娌︿负鎮┖鎸囬拡锛?
+				// 姝ゅ鏆傜疆 nullptr锛屽緟鎵€鏈?geometries.push_back 缁撴潫鍚庣粺涓€鎸夌储寮曞洖濉€?
+				inputs.pGeometryDescs = nullptr;
 				blasInputs.push_back(inputs);
 
 				Renderer::RayTracing::RaytracingInstanceData data = {};
@@ -297,31 +309,35 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 				data.InstanceId = (uint32_t)instanceData.size();
 
 				// ------------------------------------------------------------
-				//  R7 / D4：材质与 UV 定位
+				//  R7 / D4锛氭潗璐ㄤ笌 UV 瀹氫綅
 				// ------------------------------------------------------------
-				//  UV0 的字节偏移由顶点布局**推导**，不额外存储：
+				//  UV0 鐨勫瓧鑺傚亸绉荤敱椤剁偣甯冨眬**鎺ㄥ**锛屼笉棰濆瀛樺偍锛?
 				//    POSITION  R32G32B32_FLOAT  @ 0   (12 B)
 				//    NORMAL    R10G10B10A2_UNORM @ 12  ( 4 B)
-				//    TANGENT   R10G10B10A2_UNORM @ 16  ( 4 B, 可选)
-				//    TEXCOORD0 R16G16_FLOAT      @ 16 或 20 ( 4 B)
-				//  见 Engine/03_AssetSystem/Importers/Mesh/MeshConvert.cpp 的
-				//  OutputElements 顺序。实测 merlin 全部 15 个 mesh 都是
-				//  vbStride=24 + vertexFlags=0x0f → UV0 @ 20。
-				//  没有 UV0 的 mesh 标记为 0xFFFFFFFF，命中着色器退回纯因子色。
+				//    TANGENT   R10G10B10A2_UNORM @ 16  ( 4 B, 鍙€?
+				//    TEXCOORD0 R16G16_FLOAT      @ 16 鎴?20 ( 4 B)
+				//  瑙?Engine/03_AssetSystem/Assets/Importers/Mesh/MeshConvert.cpp 鐨?
+				//  OutputElements 椤哄簭銆傚疄娴?merlin 鍏ㄩ儴 15 涓?mesh 閮芥槸
+				//  vbStride=24 + vertexFlags=0x0f 鈫?UV0 @ 20銆?
+				//  娌℃湁 UV0 鐨?mesh 鏍囪涓?0xFFFFFFFF锛屽懡涓潃鑹插櫒閫€鍥炵函鍥犲瓙鑹层€?
 				const bool hasTangent = (mesh.vertexFlags & Renderer::kVertex_Tangent) != 0;
 				const bool hasUV0 = (mesh.vertexFlags & Renderer::kVertex_UV0) != 0;
 				data.UvByteOffset = hasUV0 ? (uint32_t)(12 + 4 + (hasTangent ? 4 : 0)) : 0xFFFFFFFFu;
 				data.VertexFlags = (uint32_t)mesh.vertexFlags;
 
-				//  材质：mesh 只存 materialSlotIdx，真正的描述符偏移与标量都要
-				//  从 model 侧取。注意 Mesh::srvTable 是**死字段**（全仓零赋值，
-				//  Debug 下实测恒为 0xCDCD），不要用它。
+				//  鏉愯川锛歮esh 鍙瓨 materialSlotIdx锛岀湡姝ｇ殑鎻忚堪绗﹀亸绉讳笌鏍囬噺閮借
+				//  浠?model 渚у彇銆傛敞鎰?Mesh::srvTable 鏄?*姝诲瓧娈?*锛堝叏浠撻浂璧嬪€硷紝
+				//  Debug 涓嬪疄娴嬫亽涓?0xCDCD锛夛紝涓嶈鐢ㄥ畠銆?
 				const uint32_t materialIndex = (uint32_t)mesh.materialSlotIdx;
 				data.MaterialIndex = materialIndex;
+				// [WP-1D / TD-06f] 鏃犳晥鏉愯川鏄惧紡鎸囧悜 UnifiedDescriptorHeap Zone A 涓嶅彲鍙樺摠鍏垫Ы 0锛坘SentinelWhite2D锛夛細
+				// 鏃犻渶鍦ㄧ儹璺緞 RayTracing.hlsl 澧炲姞鍒嗘敮鍗冲彲闆惰秺鐣岄噰鏍峰埌 (1,1,1,1)锛屼娇 albedo *= 1 閫€鍖栦负绾?baseColorFactor 鐧芥ā銆?
+				data.SrvTableIndex = Renderer::UnifiedDescriptorHeap::kSentinelWhite2D;
 				if (materialIndex < model->m_Materials.size())
 				{
 					const Scene::Material::Material& material = model->m_Materials[materialIndex];
-					data.SrvTableIndex = material.SRVTable;
+					if (material.SRVTable != Renderer::kInvalidBindlessIndex)
+						data.SrvTableIndex = material.SRVTable;
 				}
 				if (materialIndex < model->m_MaterialConstantData.size())
 				{
@@ -340,8 +356,8 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 				}
 				else
 				{
-					//  没有 CPU 材质副本时退化为白模（与 R6 观感一致），
-					//  避免每实例数据里出现未初始化的 0（全黑模型）。
+					//  娌℃湁 CPU 鏉愯川鍓湰鏃堕€€鍖栦负鐧芥ā锛堜笌 R6 瑙傛劅涓€鑷达級锛?
+					//  閬垮厤姣忓疄渚嬫暟鎹噷鍑虹幇鏈垵濮嬪寲鐨?0锛堝叏榛戞ā鍨嬶級銆?
 					data.BaseColorFactor[0] = data.BaseColorFactor[1] = data.BaseColorFactor[2] = data.BaseColorFactor[3] = 1.0f;
 					data.NormalTextureScale = 1.0f;
 					data.MetallicFactor = 0.0f;
@@ -359,14 +375,21 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 
 	if (blasInputs.empty())
 	{
-		LOG_INFO(L"[DXR] RebuildGeometry：模型存在但没有可构建的三角形（三角数=0）\n");
+		LOG_INFO(L"[DXR] RebuildGeometry锛氭ā鍨嬪瓨鍦ㄤ絾娌℃湁鍙瀯寤虹殑涓夎褰紙涓夎鏁?0锛塡n");
 		return false;
 	}
 
+	// [TD-05a] 鎵€鏈?geometries.push_back 宸插畬鎴愩€佸簳灞傚唴瀛樺湴鍧€涓嶅啀鍙樺姩锛屾鏃舵寜绱㈠紩鍥炲～ pGeometryDescs銆?
+	ASSERT(blasInputs.size() == geometries.size());
+	for (size_t i = 0; i < blasInputs.size(); ++i)
+	{
+		blasInputs[i].pGeometryDescs = &geometries[i];
+	}
+
 	// ------------------------------------------------------------------
-	//  4. 分配 BLAS 结果缓冲与 scratch
-	//     scratch 各段互不重叠 —— 同一条命令列表里连续 Build 无需中间 UAV barrier
-	//     （重叠才有写后写冲突）。
+	//  4. 鍒嗛厤 BLAS 缁撴灉缂撳啿涓?scratch
+	//     scratch 鍚勬浜掍笉閲嶅彔 鈥斺€?鍚屼竴鏉″懡浠ゅ垪琛ㄩ噷杩炵画 Build 鏃犻渶涓棿 UAV barrier
+	//     锛堥噸鍙犳墠鏈夊啓鍚庡啓鍐茬獊锛夈€?
 	// ------------------------------------------------------------------
 	m_BlasBuffers.resize(blasInputs.size());
 	m_BlasScratchOffsets.resize(blasInputs.size());
@@ -386,28 +409,28 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 	}
 
 	// ------------------------------------------------------------------
-	//  5. 提交 BLAS 构建
+	//  5. 鎻愪氦 BLAS 鏋勫缓
 	// ------------------------------------------------------------------
-	//  注意：这里**没有**对 BLAS 结果缓冲做任何 TransitionResource。
-	//  AS 资源在 CreateAccelerationStructure 里就已经是
-	//  D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE，
-	//  而 D3D12 禁止用 ResourceBarrier 把资源"转换进"该状态
-	//  （Debug Layer ERROR #526）。详见 RaytracingBuffer::CreateAccelerationStructure。
+	//  娉ㄦ剰锛氳繖閲?*娌℃湁**瀵?BLAS 缁撴灉缂撳啿鍋氫换浣?TransitionResource銆?
+	//  AS 璧勬簮鍦?CreateAccelerationStructure 閲屽氨宸茬粡鏄?
+	//  D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE锛?
+	//  鑰?D3D12 绂佹鐢?ResourceBarrier 鎶婅祫婧?杞崲杩?璇ョ姸鎬?
+	//  锛圖ebug Layer ERROR #526锛夈€傝瑙?RaytracingBuffer::CreateAccelerationStructure銆?
 	m_Scratch = std::make_unique<RaytracingBuffer>();
-	// scratch 先按临时大小建，后面 TLAS 需要更多时再重建（见下）。
+	// scratch 鍏堟寜涓存椂澶у皬寤猴紝鍚庨潰 TLAS 闇€瑕佹洿澶氭椂鍐嶉噸寤猴紙瑙佷笅锛夈€?
 	m_Scratch->Create(L"Raytracing Scratch", (uint32_t)std::max<uint64_t>(scratchCursor, 256), 1);
 	gfxContext.TransitionResource(*m_Scratch, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-	// 关键：BuildRaytracingAccelerationStructure **不会**像 DrawInstanced 那样
-	// 自动提交挂起的屏障。TransitionResource 只是把屏障压进
-	// m_ResourceBarrierBuffer[16]，不到 16 个就不 flush。若这里不手动 flush，
-	// 合并几何缓冲还停在 COPY_DEST（CopyBufferRegion 留下的），
-	// Build 会直接报
+	// 鍏抽敭锛欱uildRaytracingAccelerationStructure **涓嶄細**鍍?DrawInstanced 閭ｆ牱
+	// 鑷姩鎻愪氦鎸傝捣鐨勫睆闅溿€俆ransitionResource 鍙槸鎶婂睆闅滃帇杩?
+	// m_ResourceBarrierBuffer[16]锛屼笉鍒?16 涓氨涓?flush銆傝嫢杩欓噷涓嶆墜鍔?flush锛?
+	// 鍚堝苟鍑犱綍缂撳啿杩樺仠鍦?COPY_DEST锛圕opyBufferRegion 鐣欎笅鐨勶級锛?
+	// Build 浼氱洿鎺ユ姤
 	//   ERROR #538 INVALID_SUBRESOURCE_STATE:
 	//   "'Raytracing Scene Geometry' ... is invalid for use as a
 	//    acceleration structure geometry vertex/index data.
 	//    Expected: NON_PIXEL_SHADER_RESOURCE, Actual: COPY_DEST"
-	// 并 break（实测进程 0x87a 异常终止）。
+	// 骞?break锛堝疄娴嬭繘绋?0x87a 寮傚父缁堟锛夈€?
 	gfxContext.FlushResourceBarriers();
 
 	for (size_t i = 0; i < blasInputs.size(); ++i)
@@ -420,30 +443,41 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 		gfxContext.GetCommandList4()->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
 	}
 
+	// [TD-04a / BLAS -> TLAS 鍚屾閾佸緥]
+	// 鍚屼竴鍛戒护鍒楄〃闅忓悗绔嬪嵆鎵ц UpdateInstances -> RebuildTopLevel 鏋勫缓 TLAS 骞惰鍙栧叏閮?BLAS銆?
+	// 鍔犻€熺粨鏋勬案杩滀笉鍙?Transition锛屽繀椤婚€氳繃 UAV 灞忛殰纭繚鍏ㄩ儴 BLAS 鍐欏叆瀵瑰悗缁?TLAS Build 鍙锛?
+	// 锛堥厤鍚?TD-04e锛欼nsertUAVBarrier 婊?16 椤硅嚜鍔?flush锛屼换鎰忔暟閲?BLAS 鍧囦笉浼氳秺鐣屻€傦級
+	for (size_t i = 0; i < m_BlasBuffers.size(); ++i)
+	{
+		gfxContext.InsertUAVBarrier(*m_BlasBuffers[i]);
+	}
+	gfxContext.FlushResourceBarriers();
+
 	// ------------------------------------------------------------------
-	//  6. 每实例数据 → GPU（raw buffer，R7 起每实例 96 字节 = 24 个 DWORD）
-	//     HLSL 侧用 ByteAddressBuffer + 手算偏移读取（根级 SRV 不带
-	//     StructureByteStride，声明成 StructuredBuffer<T> 会读错跨距）。
+	//  6. 姣忓疄渚嬫暟鎹?鈫?GPU锛坮aw buffer锛孯7 璧锋瘡瀹炰緥 96 瀛楄妭 = 24 涓?DWORD锛?
+	//     HLSL 渚х敤 ByteAddressBuffer + 鎵嬬畻鍋忕Щ璇诲彇锛堟牴绾?SRV 涓嶅甫
+	//     StructureByteStride锛屽０鏄庢垚 StructuredBuffer<T> 浼氳閿欒法璺濓級銆?
 	// ------------------------------------------------------------------
 	const uint32_t instanceBytes = (uint32_t)(instanceData.size() * sizeof(Renderer::RayTracing::RaytracingInstanceData));
 	m_InstanceDataBuffer = std::make_unique<RaytracingBuffer>();
 	m_InstanceDataBuffer->Create(L"Raytracing Instance Data", instanceBytes, 1);
 
-	// 注意：CommandContext::WriteBuffer 内部有 ASSERT(Math::IsAligned(BufferData, 16))，
-	// 而 std::vector<T>::data() 只保证 alignof(T)（这里是 4）对齐，不能依赖。
-	// 因此走 UploadBuffer + Map 的路径。上传缓冲必须是成员（活到 GPU 执行完），
-	// 不能是局部变量 —— 否则命令列表还没提交，源资源就被销毁了。
-	m_InstanceDataUpload.Create(L"Raytracing Instance Data Upload", instanceBytes);
-	std::memcpy(m_InstanceDataUpload.Map(), instanceData.data(), instanceBytes);
-	m_InstanceDataUpload.Unmap();
-	gfxContext.CopyBufferRegion(*m_InstanceDataBuffer, 0, m_InstanceDataUpload, 0, instanceBytes);
+	// 娉ㄦ剰锛欳ommandContext::WriteBuffer 鍐呴儴鏈?ASSERT(Math::IsAligned(BufferData, 16))锛?
+	// 鑰?std::vector<T>::data() 鍙繚璇?alignof(T)锛堣繖閲屾槸 4锛夊榻愶紝涓嶈兘渚濊禆銆?
+	// 鍥犳璧?UploadBuffer + Map 鐨勮矾寰勩€備笂浼犵紦鍐插繀椤绘槸鎴愬憳锛堟椿鍒?GPU 鎵ц瀹岋級锛?
+	// 涓嶈兘鏄眬閮ㄥ彉閲?鈥斺€?鍚﹀垯鍛戒护鍒楄〃杩樻病鎻愪氦锛屾簮璧勬簮灏辫閿€姣佷簡銆?
+	// [TD-04b] 璧?CommandContext::ReserveUploadMemory 甯х灛鎬佺嚎鎬т笂浼犲尯锛堟寜鎻愪氦 Fence 鑷姩閫€浼戯級锛?
+	// 涓嶅啀鎸佹湁鎸佷箙 UploadBuffer銆?
+	DynAlloc instanceUpload = gfxContext.ReserveUploadMemory(instanceBytes);
+	std::memcpy(instanceUpload.DataPtr, instanceData.data(), instanceBytes);
+	gfxContext.CopyBufferRegion(*m_InstanceDataBuffer, 0, instanceUpload.Buffer, instanceUpload.Offset, instanceBytes);
 	gfxContext.TransitionResource(*m_InstanceDataBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 	m_InstanceCount = (uint32_t)instanceData.size();
 	m_TriangleCount = triangleCount;
 	m_TopLevelBuilt = false;
 
-	LOG_INFO(L"[DXR] RebuildGeometry 完成：模型=%zu 唯一几何=%zu BLAS=%zu 三角=%u scratch=%llu B\n",
+	LOG_INFO(L"[DXR] RebuildGeometry 瀹屾垚锛氭ā鍨?%zu 鍞竴鍑犱綍=%zu BLAS=%zu 涓夎=%u scratch=%llu B\n",
 		liveModels.size(), placements.size(), m_BlasBuffers.size(), triangleCount,
 		(unsigned long long)scratchCursor);
 
@@ -451,28 +485,28 @@ bool Renderer::RayTracing::RaytracingScene::RebuildGeometry(
 }
 
 // ============================================================================
-//  每帧更新实例变换 + 重建 TLAS
+//  姣忓抚鏇存柊瀹炰緥鍙樻崲 + 閲嶅缓 TLAS
 // ----------------------------------------------------------------------------
-//  BLAS 只在几何变化时重建（RebuildGeometry）；
-//  这里每帧只改 TLAS 的 instance desc —— 这就是路线图 D1 要求的
-//  「静态几何复用 BLAS，只在实例变换变化时更新 TLAS」。
+//  BLAS 鍙湪鍑犱綍鍙樺寲鏃堕噸寤猴紙RebuildGeometry锛夛紱
+//  杩欓噷姣忓抚鍙敼 TLAS 鐨?instance desc 鈥斺€?杩欏氨鏄矾绾垮浘 D1 瑕佹眰鐨?
+//  銆岄潤鎬佸嚑浣曞鐢?BLAS锛屽彧鍦ㄥ疄渚嬪彉鎹㈠彉鍖栨椂鏇存柊 TLAS銆嶃€?
 // ============================================================================
 void Renderer::RayTracing::RaytracingScene::UpdateInstances(
 	GraphicsContext& gfxContext,
 	const std::vector<Scene::Model::ModelInstance*>& models)
 {
-	// 注意：这里**不能**用 IsValid() 当前置条件 —— IsValid() 要求
-	// m_TopLevel != nullptr，而 m_TopLevel 正是本函数（经由 RebuildTopLevel）
-	// 第一次创建的。用 IsValid() 会导致「首帧永远建不出 TLAS」的鸡生蛋问题，
-	// 表现为 Render 里 GetTopLevelBuffer() 返回 nullptr 后解引用崩溃
-	// （实测 c0000005 @ GpuResource::GetGpuVirtualAddress）。
-	// 唯一真正需要的前置条件是 BLAS 已经建好（每实例数据也随 BLAS 一起建）。
+	// 娉ㄦ剰锛氳繖閲?*涓嶈兘**鐢?IsValid() 褰撳墠缃潯浠?鈥斺€?IsValid() 瑕佹眰
+	// m_TopLevel != nullptr锛岃€?m_TopLevel 姝ｆ槸鏈嚱鏁帮紙缁忕敱 RebuildTopLevel锛?
+	// 绗竴娆″垱寤虹殑銆傜敤 IsValid() 浼氬鑷淬€岄甯ф案杩滃缓涓嶅嚭 TLAS銆嶇殑楦＄敓铔嬮棶棰橈紝
+	// 琛ㄧ幇涓?Render 閲?GetTopLevelBuffer() 杩斿洖 nullptr 鍚庤В寮曠敤宕╂簝
+	// 锛堝疄娴?c0000005 @ GpuResource::GetGpuVirtualAddress锛夈€?
+	// 鍞竴鐪熸闇€瑕佺殑鍓嶇疆鏉′欢鏄?BLAS 宸茬粡寤哄ソ锛堟瘡瀹炰緥鏁版嵁涔熼殢 BLAS 涓€璧峰缓锛夈€?
 	if (m_BlasBuffers.empty() || m_InstanceDataBuffer == nullptr)
 		return;
 
-	// 按「实例 × mesh × draw」的顺序重建 instance desc，
-	// 顺序必须与 RebuildGeometry 里填充 instanceData 的顺序完全一致，
-	// 否则 InstanceID 会指向错误的几何（表现为法线颜色对不上模型）。
+	// 鎸夈€屽疄渚?脳 mesh 脳 draw銆嶇殑椤哄簭閲嶅缓 instance desc锛?
+	// 椤哄簭蹇呴』涓?RebuildGeometry 閲屽～鍏?instanceData 鐨勯『搴忓畬鍏ㄤ竴鑷达紝
+	// 鍚﹀垯 InstanceID 浼氭寚鍚戦敊璇殑鍑犱綍锛堣〃鐜颁负娉曠嚎棰滆壊瀵逛笉涓婃ā鍨嬶級銆?
 	uint32_t cursor = 0;
 	uint32_t instanceIndex = 0;
 
@@ -488,19 +522,23 @@ void Renderer::RayTracing::RaytracingScene::UpdateInstances(
 		if (model == nullptr || model->m_NumMeshes == 0)
 			continue;
 
-		// 与 RebuildGeometry 相同：空几何的模型在那边被跳过，这里也要跳过。
+		// 涓?RebuildGeometry 鐩稿悓锛氱┖鍑犱綍鐨勬ā鍨嬪湪閭ｈ竟琚烦杩囷紝杩欓噷涔熻璺宠繃銆?
 		if (model->m_DataBuffer.GetBufferSize() == 0)
 			continue;
-
-		const Math::Matrix4 localToWorld = instance->GetLocalToWorld();
-		XMFLOAT4X4 rows;
-		XMStoreFloat4x4(&rows, localToWorld);
 
 		const uint8_t* pMesh = model->m_MeshData.get();
 		for (uint32_t meshIndex = 0; meshIndex < model->m_NumMeshes; ++meshIndex)
 		{
 			const Scene::Model::Mesh& mesh = *(const Scene::Model::Mesh*)pMesh;
 			const uint32_t vertexCount = mesh.vbStride > 0 ? (mesh.vbSize / mesh.vbStride) : 0u;
+
+			// [TD-06c / 鍏夋爡涓?DXR 鍑犱綍瀵归綈涓嶅彉閲廬
+			// 蹇呴』娑堣垂灞曞钩鍚庣殑 GraphNode 涓栫晫鐭╅樀锛坢esh.meshCBV 鍗冲搴?GraphNode::matrixIdx锛夛紝
+			// 涓庡厜鏍呰矾寰?MeshConstants.World 瀹屽叏鍚屾簮銆傚師浠ｇ爜浠呭彇鏍圭骇 GetLocalToWorld()锛?
+			// 涓㈠け浜嗘墍鏈夐潪鍗曚綅灞€閮ㄨ妭鐐瑰彉鎹紙骞崇Щ/鏃嬭浆/缂╂斁锛夛紝瀵艰嚧澶氳妭鐐规ā鍨嬪湪 DXR 涓弗閲嶉敊浣嶃€?
+			const Math::Matrix4 nodeWorld = instance->GetNodeWorldMatrix(mesh.meshCBV);
+			XMFLOAT4X4 rows;
+			XMStoreFloat4x4(&rows, nodeWorld);
 
 			for (uint16_t drawIndex = 0; drawIndex < mesh.numDraws; ++drawIndex)
 			{
@@ -513,22 +551,22 @@ void Renderer::RayTracing::RaytracingScene::UpdateInstances(
 
 				D3D12_RAYTRACING_INSTANCE_DESC desc = {};
 				// ------------------------------------------------------------
-				// 【关键】DXR 的实例变换是**列向量**约定：
+				// 銆愬叧閿€慏XR 鐨勫疄渚嬪彉鎹㈡槸**鍒楀悜閲?*绾﹀畾锛?
 				//   worldPos = mul(InstanceTransform, localPos)
-				// 其中 Transform 是 3x4 行主序矩阵，**平移在第 3 列**
-				// （Transform[i][3] = 平移分量），线性部分 Transform[i][j]。
+				// 鍏朵腑 Transform 鏄?3x4 琛屼富搴忕煩闃碉紝**骞崇Щ鍦ㄧ 3 鍒?*
+				// 锛圱ransform[i][3] = 骞崇Щ鍒嗛噺锛夛紝绾挎€ч儴鍒?Transform[i][j]銆?
 				//
-				// 而本项目的 Math::Matrix4 是**行向量**约定（v * M），
-				// 平移在第 3 行（m[3][0..2]）。两者互为转置：
+				// 鑰屾湰椤圭洰鐨?Math::Matrix4 鏄?*琛屽悜閲?*绾﹀畾锛坴 * M锛夛紝
+				// 骞崇Щ鍦ㄧ 3 琛岋紙m[3][0..2]锛夈€備袱鑰呬簰涓鸿浆缃細
 				//   Transform[i][j] = M.m[j][i]   (j < 3)
 				//   Transform[i][3] = M.m[3][i]
 				//
-				// 曾经这里直接按行拷贝（Transform[i][j] = m[i][j]），后果是
-				// **平移被整行丢掉**（m[i][3] 对仿射矩阵恒为 0），模型停留在
-				// 未平移的局部坐标系里。表现极具欺骗性：BLAS/TLAS 全部构建成功、
-				// Debug Layer 零报错、DispatchRays 照常提交、RayGen 也确实在写 UAV
-				// （整屏是 miss 背景色），但所有射线都打不到模型 —— 因为模型
-				// 根本不在相机看的那个位置（实测踩过，排查了很久）。
+				// 鏇剧粡杩欓噷鐩存帴鎸夎鎷疯礉锛圱ransform[i][j] = m[i][j]锛夛紝鍚庢灉鏄?
+				// **骞崇Щ琚暣琛屼涪鎺?*锛坢[i][3] 瀵逛豢灏勭煩闃垫亽涓?0锛夛紝妯″瀷鍋滅暀鍦?
+				// 鏈钩绉荤殑灞€閮ㄥ潗鏍囩郴閲屻€傝〃鐜版瀬鍏锋楠楁€э細BLAS/TLAS 鍏ㄩ儴鏋勫缓鎴愬姛銆?
+				// Debug Layer 闆舵姤閿欍€丏ispatchRays 鐓у父鎻愪氦銆丷ayGen 涔熺‘瀹炲湪鍐?UAV
+				// 锛堟暣灞忔槸 miss 鑳屾櫙鑹诧級锛屼絾鎵€鏈夊皠绾块兘鎵撲笉鍒版ā鍨?鈥斺€?鍥犱负妯″瀷
+				// 鏍规湰涓嶅湪鐩告満鐪嬬殑閭ｄ釜浣嶇疆锛堝疄娴嬭俯杩囷紝鎺掓煡浜嗗緢涔咃級銆?
 				// ------------------------------------------------------------
 				desc.Transform[0][0] = rows.m[0][0];
 				desc.Transform[0][1] = rows.m[1][0];
@@ -543,11 +581,11 @@ void Renderer::RayTracing::RaytracingScene::UpdateInstances(
 				desc.Transform[2][2] = rows.m[2][2];
 				desc.Transform[2][3] = rows.m[3][2];
 
-				desc.InstanceID = cursor;             // == instanceData 的下标
+				desc.InstanceID = cursor;             // == instanceData 鐨勪笅鏍?
 				desc.InstanceMask = 0xFF;
 				desc.InstanceContributionToHitGroupIndex = 0;
-				// 双面：CULL_DISABLE。命中着色器里已按入射方向翻转法线，
-				// 因此从背面看也是同一种着色结果，不会出现整片死黑。
+				// 鍙岄潰锛欳ULL_DISABLE銆傚懡涓潃鑹插櫒閲屽凡鎸夊叆灏勬柟鍚戠炕杞硶绾匡紝
+				// 鍥犳浠庤儗闈㈢湅涔熸槸鍚屼竴绉嶇潃鑹茬粨鏋滐紝涓嶄細鍑虹幇鏁寸墖姝婚粦銆?
 				desc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
 				desc.AccelerationStructure = m_BlasBuffers[cursor]->GetGpuVirtualAddress();
 
@@ -565,26 +603,23 @@ void Renderer::RayTracing::RaytracingScene::UpdateInstances(
 	if (descs.empty())
 		return;
 
-	// instance desc 走 UPLOAD 堆：GPU 只读、CPU 每帧改写，
-	// 用 UPLOAD 堆可以完全不碰状态转换（对它发 Transition 会触发 Debug Layer #741）。
+	// [TD-04b / 娑堥櫎璺ㄥ抚鎸佷箙 UploadBuffer 瑕嗗啓]
+	// 姣忓抚浣跨敤 CommandContext::ReserveUploadMemory 浠?2 MiB UPLOAD 绾挎€ч〉鍒嗛厤鏈鏋勫缓涓撶敤鐨?
+	// InstanceDescs锛堥粯璁?256B 瀵归綈锛屾弧瓒?D3D12_RAYTRACING_INSTANCE_DESCS_BYTE_ALIGNMENT = 16锛夛紝
+	// 椤电敓鍛藉懆鏈熷彈鍛戒护鍒楄〃鎻愪氦 Fence 淇濇姢锛岀粷涓嶄細瑕嗗啓涓婁竴甯у湪閫?TLAS Build 姝ｅ湪璇诲彇鐨勬弿杩扮銆?
 	const uint32_t bytes = (uint32_t)(descs.size() * sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
-	if (m_InstanceDescsUpload.GetBufferSize() != bytes)
-		m_InstanceDescsUpload.Create(L"Raytracing Instance Descs", bytes);
+	DynAlloc descUpload = gfxContext.ReserveUploadMemory(bytes);
+	std::memcpy(descUpload.DataPtr, descs.data(), bytes);
 
-	void* mapped = m_InstanceDescsUpload.Map();
-	memcpy(mapped, descs.data(), bytes);
-	m_InstanceDescsUpload.Unmap(0, bytes);
-
-	RebuildTopLevel(gfxContext);
+	RebuildTopLevel(gfxContext, descUpload.GpuAddress, static_cast<uint32_t>(descs.size()));
 }
 
-void Renderer::RayTracing::RaytracingScene::RebuildTopLevel(GraphicsContext& gfxContext)
+void Renderer::RayTracing::RaytracingScene::RebuildTopLevel(
+	GraphicsContext& gfxContext,
+	D3D12_GPU_VIRTUAL_ADDRESS instanceDescsGpuAddress,
+	uint32_t instanceCount)
 {
-	if (g_DeviceDXR == nullptr || m_BlasBuffers.empty())
-		return;
-
-	const uint32_t instanceCount = (uint32_t)(m_InstanceDescsUpload.GetBufferSize() / sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
-	if (instanceCount == 0)
+	if (g_DeviceDXR == nullptr || m_BlasBuffers.empty() || instanceCount == 0 || instanceDescsGpuAddress == 0)
 		return;
 
 	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
@@ -592,50 +627,63 @@ void Renderer::RayTracing::RaytracingScene::RebuildTopLevel(GraphicsContext& gfx
 	inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
 	inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
 	inputs.NumDescs = instanceCount;
-	inputs.InstanceDescs = m_InstanceDescsUpload.GetGpuVirtualAddress();
+	inputs.InstanceDescs = instanceDescsGpuAddress;
 
 	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
 	g_DeviceDXR->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
 
-	// TLAS 结果缓冲尺寸变了就重建（第一帧或实例数变化）。
+	// TLAS 缁撴灉缂撳啿灏哄鍙樹簡灏遍噸寤猴紙绗竴甯ф垨瀹炰緥鏁板彉鍖栵級銆?
 	if (m_TopLevel == nullptr || m_TopLevel->GetBufferSize() < info.ResultDataMaxSizeInBytes)
 	{
+		if (m_TopLevel != nullptr && m_TopLevelBuilt)
+			g_CommandManager.IdleGPU();
 		m_TopLevel = std::make_unique<RaytracingBuffer>();
 		m_TopLevel->CreateAccelerationStructure(L"Raytracing TLAS", info.ResultDataMaxSizeInBytes);
 		m_TopLevelBuilt = false;
 	}
 
-	// scratch 需要容纳 TLAS 那一段。BLAS 段已在 RebuildGeometry 时用完，
-	// 这里可以把 TLAS 段直接放在 0 号位置（两者不同时使用）。
-	const uint64_t tlasScratchSize = AlignUp64(info.ScratchDataSizeInBytes, kASByteAlignment);
-	if (m_Scratch == nullptr || m_Scratch->GetBufferSize() < tlasScratchSize)
+	// scratch 闇€瑕佸绾?TLAS 閭ｄ竴娈点€侭LAS 娈靛凡鍦?RebuildGeometry 鏃剁敤瀹岋紝
+	// 杩欓噷鍙互鎶?TLAS 娈电洿鎺ユ斁鍦?0 鍙蜂綅缃紙涓よ€呬笉鍚屾椂浣跨敤锛夈€?
+	// [TD-04a] 浣跨敤涓?BLAS 瀹屽叏鐙珛鐨?m_TlasScratch锛屼弗绂佸鐢?BLAS 鐨?m_Scratch锛?
+	// 鍚屽懡浠ゅ垪琛ㄥ唴 RebuildGeometry 鍒氬彂瀹?BLAS Build锛岄殢鍚?RebuildTopLevel 鑻ヨ鍐欐垨閲嶅缓
+	// m_Scratch 浼氶€犳垚鍐欏悗鍐欏啿绐佷箖鑷抽攢姣佸湪閫?Scratch锛圖ebug Layer #921锛夈€?
+	const uint64_t tlasScratchSize = AlignUp64((std::max)(static_cast<uint64_t>(info.ScratchDataSizeInBytes), static_cast<uint64_t>(256)), kASByteAlignment);
+	if (m_TlasScratch == nullptr || m_TlasScratch->GetBufferSize() < tlasScratchSize)
 	{
-		m_Scratch = std::make_unique<RaytracingBuffer>();
-		m_Scratch->Create(L"Raytracing Scratch", (uint32_t)tlasScratchSize, 1);
-		gfxContext.TransitionResource(*m_Scratch, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		if (m_TlasScratch != nullptr && m_TopLevelBuilt)
+			g_CommandManager.IdleGPU();
+		m_TlasScratch = std::make_unique<RaytracingBuffer>();
+		m_TlasScratch->Create(L"Raytracing TLAS Scratch", (uint32_t)tlasScratchSize, 1);
+		gfxContext.TransitionResource(*m_TlasScratch, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	}
 
-	// TLAS 被重建 / 重复构建 → 上一帧的 Build 或 DispatchRays 可能仍在读它。
-	// 这是路线图 D1「明确 AS 输出 buffer 的 UAV barrier」的落点。
-	// UAV barrier 是合法的（它不是「状态转换」，不触发 #526）。
+	// TLAS 琚噸寤?/ 閲嶅鏋勫缓 鈫?涓婁竴甯х殑 Build 鎴?DispatchRays 鍙兘浠嶅湪璇诲畠銆?
+	// 杩欐槸璺嚎鍥?D1銆屾槑纭?AS 杈撳嚭 buffer 鐨?UAV barrier銆嶇殑钀界偣銆?
+	// UAV barrier 鏄悎娉曠殑锛堝畠涓嶆槸銆岀姸鎬佽浆鎹€嶏紝涓嶈Е鍙?#526锛夈€?
 	if (m_TopLevelBuilt)
-		gfxContext.InsertUAVBarrier(*m_TopLevel, true);
+	{
+		gfxContext.InsertUAVBarrier(*m_TopLevel);
+		gfxContext.InsertUAVBarrier(*m_TlasScratch);
+	}
 
-	// 同样**没有** TransitionResource：TLAS 创建时即为 AS 状态。
+	// 鍚屾牱**娌℃湁** TransitionResource锛歍LAS 鍒涘缓鏃跺嵆涓?AS 鐘舵€併€?
 
 	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
 	buildDesc.Inputs = inputs;
-	buildDesc.ScratchAccelerationStructureData = m_Scratch->GetGpuVirtualAddress();
+	buildDesc.ScratchAccelerationStructureData = m_TlasScratch->GetGpuVirtualAddress();
 	buildDesc.DestAccelerationStructureData = m_TopLevel->GetGpuVirtualAddress();
 	buildDesc.SourceAccelerationStructureData = 0;
-	// 同 BLAS：Build 不会自动提交挂起的屏障（scratch 的 UNORDERED_ACCESS
-	// 转换、instance desc 的 COPY_DEST 等都可能还压在缓冲里）。
+	// 鍚?BLAS锛欱uild 涓嶄細鑷姩鎻愪氦鎸傝捣鐨勫睆闅滐紙scratch 鐨?UNORDERED_ACCESS
+	// 杞崲銆乮nstance desc 鐨?COPY_DEST 绛夐兘鍙兘杩樺帇鍦ㄧ紦鍐查噷锛夈€?
 	gfxContext.FlushResourceBarriers();
 	gfxContext.GetCommandList4()->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
 
+	// [TD-04a] TLAS 鏋勫缓瀹屾垚鍚庣珛鍒绘彃鍏?UAV 灞忛殰锛岀‘淇濋殢鍚?DispatchRays 璇诲埌宸叉彁浜ゅ畬鎴愮殑瀹屾暣 TLAS銆?
+	gfxContext.InsertUAVBarrier(*m_TopLevel, true);
+
 	m_TopLevelBuilt = true;
 
-	// DispatchRays 的尺寸在 Renderer 里每帧填，这里只保证地址正确。
+	// DispatchRays 鐨勫昂瀵稿湪 Renderer 閲屾瘡甯у～锛岃繖閲屽彧淇濊瘉鍦板潃姝ｇ‘銆?
 	m_DispatchRaysDesc.Width = 0;
 	m_DispatchRaysDesc.Height = 0;
 	m_DispatchRaysDesc.Depth = 1;
@@ -644,16 +692,16 @@ void Renderer::RayTracing::RaytracingScene::RebuildTopLevel(GraphicsContext& gfx
 // ============================================================================
 //  Shader Binding Table
 // ----------------------------------------------------------------------------
-//  布局（每 section 起点按 64 字节对齐，记录 32 字节）：
+//  甯冨眬锛堟瘡 section 璧风偣鎸?64 瀛楄妭瀵归綈锛岃褰?32 瀛楄妭锛夛細
 //    [0]   RayGeneration  32 B
-//    [64]  Miss[0]        32 B   ← 主射线 / 反射射线打空
-//    [96]  Miss[1]        32 B   ← 阴影射线打空（ShadowMiss）
+//    [64]  Miss[0]        32 B   鈫?涓诲皠绾?/ 鍙嶅皠灏勭嚎鎵撶┖
+//    [96]  Miss[1]        32 B   鈫?闃村奖灏勭嚎鎵撶┖锛圫hadowMiss锛?
 //    [128] HitGroup       32 B
-//  总 192 B。
+//  鎬?192 B銆?
 //
-//  注意 miss 表是**连续两条记录**：[kMissOffset, kMissOffset + 2*32)，
-//  SizeInBytes = 64、StrideInBytes = 32。TraceRay 的第 6 个实参
-//  MissShaderIndex 就是这张表的下标（0 → Miss，1 → ShadowMiss），顺序即契约。
+//  娉ㄦ剰 miss 琛ㄦ槸**杩炵画涓ゆ潯璁板綍**锛歔kMissOffset, kMissOffset + 2*32)锛?
+//  SizeInBytes = 64銆丼trideInBytes = 32銆俆raceRay 鐨勭 6 涓疄鍙?
+//  MissShaderIndex 灏辨槸杩欏紶琛ㄧ殑涓嬫爣锛? 鈫?Miss锛? 鈫?ShadowMiss锛夛紝椤哄簭鍗冲绾︺€?
 // ============================================================================
 bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	ID3D12StateObjectProperties* stateObjectProperties,
@@ -662,7 +710,7 @@ bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 {
 	if (stateObjectProperties == nullptr)
 	{
-		LOG_INFO(L"[DXR] BuildShaderBindingTable 失败：StateObjectProperties 为空\n");
+		LOG_INFO(L"[DXR] BuildShaderBindingTable 澶辫触锛歋tateObjectProperties 涓虹┖\n");
 		return false;
 	}
 
@@ -672,7 +720,9 @@ bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	constexpr uint32_t kHitGroupOffset = kMissOffset + kSbtSectionAlignment * 2; // 128
 	constexpr uint32_t kTotalBytes = kHitGroupOffset + kSbtSectionAlignment;     // 192
 
-	if (m_SbtUpload.GetBufferSize() != kTotalBytes)
+	// [TD-03b] 鍚屾妫€鏌?GetResource() == nullptr锛岄厤鍚?UploadBuffer::Destroy() 褰掗浂 m_BufferSize
+	// 褰诲簳鏉滅粷 DestroySceneBuffers() 鍚庝簩娆?BuildShaderBindingTable 璺宠繃閲嶅缓骞剁┖鎸囬拡 Map 宕╂簝銆?
+	if (m_SbtUpload.GetResource() == nullptr || m_SbtUpload.GetBufferSize() != kTotalBytes)
 		m_SbtUpload.Create(L"Raytracing SBT", kTotalBytes);
 
 	uint8_t* sbt = (uint8_t*)m_SbtUpload.Map();
@@ -681,7 +731,7 @@ bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	void* rayGenId = stateObjectProperties->GetShaderIdentifier(rayGenExport);
 	if (rayGenId == nullptr)
 	{
-		LOG_INFO(L"[DXR] SBT 失败：导出 %s 没有着色器标识符\n", rayGenExport);
+		LOG_INFO(L"[DXR] SBT 澶辫触锛氬鍑?%s 娌℃湁鐫€鑹插櫒鏍囪瘑绗n", rayGenExport);
 		m_SbtUpload.Unmap(0, kTotalBytes);
 		return false;
 	}
@@ -690,21 +740,21 @@ bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	void* missId = stateObjectProperties->GetShaderIdentifier(missExport);
 	if (missId == nullptr)
 	{
-		LOG_INFO(L"[DXR] SBT 失败：导出 %s 没有着色器标识符\n", missExport);
+		LOG_INFO(L"[DXR] SBT 澶辫触锛氬鍑?%s 娌℃湁鐫€鑹插櫒鏍囪瘑绗n", missExport);
 		m_SbtUpload.Unmap(0, kTotalBytes);
 		return false;
 	}
 	memcpy(sbt + kMissOffset, missId, kSbtRecordSize);
 
-	// 阴影射线专用的 miss。拿不到标识符意味着 State Object 的 Exports 里
-	// 漏了它 —— 这种情况下**不能**静默降级（例如把 index 1 也填成主 Miss），
-	// 因为主 Miss 的载荷类型是 RayPayload(32B)，被当 ShadowPayload(8B) 解释
-	// 会越界写。必须直接失败，让问题在启动日志里暴露。
+	// 闃村奖灏勭嚎涓撶敤鐨?miss銆傛嬁涓嶅埌鏍囪瘑绗︽剰鍛崇潃 State Object 鐨?Exports 閲?
+	// 婕忎簡瀹?鈥斺€?杩欑鎯呭喌涓?*涓嶈兘**闈欓粯闄嶇骇锛堜緥濡傛妸 index 1 涔熷～鎴愪富 Miss锛夛紝
+	// 鍥犱负涓?Miss 鐨勮浇鑽风被鍨嬫槸 RayPayload(32B)锛岃褰?ShadowPayload(8B) 瑙ｉ噴
+	// 浼氳秺鐣屽啓銆傚繀椤荤洿鎺ュけ璐ワ紝璁╅棶棰樺湪鍚姩鏃ュ織閲屾毚闇层€?
 	void* shadowMissId = stateObjectProperties->GetShaderIdentifier(shadowMissExport);
 	if (shadowMissId == nullptr)
 	{
 		LOG_INFO(L"[DXR] SBT 失败：导出 %s 没有着色器标识符"
-			L"（检查 RayTracingRenderer::BuildStateObject 的 desc.Exports）\n",
+			L"锛堟鏌?RayTracingRenderer::BuildStateObject 鐨?desc.Exports锛塡n",
 			shadowMissExport);
 		m_SbtUpload.Unmap(0, kTotalBytes);
 		return false;
@@ -714,7 +764,7 @@ bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	void* hitGroupId = stateObjectProperties->GetShaderIdentifier(hitGroupName);
 	if (hitGroupId == nullptr)
 	{
-		LOG_INFO(L"[DXR] SBT 失败：命中组 %s 没有着色器标识符\n", hitGroupName);
+		LOG_INFO(L"[DXR] SBT 澶辫触锛氬懡涓粍 %s 娌℃湁鐫€鑹插櫒鏍囪瘑绗n", hitGroupName);
 		m_SbtUpload.Unmap(0, kTotalBytes);
 		return false;
 	}
@@ -726,7 +776,7 @@ bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	m_DispatchRaysDesc.RayGenerationShaderRecord.StartAddress = base + kRayGenOffset;
 	m_DispatchRaysDesc.RayGenerationShaderRecord.SizeInBytes = kSbtRecordSize;
 	m_DispatchRaysDesc.MissShaderTable.StartAddress = base + kMissOffset;
-	m_DispatchRaysDesc.MissShaderTable.SizeInBytes = kSbtRecordSize * 2;   // 两条记录
+	m_DispatchRaysDesc.MissShaderTable.SizeInBytes = kSbtRecordSize * 2;   // 涓ゆ潯璁板綍
 	m_DispatchRaysDesc.MissShaderTable.StrideInBytes = kSbtRecordSize;
 	m_DispatchRaysDesc.HitGroupTable.StartAddress = base + kHitGroupOffset;
 	m_DispatchRaysDesc.HitGroupTable.SizeInBytes = kSbtRecordSize;
@@ -734,8 +784,8 @@ bool Renderer::RayTracing::RaytracingScene::BuildShaderBindingTable(
 	m_DispatchRaysDesc.CallableShaderTable = {};
 	m_DispatchRaysDesc.Depth = 1;
 
-	LOG_INFO(L"[DXR] SBT 构建完成：RayGen=%s Miss=%s ShadowMiss=%s HitGroup=%s "
-		L"记录=%u B，miss 表=2 条\n",
+	LOG_INFO(L"[DXR] SBT 鏋勫缓瀹屾垚锛歊ayGen=%s Miss=%s ShadowMiss=%s HitGroup=%s "
+		L"璁板綍=%u B锛宮iss 琛?2 鏉n",
 		rayGenExport, missExport, shadowMissExport, hitGroupName, kSbtRecordSize);
 	return true;
 }
@@ -752,10 +802,9 @@ void Renderer::RayTracing::RaytracingScene::DestroySceneBuffers()
 {
 	m_TopLevel.reset();
 	m_Scratch.reset();
+	m_TlasScratch.reset();
 	m_SceneGeometry.reset();
 	m_InstanceDataBuffer.reset();
-	m_InstanceDescsUpload.Destroy();
-	m_InstanceDataUpload.Destroy();
 	m_SbtUpload.Destroy();
 
 	m_DispatchRaysDesc = {};

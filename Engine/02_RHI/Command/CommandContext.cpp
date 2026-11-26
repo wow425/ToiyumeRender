@@ -18,8 +18,14 @@ using namespace Graphics;
 
 void ContextManager::DestroyAllContexts(void)
 {
+	// [TD-08b] 必须先清空空闲上下文队列再销毁对象池，否则二次 Init 会从 sm_AvailableContexts 弹出悬空指针。
+	std::lock_guard<std::mutex> LockGuard(sm_ContextAllocationMutex);
 	for (uint32_t i = 0; i < 4; ++i)
+	{
+		while (!sm_AvailableContexts[i].empty())
+			sm_AvailableContexts[i].pop();
 		sm_ContextPool[i].clear();
+	}
 }
 
 CommandContext* ContextManager::AllocateContext(D3D12_COMMAND_LIST_TYPE Type)
@@ -165,6 +171,7 @@ CommandContext::CommandContext(D3D12_COMMAND_LIST_TYPE Type) :
 	m_CurComputeRootSignature = nullptr;
 	m_CurPipelineState = nullptr;
 	m_NumBarriersToFlush = 0;
+	m_SetDescriptorHeapsCallCount = 0;
 }
 
 CommandContext::~CommandContext(void)
@@ -203,6 +210,7 @@ void CommandContext::Reset(void)
 	m_CurComputeRootSignature = nullptr;
 	m_CurPipelineState = nullptr;
 	m_NumBarriersToFlush = 0;
+	m_SetDescriptorHeapsCallCount = 0;
 
 	// ============================================================
 	// R3 修复：切换 Renderer 时的悬空描述符堆崩溃
@@ -247,7 +255,10 @@ void CommandContext::BindDescriptorHeaps(void)
 	}
 	// 一次性绑定
 	if (NonNullHeaps > 0)
+	{
 		m_CommandList->SetDescriptorHeaps(NonNullHeaps, HeapsToBind);
+		++m_SetDescriptorHeapsCallCount;
+	}
 }
 
 void GraphicsContext::SetRenderTargets(UINT NumRTVs, const D3D12_CPU_DESCRIPTOR_HANDLE RTVs[], D3D12_CPU_DESCRIPTOR_HANDLE DSV)
@@ -365,6 +376,12 @@ void GraphicsContext::ClearDepth(DepthBuffer& Target)
 	m_CommandList->ClearDepthStencilView(Target.GetDSV(), D3D12_CLEAR_FLAG_DEPTH, Target.GetClearDepth(), Target.GetClearStencil(), 0, nullptr);
 }
 
+void GraphicsContext::ClearDepthSlice(DepthBuffer& Target, uint32_t SliceIndex)
+{
+	FlushResourceBarriers();
+	m_CommandList->ClearDepthStencilView(Target.GetSliceDSV(SliceIndex), D3D12_CLEAR_FLAG_DEPTH, Target.GetClearDepth(), Target.GetClearStencil(), 0, nullptr);
+}
+
 void GraphicsContext::ClearStencil(DepthBuffer& Target)
 {
 	FlushResourceBarriers();
@@ -437,6 +454,13 @@ void CommandContext::TransitionResource(GpuResource& Resource, D3D12_RESOURCE_ST
 		return;
 	}
 
+	// [WP-3A / 契约 3] 若资源此前处于按需展开的子资源独立态，先逐子资源收敛回统一 NewState
+	if (!Resource.m_SubresourceStates.empty())
+	{
+		TransitionSubresource(Resource, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, NewState, FlushImmediate);
+		return;
+	}
+
 	D3D12_RESOURCE_STATES OldState = Resource.m_UsageState;
 	// 若为计算命令列表，则验证类型是否合法
 	if (m_Type == D3D12_COMMAND_LIST_TYPE_COMPUTE) // &按位与，同1为1
@@ -473,6 +497,105 @@ void CommandContext::TransitionResource(GpuResource& Resource, D3D12_RESOURCE_ST
 
 	if (FlushImmediate || m_NumBarriersToFlush == 16) // 是否提交屏障数组
 		FlushResourceBarriers();
+}
+
+void CommandContext::TransitionSubresource(GpuResource& Resource, uint32_t Subresource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate)
+{
+	if (Resource.GetResource() == nullptr)
+		return;
+
+	const D3D12_HEAP_TYPE heapType = Resource.GetHeapType();
+	if (heapType == D3D12_HEAP_TYPE_UPLOAD || heapType == D3D12_HEAP_TYPE_READBACK)
+	{
+		Resource.m_UsageState = (heapType == D3D12_HEAP_TYPE_UPLOAD)
+			? D3D12_RESOURCE_STATE_GENERIC_READ
+			: D3D12_RESOURCE_STATE_COPY_DEST;
+		Resource.m_TransitioningState = (D3D12_RESOURCE_STATES)-1;
+		Resource.m_SubresourceStates.clear();
+		return;
+	}
+
+	// 路径 1：全资源转换（ALL_SUBRESOURCES）
+	if (Subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES)
+	{
+		if (Resource.m_SubresourceStates.empty())
+		{
+			TransitionResource(Resource, NewState, FlushImmediate);
+			return;
+		}
+
+		// 将所有偏离目标态的子资源逐个转换到 NewState，随后收敛回标量快速路径
+		for (uint32_t sub = 0; sub < static_cast<uint32_t>(Resource.m_SubresourceStates.size()); ++sub)
+		{
+			const D3D12_RESOURCE_STATES oldSub = Resource.m_SubresourceStates[sub];
+			if (oldSub != NewState)
+			{
+				if (m_NumBarriersToFlush == 16)
+					FlushResourceBarriers();
+				D3D12_RESOURCE_BARRIER& b = m_ResourceBarrierBuffer[m_NumBarriersToFlush++];
+				b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+				b.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+				b.Transition.pResource = Resource.GetResource();
+				b.Transition.Subresource = sub;
+				b.Transition.StateBefore = oldSub;
+				b.Transition.StateAfter = NewState;
+			}
+		}
+		Resource.m_SubresourceStates.clear();
+		Resource.m_UsageState = NewState;
+		Resource.m_TransitioningState = (D3D12_RESOURCE_STATES)-1;
+
+		if (FlushImmediate || m_NumBarriersToFlush == 16)
+			FlushResourceBarriers();
+		return;
+	}
+
+	// 路径 2：单子资源转换 —— 首次命中时按实际 MipLevels * ArraySize 懒展开状态表
+	if (Resource.m_SubresourceStates.empty())
+	{
+		const D3D12_RESOURCE_DESC desc = Resource.GetResource()->GetDesc();
+		const uint32_t arraySize = (desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D)
+			? 1u : static_cast<uint32_t>(desc.DepthOrArraySize);
+		const uint32_t mipLevels = (desc.MipLevels == 0) ? 1u : static_cast<uint32_t>(desc.MipLevels);
+		const uint32_t totalSubs = mipLevels * arraySize;
+		Resource.m_SubresourceStates.assign(totalSubs > 0 ? totalSubs : 1u, Resource.m_UsageState);
+	}
+
+	if (Subresource >= static_cast<uint32_t>(Resource.m_SubresourceStates.size()))
+	{
+		LOG_ERROR(L"[CommandContext] TransitionSubresource 越界：sub=%u >= total=%zu\n",
+			Subresource, Resource.m_SubresourceStates.size());
+		return;
+	}
+
+	const D3D12_RESOURCE_STATES oldState = Resource.m_SubresourceStates[Subresource];
+	if (oldState != NewState)
+	{
+		if (m_NumBarriersToFlush == 16)
+			FlushResourceBarriers();
+		D3D12_RESOURCE_BARRIER& b = m_ResourceBarrierBuffer[m_NumBarriersToFlush++];
+		b.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		b.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		b.Transition.pResource = Resource.GetResource();
+		b.Transition.Subresource = Subresource;
+		b.Transition.StateBefore = oldState;
+		b.Transition.StateAfter = NewState;
+		Resource.m_SubresourceStates[Subresource] = NewState;
+	}
+	else if (NewState == D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+	{
+		InsertUAVBarrier(Resource, FlushImmediate);
+	}
+
+	if (FlushImmediate || m_NumBarriersToFlush == 16)
+		FlushResourceBarriers();
+}
+
+void CommandContext::InvalidateCachedPipelineState(void)
+{
+	m_CurGraphicsRootSignature = nullptr;
+	m_CurComputeRootSignature  = nullptr;
+	m_CurPipelineState         = nullptr;
 }
 
 void CommandContext::BeginResourceTransition(GpuResource& Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate)
@@ -512,7 +635,9 @@ void CommandContext::InsertUAVBarrier(GpuResource& Resource, bool FlushImmediate
 	BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 	BarrierDesc.UAV.pResource = Resource.GetResource();
 
-	if (FlushImmediate)
+	// [TD-04e / 16 槽屏障缓存不变量] 满 16 项必须立即自动 flush（与 TransitionResource 一致），
+	// 否则连续插入 >= 16 个 UAV 屏障（如多 BLAS 构建后同步）将越界写穿 m_ResourceBarrierBuffer[16]。
+	if (FlushImmediate || m_NumBarriersToFlush == 16)
 		FlushResourceBarriers();
 }
 
@@ -528,7 +653,8 @@ void CommandContext::InsertAliasBarrier(GpuResource& Before, GpuResource& After,
 	BarrierDesc.Aliasing.pResourceBefore = Before.GetResource();
 	BarrierDesc.Aliasing.pResourceAfter = After.GetResource();
 
-	if (FlushImmediate)
+	// [TD-04e] 满 16 槽自动 flush，防止越界。
+	if (FlushImmediate || m_NumBarriersToFlush == 16)
 		FlushResourceBarriers();
 }
 // 用BufferData填充Buffer

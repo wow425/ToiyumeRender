@@ -56,10 +56,11 @@ void DepthBuffer::CreateDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format)
 	DXGI_FORMAT stencilReadFormat = GetStencilFormat(Format);
 	if (stencilReadFormat != DXGI_FORMAT_UNKNOWN)
 	{
-		if (m_hDSV[2].ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+		if (!m_HasSeparateStencilDSV || m_hDSV[2].ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
 		{
 			m_hDSV[2] = Graphics::AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 			m_hDSV[3] = Graphics::AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+			m_HasSeparateStencilDSV = true;
 		}
 
 		dsvDesc.Flags = D3D12_DSV_FLAG_READ_ONLY_STENCIL;
@@ -70,6 +71,8 @@ void DepthBuffer::CreateDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format)
 	}
 	else
 	{
+		// [TD-03e] 无 Stencil 格式下 [2]/[3] 仅做只读视图别名，销毁时不重复 Free。
+		m_HasSeparateStencilDSV = false;
 		m_hDSV[2] = m_hDSV[0];
 		m_hDSV[3] = m_hDSV[1];
 	}
@@ -102,4 +105,59 @@ void DepthBuffer::CreateDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format)
 
 		Device->CreateShaderResourceView(Resource, &SRVDesc, m_hStencilSRV);
 	}
+}
+
+void DepthBuffer::CreateArray(const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t ArraySize,
+	DXGI_FORMAT Format, D3D12_GPU_VIRTUAL_ADDRESS VidMemPtr)
+{
+	ASSERT(ArraySize >= 1 && ArraySize <= kMaxArraySlices, "DepthBuffer::CreateArray ArraySize must be in [1, 4]");
+	const uint32_t clampedSlices = (ArraySize < 1) ? 1u : ((ArraySize > kMaxArraySlices) ? kMaxArraySlices : ArraySize);
+
+	D3D12_RESOURCE_DESC ResourceDesc = DescribeTex2D(Width, Height, clampedSlices, 1, Format, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+	ResourceDesc.SampleDesc.Count = 1;
+
+	D3D12_CLEAR_VALUE ClearValue = {};
+	ClearValue.Format = GetDSVFormat(Format);
+	ClearValue.DepthStencil.Depth = m_ClearDepth;
+	ClearValue.DepthStencil.Stencil = m_ClearStencil;
+
+	CreateTextureResource(Graphics::g_Device, Name, ResourceDesc, ClearValue, VidMemPtr);
+	CreateArrayDerivedViews(Graphics::g_Device, Format, clampedSlices);
+	m_format = Format;
+}
+
+void DepthBuffer::CreateArrayDerivedViews(ID3D12Device* Device, DXGI_FORMAT Format, uint32_t ArraySize)
+{
+	ID3D12Resource* Resource = m_pResource.Get();
+	m_SliceDSVCount = ArraySize;
+
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+	dsvDesc.Format = GetDSVFormat(Format);
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
+	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+	dsvDesc.Texture2DArray.MipSlice = 0;
+	dsvDesc.Texture2DArray.ArraySize = 1;
+
+	for (uint32_t slice = 0; slice < ArraySize; ++slice)
+	{
+		if (m_hSliceDSV[slice].ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+			m_hSliceDSV[slice] = Graphics::AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+		dsvDesc.Texture2DArray.FirstArraySlice = slice;
+		Device->CreateDepthStencilView(Resource, &dsvDesc, m_hSliceDSV[slice]);
+	}
+
+	if (m_hDepthSRV.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+		m_hDepthSRV = Graphics::AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Format = GetDepthFormat(Format);
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Texture2DArray.MostDetailedMip = 0;
+	srvDesc.Texture2DArray.MipLevels = 1;
+	srvDesc.Texture2DArray.FirstArraySlice = 0;
+	srvDesc.Texture2DArray.ArraySize = ArraySize;
+	srvDesc.Texture2DArray.PlaneSlice = 0;
+	srvDesc.Texture2DArray.ResourceMinLODClamp = 0.0f;
+	Device->CreateShaderResourceView(Resource, &srvDesc, m_hDepthSRV);
 }

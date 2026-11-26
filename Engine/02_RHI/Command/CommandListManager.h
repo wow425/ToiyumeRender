@@ -1,6 +1,7 @@
 #pragma once
 
 
+#include <atomic>
 #include <vector>
 #include <queue>
 #include <mutex>
@@ -30,7 +31,7 @@ public:
 	void WaitForIdle(void) { WaitForFence(IncrementFence()); }
 
 	ID3D12CommandQueue* GetCommandQueue() { return m_CommandQueue; }
-	uint64_t GetNexFenceValue() { return m_NextFenceValue; }
+	uint64_t GetNexFenceValue() { return m_NextFenceValue.load(std::memory_order_acquire); }
 	inline bool IsReady() { return m_CommandQueue != nullptr; }
 
 private:
@@ -49,8 +50,9 @@ private:
 
 	// Lifetime of these objects is managed by the descriptor cache
 	ID3D12Fence* m_pFence; // 围栏对象
-	uint64_t m_NextFenceValue; // 下一个值
-	uint64_t m_LastCompletedFenceValue; // 本地缓存的完成值
+	// [TD-04e] 围栏计数值改用 std::atomic<uint64_t>，消除跨线程无锁读取的数据竞争。
+	std::atomic<uint64_t> m_NextFenceValue; // 下一个值
+	std::atomic<uint64_t> m_LastCompletedFenceValue; // 本地缓存的完成值
 	HANDLE m_FenceEventHandle; // win32事件句柄
 };
 
@@ -94,12 +96,15 @@ public:
 	// CPU等待围栏值命中
 	void WaitForFence(uint64_t FenceValue);
 
-	// CPU挂起直至三大命令队列执行完毕，
+	// [TD-07a] CPU 挂起直至所有已就绪命令队列执行完毕；未初始化或已 Shutdown 的队列安全跳过。
 	void IdleGPU(void)
 	{
-		m_GraphicsQueue.WaitForIdle();
-		m_ComputeQueue.WaitForIdle();
-		m_CopyQueue.WaitForIdle();
+		if (m_GraphicsQueue.IsReady())
+			m_GraphicsQueue.WaitForIdle();
+		if (m_ComputeQueue.IsReady())
+			m_ComputeQueue.WaitForIdle();
+		if (m_CopyQueue.IsReady())
+			m_CopyQueue.WaitForIdle();
 	}
 private:
 

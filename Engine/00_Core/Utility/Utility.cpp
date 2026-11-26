@@ -15,12 +15,15 @@ void SIMDMemCopy(void* __restrict _Dest, const void* __restrict _Source, size_t 
 {
     ASSERT(Math::IsAligned(_Dest, 16));
     ASSERT(Math::IsAligned(_Source, 16));
+    if (NumQuadwords == 0)
+        return;
 
     __m128i* __restrict Dest = (__m128i * __restrict)_Dest;
     const __m128i* __restrict Source = (const __m128i * __restrict)_Source;
 
     // Discover how many quadwords precede a cache line boundary.  Copy them separately.
-    size_t InitialQuadwordCount = (4 - ((size_t)Source >> 4) & 3) & 3;
+    // [WP-1D / TD-05f] 显式加括号消除运算符优先级隐患，并在提前返回前补 _mm_sfence() 确保非临时存储可见。
+    size_t InitialQuadwordCount = (4 - (((size_t)Source >> 4) & 3)) & 3;
     if (InitialQuadwordCount > NumQuadwords)
         InitialQuadwordCount = NumQuadwords;
 
@@ -34,7 +37,10 @@ void SIMDMemCopy(void* __restrict _Dest, const void* __restrict _Source, size_t 
     }
 
     if (NumQuadwords == InitialQuadwordCount)
+    {
+        _mm_sfence();
         return;
+    }
 
     Dest += InitialQuadwordCount;
     Source += InitialQuadwordCount;
@@ -93,17 +99,33 @@ void SIMDMemCopy(void* __restrict _Dest, const void* __restrict _Source, size_t 
 void SIMDMemFill(void* __restrict _Dest, __m128 FillVector, size_t NumQuadwords)
 {
     ASSERT(Math::IsAligned(_Dest, 16));
+    if (NumQuadwords == 0)
+        return;
 
-    register const __m128i Source = _mm_castps_si128(FillVector);
+    // [WP-1D / TD-05f] 移除 C++17 已废弃的 register 关键字，并先计算对齐到 64B Cache Line 所需的
+    // 前导 quadword 数且按 NumQuadwords 夹紧，彻底消除小缓冲（NumQuadwords < 3）在 switch 穿透时的
+    // 越界写与 size_t 无符号下溢崩溃。
+    const __m128i Source = _mm_castps_si128(FillVector);
     __m128i* __restrict Dest = (__m128i * __restrict)_Dest;
 
-    switch (((size_t)Dest >> 4) & 3)
+    size_t InitialQuadwordCount = (4 - (((size_t)Dest >> 4) & 3)) & 3;
+    if (InitialQuadwordCount > NumQuadwords)
+        InitialQuadwordCount = NumQuadwords;
+
+    switch (InitialQuadwordCount)
     {
-    case 1: _mm_stream_si128(Dest++, Source); --NumQuadwords;	 // Fall through
-    case 2: _mm_stream_si128(Dest++, Source); --NumQuadwords;	 // Fall through
-    case 3: _mm_stream_si128(Dest++, Source); --NumQuadwords;	 // Fall through
+    case 3: _mm_stream_si128(Dest++, Source);	 // Fall through
+    case 2: _mm_stream_si128(Dest++, Source);	 // Fall through
+    case 1: _mm_stream_si128(Dest++, Source);	 // Fall through
     default:
         break;
+    }
+
+    NumQuadwords -= InitialQuadwordCount;
+    if (NumQuadwords == 0)
+    {
+        _mm_sfence();
+        return;
     }
 
     size_t WholeCacheLines = NumQuadwords >> 2;

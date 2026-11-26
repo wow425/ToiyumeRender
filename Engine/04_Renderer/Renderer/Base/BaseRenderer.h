@@ -20,6 +20,7 @@
 #include "04_Renderer/Pipeline/PipelineDesc.h"
 
 
+class ColorBuffer;
 class GraphicsContext;
 class DescriptorHeap;
 struct GlobalConstants;
@@ -40,11 +41,38 @@ namespace Scene
 
 }
 
+namespace Graphics
+{
+	struct GpuCaps;
+	class ShaderHotReloader;
+}
+
 namespace Renderer
 {
-	// 全局堆
-	extern DescriptorHeap s_TextureHeap;  // texture堆。存放CBV/SRV/UAV描述符堆
-	extern DescriptorHeap s_SamplerHeap;  // sampler堆
+	class GpuTimer;
+	struct PrimarySurfaceDesc;
+	class RenderServices;
+
+	// [WP-3A / 契约 2] 管线与可插拔算法准入报告（用于帧边界先备后切前的硬件与显存预检）
+	struct AlgorithmCapsReport
+	{
+		bool        Supported          = true;
+		std::string UnsupportedReason;
+		uint64_t    EstimatedVramBytes = 0;
+	};
+
+	// [WP-2B / TD-01d] 统一光追帧统计结构：上提至 Renderer 命名空间，
+	// 使宿主与 UI 通过 IPipeline::QueryRayTracingStats() 无 RTTI 读取统计，彻底消除 dynamic_cast。
+	struct RayTracingFrameStats
+	{
+		uint64_t PrimaryRays    = 0;
+		uint64_t ShadowRays     = 0;
+		uint64_t ReflectionRays = 0;
+		uint64_t TotalRays      = 0;
+		uint32_t TriangleCount  = 0;
+		uint32_t BlasCount      = 0;
+		uint32_t InstanceCount  = 0;
+	};
 
 	enum BatchType { kDefault, kShadows };
 	enum DrawPass { kZPass, kOpaque, kTransparent, kNumPasses };
@@ -67,6 +95,11 @@ namespace Renderer
 	{
 		uint32_t width = 0;
 		uint32_t height = 0;
+		// [WP-1B / TD-01c] 宿主注入的实例级渲染基础设施（持有 4 分区单可见堆、TextureManager、LightingSystem）。
+		// 若为 nullptr（独立旧 Demo），BaseRenderer 会自建一份独占 RenderServices 维持兼容。
+		RenderServices* services = nullptr;
+		// [WP-1B / TD-08a] 测试开关：强制模拟新 Renderer::Initialize() 返回 false，用于验收「先建新后替换」失败保底。
+		bool simulateInitFailure = false;
 	};
 
 	// R3：渲染参数的唯一 CPU 真源（定义见 04_Renderer/RenderParams.h）。
@@ -83,6 +116,9 @@ namespace Renderer
 		// R3：本帧要应用的渲染参数。nullptr 表示「沿用上一次应用的参数」，
 		// 这样三个旧 Demo 不改一行也能编译并保持原有画面。
 		const RenderParams* Params = nullptr;
+
+		// [WP-3A / TD-11a] 可选多区间 GPU 计时器：传入后 LinearPassList 自动为每个 Pass 打点计时
+		GpuTimer* Timer = nullptr;
 	};
 
 	enum class RendererFeature : uint32_t
@@ -183,7 +219,8 @@ namespace Renderer
 	class BaseRenderer
 	{
 	public:
-		virtual ~BaseRenderer() = default;
+		BaseRenderer();
+		virtual ~BaseRenderer();
 
 		virtual std::wstring GetName() const = 0;
 
@@ -198,11 +235,27 @@ namespace Renderer
 
 		virtual RendererFeature GetFeatures() const = 0;
 
-		// Runtime render-strategy entry: MeshSorter 在实际绘制时用 PipelineDesc
-		// 让具体 renderer 解析为真实 GraphicsPSO 并绑定。
-		virtual const GraphicsPSO& GetPSO(const PipelineDesc& desc) = 0;
-		virtual void BindRenderState(GraphicsContext& context) = 0;
-		virtual void BindMaterial(GraphicsContext& context, const Scene::Material::Material& material) = 0;
+		// [WP-3A / 契约 2] 硬件能力与预计显存预检（默认支持、估算 0 字节；DXR/重资源管线必须覆写）
+		virtual AlgorithmCapsReport CheckSupport(const Graphics::GpuCaps& caps, uint32_t width, uint32_t height) const
+		{
+			(void)caps; (void)width; (void)height;
+			return AlgorithmCapsReport{};
+		}
+
+		// [WP-2B / TD-01d] 统一管线输出与可选统计查询接口：彻底消除宿主层 3 路 dynamic_cast。
+		virtual std::shared_ptr<ColorBuffer> GetOutputColorBuffer() const { return nullptr; }
+		virtual bool QueryRayTracingStats(RayTracingFrameStats& outStats) const { (void)outStats; return false; }
+		// [契约 4] 无 RTTI 统一主表面契约查询（Deferred=RasterGBuffer，DXR=DxrPrimaryRay，Forward=nullptr）
+		virtual const PrimarySurfaceDesc* GetPrimarySurface() const { return nullptr; }
+		// [WP-3B / 契约 7.2] 向开发期 ShaderHotReloader 注册本管线可热重载的着色器
+		virtual void RegisterHotReloadShaders(Graphics::ShaderHotReloader& reloader, RenderServices& services) { (void)reloader; (void)services; }
+		// [WP-3C / 契约 2] 清空时域历史缓冲（如 TAA Ping-Pong 历史），零 RTTI / 零 dynamic_cast
+		virtual void ResetHistory() {}
+
+		// 光栅策略兼容接口：给出默认空实现，非光栅管线（DXR）无需强制实现。
+		virtual const GraphicsPSO& GetPSO(const PipelineDesc& desc) { (void)desc; return m_DefaultPSO; }
+		virtual void BindRenderState(GraphicsContext& context) { (void)context; }
+		virtual void BindMaterial(GraphicsContext& context, const Scene::Material::Material& material) { (void)context; (void)material; }
 
 		bool IsInitialized() const noexcept { return m_Initialized; }
 
@@ -212,8 +265,15 @@ namespace Renderer
 		void ModelSort(const Scene::Model::ModelInstance& model);
 
 	protected:
+		bool AttachOrCreateServices(const RendererCreateDesc& desc);
+		void ReleaseServicesIfOwned();
+		void AdvanceOwnedServicesFrame();
+
 		RendererCreateDesc m_CreateDesc{};
 		bool m_Initialized = false;
+		RenderServices* m_Services = nullptr;
+		std::unique_ptr<RenderServices> m_OwnedServices;
+		uint64_t m_OwnedFrameCounter = 0;
 
 		GraphicsPSO m_DefaultPSO;
 
@@ -223,7 +283,9 @@ namespace Renderer
 
 		MeshSorter DefaultSorter{ BatchType::kDefault };
 	};
-	using RendererPtr = std::unique_ptr<BaseRenderer>; // ?
+	// [WP-2B] 薄管线抽象别名：BaseRenderer 演化为统一 IPipeline 接口
+	using IPipeline   = BaseRenderer;
+	using RendererPtr = std::unique_ptr<IPipeline>;
 };
 
 

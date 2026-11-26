@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "00_Core/PCH.h"
 
@@ -104,7 +104,8 @@ class RootSignature
 
 public:
 
-    RootSignature(UINT NumRootParams = 0, UINT NumStaticSamplers = 0) : m_Finalized(FALSE), m_NumParameters(NumRootParams)
+    RootSignature(UINT NumRootParams = 0, UINT NumStaticSamplers = 0)
+        : m_Signature(nullptr), m_Finalized(FALSE), m_NumParameters(NumRootParams)
     {
         Reset(NumRootParams, NumStaticSamplers);
     }
@@ -117,6 +118,11 @@ public:
 
     void Reset(UINT NumRootParams, UINT NumStaticSamplers = 0)
     {
+        // [TD-08b] 必须同时复位 m_Finalized 与 m_Signature，防止 RootSignature::DestroyAll() 之后
+        // 二次初始化时 Finalize() 因 m_Finalized==TRUE 早退而留下悬空 ID3D12RootSignature*。
+        m_Finalized = FALSE;
+        m_Signature = nullptr;
+
         if (NumRootParams > 0)
             m_ParamArray.reset(new RootParameter[NumRootParams]);
         else

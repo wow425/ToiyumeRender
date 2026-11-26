@@ -53,6 +53,17 @@ namespace Scene::Camera
 		void SetPosition(Math::Vector3 eye);
 		Math::Vector3 GetPosition()const { return mWorldPosition; }
 
+		// [GFL2 / UE5 Opt-In] 启用左手系视图构建 (+X_view=Right, +Y_view=Up, +Z_view=+Look; Up x Fwd = Right)
+		void SetLeftHanded(bool enable)
+		{
+			if (m_LeftHanded != enable)
+			{
+				m_LeftHanded = enable;
+				mViewDirty = true;
+			}
+		}
+		bool IsLeftHanded() const { return m_LeftHanded; }
+
 
 		// 更新相机矩阵
 		void UpdateCameraToWorld(void);
@@ -68,7 +79,8 @@ namespace Scene::Camera
 
 	protected:
 		// 右手坐标系下，观察空间的定义为：+X 指向右侧，+Y 指向上方，-Z 指向前方。
-		void SetCameraToWorldMatrix(const Math::Matrix4& CameraToWorldMat) { m_CameraToWorldMatrix = CameraToWorldMat; }
+		// [TD-09b] 全部 setter 必须置 mViewDirty = true，防止外部改完矩阵/位置后 Update() 早退。
+		void SetCameraToWorldMatrix(const Math::Matrix4& CameraToWorldMat) { m_CameraToWorldMatrix = CameraToWorldMat; mViewDirty = true; }
 
 		Math::Vector3 mWorldPosition = { 0.0f, 0.0f, 0.0f }; // 相机世界坐标位置
 		Math::Vector3 mRight = { 1.0f, 0.0f, 0.0f };   // 相机基向量
@@ -76,6 +88,8 @@ namespace Scene::Camera
 		Math::Vector3 mLook = { 0.0f, 0.0f, -1.0f };
 
 		bool mViewDirty = true;
+		bool m_HasUpdatedOnce = false; // [TD-09b] 首帧历史矩阵保护：首次 Update 时对齐当前帧而非拷贝未初始化矩阵
+		bool m_LeftHanded = false;     // [GFL2] UE5 Opt-In 左手系标志（默认 false 保持 RH 不变）
 
 		Math::Matrix4 m_CameraToWorldMatrix; // // 相机空间 -> 世界空间
 		Math::Matrix4 m_ViewMatrix;
@@ -93,7 +107,8 @@ namespace Scene::Camera
 
 		// 设置视锥体并生成投影矩阵
 		void SetPerspectiveMatrix(float verticalFovRadians, float aspectHeightOverWidth, float nearZClip, float farZClip);
-		void SetProjMatrix(const Math::Matrix4& ProjMat) { m_ProjMatrix = ProjMat; }
+		// [TD-09b] 修改投影矩阵必须置 mViewDirty = true，确保后续 Update() 重算 ViewProj/InvViewProj。
+		void SetProjMatrix(const Math::Matrix4& ProjMat) { m_ProjMatrix = ProjMat; mViewDirty = true; }
 		void SetFOV(float verticalFovInRadians) { m_VerticalFOV = verticalFovInRadians; UpdateProjMatrix(); }
 		void SetAspectRatio(float heightOverWidth) { m_AspectRatio = heightOverWidth; UpdateProjMatrix(); }
 		void SetZRange(float nearZ, float farZ) { m_NearClip = nearZ; m_FarClip = farZ; UpdateProjMatrix(); }
@@ -101,11 +116,22 @@ namespace Scene::Camera
 
 
 		float GetFOV() const { return m_VerticalFOV; }
+		float GetAspectRatio() const { return m_AspectRatio; }
 		float GetNearClip() const { return m_NearClip; }
 		float GetFarClip() const { return m_FarClip; }
 
 		// 设置反转Z
 		void ReverseZ(bool enable) { m_ReverseZ = enable; UpdateProjMatrix(); }
+		void SetLeftHanded(bool enable)
+		{
+			if (m_LeftHanded != enable)
+			{
+				m_LeftHanded = enable;
+				mViewDirty = true;
+				UpdateProjMatrix();
+			}
+		}
+		bool IsReverseZ() const { return m_ReverseZ; }
 		float GetClearDepth() const { return m_ReverseZ ? 0.0f : 1.0f; }        // 如果启用了反转 Z，清除值为 0.0（D3D12_COMPARISON_FUNC_GREATER_EQUAL）；否则为 1.0（D3D12_COMPARISON_FUNC_LESS）
 
 
@@ -124,6 +150,8 @@ namespace Scene::Camera
 
 	inline void BaseCamera::SetPosition(float x, float y, float z)
 	{
+		// [TD-09b] 3-float 重载同步置脏，与 Vector3 重载语义一致
+		mViewDirty = true;
 		mWorldPosition.SetX(x);
 		mWorldPosition.SetY(y);
 		mWorldPosition.SetZ(z);

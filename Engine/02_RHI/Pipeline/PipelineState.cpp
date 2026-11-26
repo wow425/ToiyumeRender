@@ -94,9 +94,12 @@ void GraphicsPSO::SetInputLayout(UINT NumElements, const D3D12_INPUT_ELEMENT_DES
 
     if (NumElements > 0)
     {
-        D3D12_INPUT_ELEMENT_DESC* NewElements = (D3D12_INPUT_ELEMENT_DESC*)malloc(sizeof(D3D12_INPUT_ELEMENT_DESC) * NumElements);
+        // [TD-05d] 严禁使用 malloc() 交给默认删除器的 shared_ptr：malloc 与 scalar delete 跨分配器
+        // 配对属于 C++ 未定义行为，在 Debug CRT 堆或 PageHeap 下释放 PSO 时会直接触发堆校验崩毁。
+        // 改用 new[] 配合 shared_ptr<const D3D12_INPUT_ELEMENT_DESC[]> 自动调用 delete[]。
+        D3D12_INPUT_ELEMENT_DESC* NewElements = new D3D12_INPUT_ELEMENT_DESC[NumElements];
         memcpy(NewElements, pInputElementDescs, NumElements * sizeof(D3D12_INPUT_ELEMENT_DESC));
-        m_InputLayouts.reset((const D3D12_INPUT_ELEMENT_DESC*)NewElements);
+        m_InputLayouts.reset(NewElements);
     }
     else
         m_InputLayouts = nullptr;
@@ -107,10 +110,24 @@ void GraphicsPSO::Finalize()
     // 需先确保根签名finalize
     m_PSODesc.pRootSignature = m_RootSignature->GetSignature();
     ASSERT(m_PSODesc.pRootSignature != nullptr);
-    // 计算PSO哈希值，绑定输入布局
+    // [TD-09c] 哈希除 m_PSODesc 外同步纳入 InputLayout 语义字符串内容与各阶段着色器字节码长度/哈希，
+    // 防止不同 SemanticName 字符串地址复用或同地址新字节码造成缓存误命中。
     m_PSODesc.InputLayout.pInputElementDescs = nullptr;
     size_t HashCode = Utility::HashState(&m_PSODesc);
-    HashCode = Utility::HashState(m_InputLayouts.get(), m_PSODesc.InputLayout.NumElements, HashCode);
+    for (UINT i = 0; i < m_PSODesc.InputLayout.NumElements; ++i)
+    {
+        const D3D12_INPUT_ELEMENT_DESC& elem = m_InputLayouts[i];
+        D3D12_INPUT_ELEMENT_DESC elemCopy = elem;
+        elemCopy.SemanticName = nullptr;
+        HashCode = Utility::HashState(&elemCopy, 1, HashCode);
+        if (elem.SemanticName != nullptr)
+        {
+            const size_t nameLen = strlen(elem.SemanticName);
+            HashCode = Utility::HashState(&nameLen, 1, HashCode);
+            for (size_t c = 0; c < nameLen; ++c)
+                HashCode = HashCode * 131 + static_cast<unsigned char>(elem.SemanticName[c]);
+        }
+    }
     m_PSODesc.InputLayout.pInputElementDescs = m_InputLayouts.get();
 
 

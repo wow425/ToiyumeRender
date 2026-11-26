@@ -10,6 +10,8 @@
 #include "04_Renderer/RenderParams.h"
 
 #include <DirectXMath.h>
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 
 using namespace Math;
@@ -35,23 +37,47 @@ namespace
 	// 保证 HLSL cbuffer Light 与 C++ 结构不会各自漂移。
 	void PackParams(const Renderer::RenderParams& p, Scene::LightingSystem::LightData& out)
 	{
+		// [WP-3A / TD-06g] 守卫退化/非有限光照参数，防止着色器 normalize(0) 或除零产生 NaN 黑斑；
+		// 对常规合法参数原样透传（不改写 SunDirection 长度），保证既有 Golden 基线 0 像素差。
+		float sunDx = p.SunDirection[0];
+		float sunDy = p.SunDirection[1];
+		float sunDz = p.SunDirection[2];
+		const float sunLenSq = sunDx * sunDx + sunDy * sunDy + sunDz * sunDz;
+		if (!std::isfinite(sunLenSq) || sunLenSq < 1e-12f)
+		{
+			sunDx = 0.3f; sunDy = -1.0f; sunDz = -0.5f;
+		}
+
+		const auto SanitizeNonNeg = [](float v, float fallback) -> float {
+			return (std::isfinite(v) && v >= 0.0f) ? v : fallback;
+		};
+		const float sunIntensity   = SanitizeNonNeg(p.SunIntensity, 0.0f);
+		const float pointIntensity = SanitizeNonNeg(p.PointLightIntensity, 0.0f);
+		const float pointRange     = (std::isfinite(p.PointLightRange) && p.PointLightRange > 1e-3f) ? p.PointLightRange : 1e-3f;
+		const float exposure       = SanitizeNonNeg(p.Exposure, 1.0f);
+		const float iblIntensity   = SanitizeNonNeg(p.IBLIntensity, 0.0f);
+
 		out.DirectionIntensity = DirectX::XMFLOAT4(
-			p.SunDirection[0], p.SunDirection[1], p.SunDirection[2],
-			p.EnableSunLight ? p.SunIntensity : 0.0f);
+			sunDx, sunDy, sunDz,
+			p.EnableSunLight ? sunIntensity : 0.0f);
 
 		out.DirectionalColor = DirectX::XMFLOAT4(
-			p.SunColor[0], p.SunColor[1], p.SunColor[2], 0.0f);
+			SanitizeNonNeg(p.SunColor[0], 0.0f),
+			SanitizeNonNeg(p.SunColor[1], 0.0f),
+			SanitizeNonNeg(p.SunColor[2], 0.0f), 0.0f);
 
 		out.PointLightPositionRange = DirectX::XMFLOAT4(
 			p.PointLightPosition[0], p.PointLightPosition[1], p.PointLightPosition[2],
-			p.PointLightRange);
+			pointRange);
 
 		out.PointLightColorIntensity = DirectX::XMFLOAT4(
-			p.PointLightColor[0], p.PointLightColor[1], p.PointLightColor[2],
-			p.EnablePointLight ? p.PointLightIntensity : 0.0f);
+			SanitizeNonNeg(p.PointLightColor[0], 0.0f),
+			SanitizeNonNeg(p.PointLightColor[1], 0.0f),
+			SanitizeNonNeg(p.PointLightColor[2], 0.0f),
+			p.EnablePointLight ? pointIntensity : 0.0f);
 
 		out.PostParams = DirectX::XMFLOAT4(
-			p.Exposure,
+			exposure,
 			p.EnableSunLight ? 1.0f : 0.0f,
 			p.EnablePointLight ? 1.0f : 0.0f,
 			p.EnableTonemap ? 1.0f : 0.0f);
@@ -59,7 +85,7 @@ namespace
 		out.DebugParams = DirectX::XMFLOAT4(
 			(float)(uint32_t)p.Debug,
 			p.EnableIBL ? 1.0f : 0.0f,
-			p.IBLIntensity,
+			iblIntensity,
 			0.0f);
 
 		// R4：输出色彩空间与 Specular IBL mip 上界。

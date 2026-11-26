@@ -45,13 +45,8 @@ float4 MainPS(VSOutput input) : SV_Target
     // 旧实现直接 return float4(color, 1.0)，把远大于 1.0 的 HDR radiance
     // 硬塞进 R8G8B8A8_UNORM，实测天空有 42.5% 的像素被截断成纯白 ——
     // 那不是"天空很亮"，而是"曝光链漏掉了天空"。
+    // [WP-2C / 契约 5] 已剥离内联 EncodeDisplayColor：SkyboxPass 直接输出场景线性 HDR (RGBA16F)，
+    // 与模型光照共用同一条下游 TonemapPass（Exposure -> ACES -> sRGB）显示编码链。
     float3 hdrColor = gSkybox.Sample(gLinearSampler, worldDir).rgb;
-
-    float3 displayColor = EncodeDisplayColor(
-        hdrColor,
-        gDisplayParams.x,
-        gDisplayParams.y > 0.5,
-        gDisplayParams.z > 0.5);
-
-    return float4(displayColor, 1.0f);
+    return float4(hdrColor, 1.0f);
 }

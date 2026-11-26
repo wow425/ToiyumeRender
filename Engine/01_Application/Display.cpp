@@ -42,6 +42,8 @@ namespace
 	float s_FrameTime = 0.0f;
 	uint64_t s_FrameIndex = 0;
 	int64_t s_FrameStartTick = 0;
+	// [TD-04d] 3 槽帧延迟围栏：保护 ImGui 3 帧 VB/IB 环与 UnifiedDescriptorHeap Zone B 3 帧瞬态环。
+	uint64_t s_FrameFenceValues[SWAP_CHAIN_BUFFER_COUNT] = { 0, 0, 0 };
 }
 
 namespace Graphics
@@ -162,8 +164,15 @@ void Display::Resize(uint32_t width, uint32_t height)
 		return;
 	}
 
+	// [TD-07d] Display::Initialize 尚未完成（例如 CreateWindow 阶段早到 WM_SIZE）或 RHI 已关闭时安全跳过
+	if (s_SwapChain1 == nullptr || !g_CommandManager.GetGraphicsQueue().IsReady())
+	{
+		LOG_TRACE(L"[Display] Resize skipped: swapchain or command queue not ready (%ux%u)\n", width, height);
+		return;
+	}
+
 	// 同一尺寸无需重建（ResizeBuffers 每次都重建代价不小）
-	if (width == g_DisplayWidth && height == g_DisplayHeight && s_SwapChain1 != nullptr)
+	if (width == g_DisplayWidth && height == g_DisplayHeight)
 	{
 		LOG_TRACE(L"[Display] Resize skipped, already %ux%u\n", width, height);
 		return;
@@ -171,6 +180,8 @@ void Display::Resize(uint32_t width, uint32_t height)
 
 	// 全部队列闲置，等待围栏值
 	g_CommandManager.IdleGPU();
+	for (uint32_t i = 0; i < SWAP_CHAIN_BUFFER_COUNT; ++i)
+		s_FrameFenceValues[i] = 0;
 
 	g_DisplayWidth = width;
 	g_DisplayHeight = height;
@@ -204,10 +215,16 @@ void Display::Resize(uint32_t width, uint32_t height)
 		SwapChainFormat, kSwapChainFlags);
 	if (FAILED(rbHr))
 	{
-		// 设备真正丢失时已经没有恢复余地，但至少要让用户看到明确原因，
-		// 而不是一个"莫名闪退"。
-		LOG_INFO(L"[Display] ResizeBuffers 失败 hr=0x%08X（%ux%u）\n",
-			(unsigned)rbHr, width, height);
+		if (rbHr == DXGI_ERROR_DEVICE_REMOVED && g_Device != nullptr)
+		{
+			LOG_ERROR(L"[Display][TD-07d] ResizeBuffers 失败 hr=0x%08X DeviceRemovedReason=0x%08X（%ux%u）\n",
+				(unsigned)rbHr, (unsigned)g_Device->GetDeviceRemovedReason(), width, height);
+		}
+		else
+		{
+			LOG_ERROR(L"[Display][TD-07d] ResizeBuffers 失败 hr=0x%08X（%ux%u）\n",
+				(unsigned)rbHr, width, height);
+		}
 		return;
 	}
 	// 为后台缓冲数组创建交换链资源
@@ -216,7 +233,12 @@ void Display::Resize(uint32_t width, uint32_t height)
 		ComPtr<ID3D12Resource> DisplayPlane;
 		ASSERT_SUCCEEDED(s_SwapChain1->GetBuffer(i, TY_IID_PPV_ARGS(&DisplayPlane)));
 		g_DisplayPlane[i].CreateFromSwapChain(L"Primary SwapChain Buffer", DisplayPlane.Detach());
+		s_FrameFenceValues[i] = 0;
 	}
+
+	// [TD-11b] Resize 耗时较长，重锚定计时避免恢复帧 dt 尖峰（保留 s_FrameIndex 连续递增）。
+	s_FrameTime = 0.0f;
+	s_FrameStartTick = SystemTime::GetCurrentTick();
 
 	// ============================================================
 	// R4.4：ResizeBuffers 后必须重新查询当前 backbuffer 索引
@@ -259,8 +281,11 @@ void Display::Initialize(void)
 {
 	// 创交换链
 	LOG_TRACE(L"[Boot] Display: create DXGIFactory (hWnd=%p)\n", GameCore::g_hWnd);
-	ASSERT(s_SwapChain1 == nullptr, "Graphics has already been initialized");
-	ASSERT_SUCCEEDED(CreateDXGIFactory2(0, TY_IID_PPV_ARGS(&g_DXGIFactory)));
+	ASSERT(s_SwapChain1 == nullptr, "Display has already been initialized");
+	if (g_DXGIFactory == nullptr)
+	{
+		ASSERT_SUCCEEDED(CreateDXGIFactory2(0, TY_IID_PPV_ARGS(&g_DXGIFactory)));
+	}
 	LOG_TRACE(L"[Boot] Display: factory OK, creating swapchain %ux%u\n", g_DisplayWidth, g_DisplayHeight);
 
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
@@ -300,7 +325,14 @@ void Display::Initialize(void)
 		ComPtr<ID3D12Resource> DisplayPlane;
 		ASSERT_SUCCEEDED(s_SwapChain1->GetBuffer(i, TY_IID_PPV_ARGS(&DisplayPlane)));
 		g_DisplayPlane[i].CreateFromSwapChain(L"Primary SwapChain Buffer", DisplayPlane.Detach());
+		s_FrameFenceValues[i] = 0;
 	}
+
+	g_CurrentBuffer = s_SwapChain1->GetCurrentBackBufferIndex();
+	// [TD-11b] 初始化首帧计时锚点与帧时间，消除首帧 TimeBetweenTicks(0, now) 产生的数千秒 dt 尖峰。
+	s_FrameTime = 0.0f;
+	s_FrameIndex = 0;
+	s_FrameStartTick = SystemTime::GetCurrentTick();
 
 	// 配置封装根签名
 	// 最终 Present Pass用根签名（后处理→屏幕）
@@ -312,11 +344,32 @@ void Display::Initialize(void)
 
 void Display::Shutdown(void)
 {
-	s_SwapChain1->SetFullscreenState(FALSE, nullptr);
-	s_SwapChain1->Release();
+	// [TD-08b] 完整释放并复位交换链指针、输出引用与帧索引，确保同进程多轮 Init/Shutdown 无残留。
+	Display::SceneColorBuffer.reset();
+
+	if (s_SwapChain1 != nullptr)
+	{
+		s_SwapChain1->SetFullscreenState(FALSE, nullptr);
+		s_SwapChain1->Release();
+		s_SwapChain1 = nullptr;
+	}
 
 	for (UINT i = 0; i < SWAP_CHAIN_BUFFER_COUNT; ++i)
+	{
 		g_DisplayPlane[i].Destroy();
+		s_FrameFenceValues[i] = 0;
+	}
+
+	g_CurrentBuffer = 0;
+	s_FrameTime = 0.0f;
+	s_FrameStartTick = 0;
+}
+
+void Display::ResetFrameTimer(void)
+{
+	// [TD-11b] 最小化恢复或长时间阻塞后重锚定时钟，防止 dt 出现数十秒尖峰把相机甩飞。
+	s_FrameStartTick = SystemTime::GetCurrentTick();
+	s_FrameTime = 0.0f;
 }
 
 // 原本是最终 Present Pass（后处理→屏幕）
@@ -361,10 +414,31 @@ void Display::Present()
 	// R2：Present 之后向 DXGI 查询下一次可写的 backbuffer 索引。
 	// 不再手工 "+1 % N" —— FLIP 模型下索引由 DXGI 管理，
 	// 手工递推可能与 DXGI 的真实状态脱节。
-	g_CurrentBuffer = s_SwapChain1->GetCurrentBackBufferIndex();
+	// [TD-04d] 3 槽帧延迟节流：记录刚 Present 槽位的 Direct Fence，切至下一槽并等待其历史 Fence 完成，
+	// 保证 GPU 最多滞后 CPU <= 2 帧（3 槽安全），同步保护 ImGui VB/IB 环与 Zone B 3 帧瞬态环。
+	const UINT presentedSlot = g_CurrentBuffer;
+	if (g_CommandManager.GetGraphicsQueue().IsReady())
+	{
+		s_FrameFenceValues[presentedSlot] = g_CommandManager.GetGraphicsQueue().IncrementFence();
+	}
 
-	int64_t CurrentTick = SystemTime::GetCurrentTick();
-	s_FrameTime = (float)SystemTime::TimeBetweenTicks(s_FrameStartTick, CurrentTick);
+	g_CurrentBuffer = s_SwapChain1->GetCurrentBackBufferIndex();
+	if (s_FrameFenceValues[g_CurrentBuffer] != 0 && g_CommandManager.GetGraphicsQueue().IsReady())
+	{
+		g_CommandManager.WaitForFence(s_FrameFenceValues[g_CurrentBuffer]);
+	}
+
+	// [TD-11b] 首帧或重锚定后确保 dt 合法并钳制上限至 0.1s，彻底消除首帧/最小化恢复 dt 尖峰。
+	const int64_t CurrentTick = SystemTime::GetCurrentTick();
+	if (s_FrameStartTick == 0)
+	{
+		s_FrameTime = 0.0f;
+	}
+	else
+	{
+		const float rawDt = (float)SystemTime::TimeBetweenTicks(s_FrameStartTick, CurrentTick);
+		s_FrameTime = (rawDt < 0.0f) ? 0.0f : (rawDt > 0.1f ? 0.1f : rawDt);
+	}
 	s_FrameStartTick = CurrentTick;
 
 	++s_FrameIndex;

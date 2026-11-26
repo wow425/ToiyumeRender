@@ -50,13 +50,11 @@ namespace GameCore
 		s_WndProcHook = hook;
 	}
 
-	void InitializeApplication(IGameApp& game)
+	bool InitializeApplication(IGameApp& game)
 	{
 		// ============================================================
 		// R0.2：资源根解析必须在任何资产加载之前完成。
-		// 顺序说明：命令行 → AssetsRoot → 图形设备 → 应用 Startup()。
-		// 之所以放在 Graphics::Initialize 之前，是因为 Startup() 里第一件事
-		// 往往就是加载模型，而解析资源根不依赖任何 GPU 资源。
+		// 顺序说明：命令行 → AssetsRoot → 图形设备 → Display → 应用 Startup()。
 		// ============================================================
 		CommandLineArgs::InitializeFromSystemCommandLine();
 		if (!Asset::Initialize())
@@ -65,19 +63,28 @@ namespace GameCore
 		}
 		Asset::LogResolution();
 
-		Graphics::Initialize(game.RequiresRaytracingSupport());// 图形模块初始化
+		// [TD-01a / TD-07a] Graphics::Initialize 仅初始化纯 RHI，不再反向调用 Display::Initialize。
+		if (!Graphics::Initialize(game.RequiresRaytracingSupport()))
+		{
+			LOG_ERROR(L"[Boot] 致命：Graphics::Initialize 失败，中止启动。\n");
+			return false;
+		}
 		LOG_TRACE(L"[Boot] Graphics::Initialize returned\n");
+
+		// [TD-01a / 契约 2 启动顺序] 1. Graphics::Initialize -> 2. Display::Initialize -> 3. App::Startup
+		Display::Initialize();
+		LOG_TRACE(L"[Boot] Display::Initialize done\n");
 
 		SystemTime::Initialize();// 计时器模块
 		LOG_TRACE(L"[Boot] SystemTime::Initialize done\n");
 
-		GameInput::Initialize();// IO输入还没啃
+		GameInput::Initialize();// IO输入
 		LOG_TRACE(L"[Boot] GameInput::Initialize done\n");
-		//EngineTuning::Initialize();
 
 		LOG_INFO(L"[Boot] calling game.Startup()\n");
 		game.Startup();
 		LOG_INFO(L"[Boot] game.Startup() returned\n");
+		return true;
 	}
 
 	bool UpdateApplication(IGameApp& game)
@@ -134,6 +141,18 @@ namespace GameCore
 			}
 
 			Display::Present();
+
+			// [WP-1A / 契约 1：帧尾唯一合法盖章点]
+			// 此刻 RenderScene、ImGui UI 与 Display::Present（含 PreparePresentSDR Copy）
+			// 均已全部提交至 DIRECT 队列！在此为本帧入队的待释放 COM/描述符/PSO 统一盖上
+			// EndOfFrameFence，并回收已越过 GPU 完成线的历史队列项。
+			// 严禁提前在 RenderScene 末尾盖章，否则 UI 或 Present Copy 仍可能引用被释放资源。
+			if (g_CommandManager.GetGraphicsQueue().IsReady())
+			{
+				Graphics::FrameFenceStamp endOfFrameStamp = {};
+				endOfFrameStamp.DirectFence = g_CommandManager.GetGraphicsQueue().IncrementFence();
+				Graphics::GetDeferredReleaseQueue().FlushFrame(endOfFrameStamp);
+			}
 		}
 
 
@@ -142,11 +161,19 @@ namespace GameCore
 
 	void TerminateApplication(IGameApp& game)
 	{
+		// [契约 2 严格反序关闭]
+		// 1. IdleGPU -> 2. game.Cleanup (含 UI/Renderer/Model) -> 3. GameInput ->
+		// 4. BufferManager::DestroyAll -> 5. DeferredReleaseQueue::DrainAll -> 6. Display::Shutdown
+		// 最后由调用方执行 7. Graphics::Shutdown（排空 RHI 并销毁 DescriptorAllocator）。
 		g_CommandManager.IdleGPU();
 
 		game.Cleanup();
 
 		GameInput::Shutdown();
+
+		BufferManager::DestroyAll();
+		Graphics::GetDeferredReleaseQueue().DrainAll();
+		Display::Shutdown();
 	}
 
 	// Default implementation to be overridden by the application
@@ -199,10 +226,43 @@ namespace GameCore
 		// ===========================================================================================================
 		// ===========================================================================================================
 		// ===========================================================================================================   
-		InitializeApplication(app);  // 初始化应用
+		// [WP-1A / L4-L5 门禁] -ReinitTest：同进程内执行 3 轮完整 Initialize -> Render 2 帧 -> Shutdown，
+		// 每轮由 Graphics::Shutdown 输出 ReportLiveDeviceObjects 与 final Device::Release refcount=0，
+		// 实证无静态池残留、无悬空句柄、无 COM 显存泄漏。
+		CommandLineArgs::InitializeFromSystemCommandLine();
+		if (CommandLineArgs::HasFlag(L"ReinitTest"))
+		{
+			LOG_INFO(L"[ReinitTest] Starting 3-round in-process Init/Shutdown leak verification...\n");
+			for (uint32_t round = 1; round <= 3; ++round)
+			{
+				LOG_INFO(L"[ReinitTest] === Round %u/3 BEGIN ===\n", round);
+				if (!InitializeApplication(app))
+				{
+					LOG_ERROR(L"[ReinitTest] Round %u InitializeApplication FAILED\n", round);
+					return 1;
+				}
+				for (uint32_t f = 0; f < 2; ++f)
+				{
+					UpdateApplication(app);
+				}
+				TerminateApplication(app);
+				Graphics::Shutdown();
+				LOG_INFO(L"[ReinitTest] === Round %u/3 END ===\n", round);
+			}
+			LOG_INFO(L"[ReinitTest] PASS: all 3 rounds completed cleanly\n");
+			return 0;
+		}
+
+		if (!InitializeApplication(app))  // 初始化应用
+		{
+			Graphics::Shutdown();
+			return 1;
+		}
 
 		ShowWindow(g_hWnd, nCmdShow/*SW_SHOWDEFAULT*/);
 
+		// [TD-10a] 透传 WM_QUIT 的退出码（PostQuitMessage(code)），确保自动化压测失败返回非零退出码。
+		int exitCode = 0;
 		do
 		{
 			MSG msg = {};
@@ -213,7 +273,10 @@ namespace GameCore
 				DispatchMessage(&msg);
 
 				if (msg.message == WM_QUIT)
+				{
+					exitCode = static_cast<int>(msg.wParam);
 					done = true;
+				}
 			}
 			if (done)
 				break;
@@ -221,7 +284,7 @@ namespace GameCore
 
 		TerminateApplication(app); // 终止应用
 		Graphics::Shutdown(); // 没完成
-		return 0;
+		return exitCode;
 	}
 
 
@@ -263,7 +326,14 @@ namespace GameCore
 			}
 			else
 			{
+				const bool wasSuspended = gIsSupending;
 				gIsSupending = false;
+				if (wasSuspended)
+				{
+					// [TD-11b] 从最小化挂起恢复时重置帧计时锚点，避免挂起期间累计耗时形成 dt 尖峰。
+					Display::ResetFrameTimer();
+					LOG_INFO(L"[Window] Restored from minimize, reset frame timer\n");
+				}
 				Display::Resize((UINT)(UINT64)lParam & 0xFFFF, (UINT)(UINT64)lParam >> 16);
 			}
 			break;

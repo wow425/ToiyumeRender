@@ -415,10 +415,14 @@ vcpkg/
 /out/
 /out
 
-# 3) 第三方源码与二进制：imgui 源码 + PIX 头文件/lib。
+# 3) 第三方源码与二进制：旧的手工放置的 imgui 源码 / PIX 头文件 / Agility SDK 裸拷贝。
 #    由开发者自行放置，不入库。
-/ThirdParty/
-/ThirdParty
+#    ⚠️ 例外：ThirdParty/vcpkg-overlays/ 是**构建必需资产**（自定义 directx12-agility port，
+#       钉 1.620.2 并保留 620 头），必须入库，否则全新克隆后 find_package 直接失败。
+#       因此先整体忽略，再用 ! 规则把 overlay 目录收回来（git 的 ! 无法救回已被父目录排除的
+#       子路径，所以这里改成"忽略 ThirdParty 下除 vcpkg-overlays 外的一切"）。
+/ThirdParty/*
+!/ThirdParty/vcpkg-overlays/
 
 # 4) vcpkg 依赖安装目录：由 vcpkg 按 vcpkg.json 重新解析，体积巨大。
 /vcpkg_installed/
@@ -431,3 +435,17 @@ vcpkg/
 .mnemon/
 # 根目录手工打包的 zip：临时归档，不入库。
 /*.zip
+
+# ============================================================
+# 严格白名单模式（仅上传 Engine/、Demos/ 与根 CMakeLists.txt）
+# ------------------------------------------------------------
+# 除 Engine/、Demos/、CMakeLists.txt（以及 .gitignore 自身）外，
+# 其余根目录文件与目录（docs/、Tests/、Assets/、ThirdParty/、out/、
+# AGENTS.md、CMakePresets.json、CppProperties.json、README.md 等）
+# 均在 Git 中屏蔽，不上传到 GitHub；本地文件保持原样照常使用。
+# ============================================================
+/*
+!/.gitignore
+!/CMakeLists.txt
+!/Engine/
+!/Demos/

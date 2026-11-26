@@ -79,6 +79,24 @@ void LinearAllocatorPageManager::FreeLargePages(uint64_t FenceValue, const vecto
     }
 }
 
+void LinearAllocatorPageManager::Destroy(void)
+{
+    // [TD-05e / TD-08b] 原实现仅调用 m_PagePool.clear()，漏掉两类致命残留：
+    //   1) m_DeletionQueue 中持有裸 new 出来的单次大页（未进入 m_PagePool），不 delete 会直接泄漏显存与 COM；
+    //   2) m_RetiredPagesQueue / m_AvailablePagesQueue 未清空，同进程二次 Init 时 RequestPage() 会弹出悬空指针！
+    lock_guard<mutex> LockGuard(m_Mutex);
+    while (!m_DeletionQueue.empty())
+    {
+        delete m_DeletionQueue.front().second;
+        m_DeletionQueue.pop();
+    }
+    while (!m_RetiredPagesQueue.empty())
+        m_RetiredPagesQueue.pop();
+    while (!m_AvailablePagesQueue.empty())
+        m_AvailablePagesQueue.pop();
+    m_PagePool.clear();
+}
+
 // 创建页面
 LinearAllocationPage* LinearAllocatorPageManager::CreateNewPage(size_t PageSize)
 {

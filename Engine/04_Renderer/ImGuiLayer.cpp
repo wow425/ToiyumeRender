@@ -11,6 +11,7 @@
 #include "02_RHI/Command/CommandContext.h"
 #include "02_RHI/Descriptor/DescriptorHeap.h"
 #include "02_RHI/Resource/ColorBuffer.h"
+#include "04_Renderer/UnifiedDescriptorHeap.h"
 
 #include <vector>
 
@@ -22,62 +23,74 @@ namespace Renderer::ImGuiLayer
 {
 	namespace
 	{
-		// 描述符堆容量。ImGui 自己只用 1 个字体 SRV，留出余量给以后往 UI 里贴图用。
+		// 回退私有堆容量（仅在未注入 UnifiedDescriptorHeap 时启用）。
 		constexpr uint32_t kSRVHeapCapacity = 64;
 
 		// 与引擎的帧资源数量解耦的固定值：ImGui DX12 后端会按它 new 一组每帧的
 		// 顶点/索引缓冲，只要不中途改就行。
 		constexpr int kNumFramesInFlight = 3;
 
-		// 本模块私有的 shader-visible CBV_SRV_UAV 堆，不复用 Renderer::s_TextureHeap。
-		DescriptorHeap g_SRVHeap;
+		// [WP-1B / 契约 1] 优先复用全局 4 分区单可见堆 Zone D [49152, 49408)，
+		// 彻底消除原 64 槽独立私有堆导致的 SetDescriptorHeaps 切堆与管线冲刷。
+		UnifiedDescriptorHeap* g_UnifiedHeap = nullptr;
 
-		// DescriptorHeap 只有 Alloc 没有 Free，这里自己记占用情况：true = 已被占用。
-		std::vector<bool> g_SRVSlotUsed;
+		// 兼容旧调用方（未传 unifiedHeap）的回退私有堆
+		DescriptorHeap g_FallbackSRVHeap;
+		std::vector<bool> g_FallbackSRVSlotUsed;
 
 		bool g_Initialized = false;
 
-		// 从空闲表里挑一个槽位，转成 ImGui 需要的 CPU/GPU 句柄。
-		// 注意这里不走 DescriptorHeap::Alloc：Alloc 只 bump 游标、归还后无法复用，
-		// 而 ImGui 在 InvalidateDeviceObjects/CreateDeviceObjects 里会反复申请/归还字体 SRV。
 		void AllocSRVDescriptor(ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE* outCpuHandle,
 			D3D12_GPU_DESCRIPTOR_HANDLE* outGpuHandle)
 		{
 			(void)info;
 
+			if (g_UnifiedHeap != nullptr && g_UnifiedHeap->IsInitialized())
+			{
+				const BindlessAllocation alloc = g_UnifiedHeap->AllocUI();
+				ASSERT(alloc.IsValid(), "ImGuiLayer Zone D 描述符槽已耗尽");
+				*outCpuHandle = alloc.Cpu;
+				*outGpuHandle = alloc.Gpu;
+				return;
+			}
+
 			for (uint32_t i = 0; i < kSRVHeapCapacity; ++i)
 			{
-				if (g_SRVSlotUsed[i])
+				if (g_FallbackSRVSlotUsed[i])
 					continue;
 
-				g_SRVSlotUsed[i] = true;
-				DescriptorHandle handle = g_SRVHeap[i];
+				g_FallbackSRVSlotUsed[i] = true;
+				DescriptorHandle handle = g_FallbackSRVHeap[i];
 				*outCpuHandle = handle;
 				*outGpuHandle = handle;
 				return;
 			}
 
-			// 走到这里说明容量算错了或者有槽位没归还，返回空句柄让后续断言炸出来。
 			ASSERT(false, "ImGuiLayer 描述符堆已满，请增大 kSRVHeapCapacity");
 			outCpuHandle->ptr = 0;
 			outGpuHandle->ptr = 0;
 		}
 
-		// 按 CPU 句柄反查槽位并归还。ImGui 传回来的句柄就是 AllocSRVDescriptor 发出去的那份。
 		void FreeSRVDescriptor(ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle,
 			D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle)
 		{
 			(void)info;
 			(void)gpuHandle;
 
+			if (g_UnifiedHeap != nullptr && g_UnifiedHeap->IsInitialized())
+			{
+				g_UnifiedHeap->FreeUI(cpuHandle);
+				return;
+			}
+
 			for (uint32_t i = 0; i < kSRVHeapCapacity; ++i)
 			{
-				DescriptorHandle handle = g_SRVHeap[i];
+				DescriptorHandle handle = g_FallbackSRVHeap[i];
 				if (handle.GetCpuPtr() != static_cast<size_t>(cpuHandle.ptr))
 					continue;
 
-				ASSERT(g_SRVSlotUsed[i], "ImGuiLayer 归还了一个未被占用的描述符槽位");
-				g_SRVSlotUsed[i] = false;
+				ASSERT(g_FallbackSRVSlotUsed[i], "ImGuiLayer 归还了一个未被占用的描述符槽位");
+				g_FallbackSRVSlotUsed[i] = false;
 				return;
 			}
 
@@ -85,7 +98,7 @@ namespace Renderer::ImGuiLayer
 		}
 	}
 
-	bool Initialize(void* hwnd)
+	bool Initialize(void* hwnd, UnifiedDescriptorHeap* unifiedHeap)
 	{
 		if (g_Initialized)
 		{
@@ -108,14 +121,28 @@ namespace Renderer::ImGuiLayer
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
 
-		// 先建自建堆：ImGui_ImplDX12_Init 内部就会调 SrvDescriptorAllocFn 要一个字体 SRV。
-		g_SRVHeap.Create(L"ImGuiLayer SRV Heap", D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kSRVHeapCapacity);
-		g_SRVSlotUsed.assign(kSRVHeapCapacity, false);
+		ID3D12DescriptorHeap* targetSrvHeap = nullptr;
+		if (unifiedHeap != nullptr && unifiedHeap->IsInitialized())
+		{
+			g_UnifiedHeap = unifiedHeap;
+			targetSrvHeap = unifiedHeap->GetCbvSrvUavHeap();
+			LOG_INFO(L"[ImGuiLayer] 已接入 UnifiedDescriptorHeap Zone D [%u, %u)\n",
+				UnifiedDescriptorHeap::kZoneDStart, UnifiedDescriptorHeap::kZoneDEnd);
+		}
+		else
+		{
+			g_UnifiedHeap = nullptr;
+			g_FallbackSRVHeap.Create(L"ImGuiLayer Fallback SRV Heap", D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kSRVHeapCapacity);
+			g_FallbackSRVSlotUsed.assign(kSRVHeapCapacity, false);
+			targetSrvHeap = g_FallbackSRVHeap.GetHeapPointer();
+		}
 
 		if (!ImGui_ImplWin32_Init(hwnd))
 		{
 			ASSERT(false, "ImGui_ImplWin32_Init 失败");
-			g_SRVHeap.Destroy();
+			if (g_UnifiedHeap == nullptr)
+				g_FallbackSRVHeap.Destroy();
+			g_UnifiedHeap = nullptr;
 			ImGui::DestroyContext();
 			return false;
 		}
@@ -127,7 +154,7 @@ namespace Renderer::ImGuiLayer
 		initInfo.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 		initInfo.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 		initInfo.UserData = nullptr;
-		initInfo.SrvDescriptorHeap = g_SRVHeap.GetHeapPointer();
+		initInfo.SrvDescriptorHeap = targetSrvHeap;
 		initInfo.SrvDescriptorAllocFn = &AllocSRVDescriptor;
 		initInfo.SrvDescriptorFreeFn = &FreeSRVDescriptor;
 
@@ -135,7 +162,9 @@ namespace Renderer::ImGuiLayer
 		{
 			ASSERT(false, "ImGui_ImplDX12_Init 失败");
 			ImGui_ImplWin32_Shutdown();
-			g_SRVHeap.Destroy();
+			if (g_UnifiedHeap == nullptr)
+				g_FallbackSRVHeap.Destroy();
+			g_UnifiedHeap = nullptr;
 			ImGui::DestroyContext();
 			return false;
 		}
@@ -149,14 +178,18 @@ namespace Renderer::ImGuiLayer
 		if (!g_Initialized)
 			return;
 
-		// 顺序不能变：ImGui_ImplDX12_Shutdown 内部会调 SrvDescriptorFreeFn 归还字体 SRV，
-		// 所以自建堆必须活到它之后。
+		// 严格反序：先调 ImGui_ImplDX12_Shutdown（回调 FreeSRVDescriptor 归还 Zone D 字体槽），
+		// 再解绑 UnifiedDescriptorHeap 或销毁回退私有堆。
 		ImGui_ImplDX12_Shutdown();
 		ImGui_ImplWin32_Shutdown();
 		ImGui::DestroyContext();
 
-		g_SRVHeap.Destroy();
-		g_SRVSlotUsed.assign(kSRVHeapCapacity, false);
+		if (g_UnifiedHeap == nullptr)
+		{
+			g_FallbackSRVHeap.Destroy();
+			g_FallbackSRVSlotUsed.assign(kSRVHeapCapacity, false);
+		}
+		g_UnifiedHeap = nullptr;
 		g_Initialized = false;
 	}
 
@@ -198,9 +231,16 @@ namespace Renderer::ImGuiLayer
 		context.SetRenderTarget(target.GetRTV());
 		context.SetViewportAndScissor(0, 0, width, height);
 
-		// ImGui 的 DX12 后端只管根签名/PSO，全文没有 SetDescriptorHeaps：字体 SRV 的 GPU 句柄
-		// 指向哪个堆，得由调用方自己绑。不绑的话 SetGraphicsRootDescriptorTable 拿到的是悬空句柄。
-		context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, g_SRVHeap.GetHeapPointer());
+		// ImGui 的 DX12 后端不主动调 SetDescriptorHeaps：当接入 UnifiedDescriptorHeap 时，
+		// 绑定与主渲染路径完全一致的 65,536 槽统一堆（Zone D 字体 SRV）。
+		if (g_UnifiedHeap != nullptr && g_UnifiedHeap->IsInitialized())
+		{
+			context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, g_UnifiedHeap->GetCbvSrvUavHeap());
+		}
+		else
+		{
+			context.SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, g_FallbackSRVHeap.GetHeapPointer());
+		}
 
 		// 每帧一次。DX12 后端内部会自增 frameIndex 轮换每帧的顶点/索引缓冲。
 		ImGui_ImplDX12_RenderDrawData(drawData, context.GetCommandList());

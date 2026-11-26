@@ -113,25 +113,65 @@ endif()
 find_package(directxtex CONFIG REQUIRED)
 find_package(directxmesh CONFIG REQUIRED)
 find_package(DirectX-Headers CONFIG REQUIRED)
+find_package(directxmath CONFIG REQUIRED)
+
+# ==========================================
+# vcpkg overlay ports（第三方依赖的唯一真相源是 vcpkg.json）
+# ==========================================
+# 为什么需要 overlay：
+#   官方 vcpkg registry 的 directx12-agility 最高只有 1.619.1
+#   （F:/VS/rep/vcpkg/versions/d-/directx12-agility.json），
+#   而本项目必须用 1.620.2 —— 只有 620 才让 HighestShaderModel 从 0x65 升到 0x66。
+#   registry 不能改，只能在仓库内维护同名的本地覆盖版本。
+#
+# 为什么 vcpkg.json 里不能写 "overlay-ports"：
+#   manifest 文件只认 overrides 字段，overlay-ports 会直接报
+#   "unexpected field 'overlay-ports', did you mean 'overrides'?"。
+#   它只能从命令行 --overlay-ports 或 CMAKE 变量 VCPKG_OVERLAY_PORTS 传入。
+#
+# 本仓库的用法（全新机器 / 拉代码后第一次构建）：
+#   F:/VS/rep/vcpkg/vcpkg.exe install --triplet x64-windows ^
+#       --overlay-ports=ThirdParty/vcpkg-overlays
+#   走 toolchain（A 路径）时 CMake 会把 VCPKG_OVERLAY_PORTS 透传给 vcpkg。
+set(TOOIYUME_VCPKG_OVERLAY_PORTS "${CMAKE_SOURCE_DIR}/ThirdParty/vcpkg-overlays")
+if(EXISTS "${TOOIYUME_VCPKG_OVERLAY_PORTS}")
+    list(APPEND VCPKG_OVERLAY_PORTS "${TOOIYUME_VCPKG_OVERLAY_PORTS}")
+    list(APPEND CMAKE_PREFIX_PATH "${VCPKG_OVERLAY_PORTS}")
+endif()
+
+# Agility SDK（D3D12Core.dll 随应用分发）。为什么必须有它：
+# Win10 19045 自带的 d3d12.dll 只支持到 SM 6.5（HighestShaderModel=0x65），
+# 而 WP-3A 门禁 2 要 SM 6.6 Bindless。接入 Agility SDK 1.620.2 后实测
+# HighestShaderModel 升到 0x66。详见 Engine/20_cmake/AgilitySdkOptIn.cpp。
+# 注意：本文件里 find_package 的必须在 Engine/ 与 Demos/ 之前，
+# so the INTERFACE_INCLUDE_DIRECTORIES 才来得及被消费方继承。
+include(${CMAKE_SOURCE_DIR}/Engine/20_cmake/AgilitySdk.cmake)
+
+# imgui / PIX 现在都由 vcpkg 提供（见 vcpkg.json），不再 add_subdirectory 裸源码。
+# 为什么这么改：裸源码目录没有版本记录、没有哈希校验、换机器要手工拷，
+# 与 vcpkg manifest 的"声明式依赖"冲突。见 docs/AI/guides/ 下的依赖说明。
+find_package(imgui CONFIG REQUIRED)
+find_package(winpixevent CONFIG REQUIRED)
 
 # R4.1：运行时 DLL 部署函数。定义在 Engine/20_cmake 下，供各 Demo 在
 # 自己的 CMakeLists 里调用（add_custom_command(TARGET) 要求同目录）。
 include(${CMAKE_SOURCE_DIR}/Engine/20_cmake/DeployRuntimeDlls.cmake)
-# directx-dxc 通常会被 vcpkg 下载到环境路径中，稍后可以在 Engine 中直接链接 dxcompiler
 
 # ==========================================
 # 添加子目录
 # ==========================================
-# 三方库先于 Engine / Demos 加入：
-#   - Demos（真正 link imgui 的消费方）在最后，顺序天然满足；
-#   - 放在 Engine 之前是为了让 Engine 里任何以后想 include 到 imgui 的目标
-#     在配置阶段就能看到 `imgui` 这个目标名（target 是全局可见的，
-#     但先定义先可用，避免「先 link 后定义」这种隐式依赖链）。
-add_subdirectory(ThirdParty/imgui)
-
 add_subdirectory(Engine)
-add_subdirectory(Demos/ForwardApp)
-add_subdirectory(Demos/DeferredApp)
-add_subdirectory(Demos/RayTracingApp)
-# R3：统一入口 Demo（RendererRegistry 运行时切换 + ImGui）
+# R3 统一入口 Demo（已集成 Forward / Deferred / RayTracing / GFL2CharacterPipeline）
+add_subdirectory(Demos/Common)
+add_subdirectory(Demos/DeferredRenderDemo)
+add_subdirectory(Demos/ForwardRenderDemo)
+add_subdirectory(Demos/RayTracingRenderDemo)
+add_subdirectory(Demos/GFL2RenderDemo)
 add_subdirectory(Demos/RendererDemoApp)
+
+# [WP-1D] 可选独立纯 CPU 单元测试（ctest --test-dir out/build/<Config> --output-on-failure）
+option(BUILD_TESTS "Build standalone CPU unit tests" ON)
+if(BUILD_TESTS AND EXISTS "${CMAKE_SOURCE_DIR}/Tests/CMakeLists.txt")
+    enable_testing()
+    add_subdirectory(Tests)
+endif()

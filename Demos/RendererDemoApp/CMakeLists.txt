@@ -19,8 +19,13 @@ target_include_directories(
 # 产物落 out/<Config>/Demos/RendererDemoApp/（镜像源码层次）
 tooiyume_set_output_dirs(RendererDemoApp "Demos/RendererDemoApp")
 
-# TooiyumeEngine 已经 PUBLIC link 了 imgui，这里不需要重复声明依赖。
-target_link_libraries(RendererDemoApp PRIVATE TooiyumeEngine)
+# RendererDemoApp 作为纯主控管理器，聚合 4 个独立 Demo 模块库
+target_link_libraries(RendererDemoApp PRIVATE
+    DeferredRenderDemoLib
+    ForwardRenderDemoLib
+    RayTracingRenderDemoLib
+    GFL2RenderDemoLib
+)
 
 # ==========================================
 
@@ -30,3 +35,12 @@ target_link_libraries(RendererDemoApp PRIVATE TooiyumeEngine)
 # 统一部署：函数定义见 Engine/20_cmake/DeployRuntimeDlls.cmake，
 # 按 Debug/Release 自动选择 DLL 变体，并复制到本 target 输出目录。
 tooiyume_deploy_runtime_dlls(RendererDemoApp)
+
+# ==========================================
+# Agility SDK（D3D12Core.dll 随应用分发）
+# ==========================================
+# 接入前实测：HighestShaderModel=0x65（SM 6.5，系统运行时限制，非显卡限制）
+# 接入后实测：HighestShaderModel=0x66（SM 6.6，bindless 所需）
+# 详见 Engine/20_cmake/AgilitySdkOptIn.cpp 与
+# docs/AI/worklogs/TR-20261121-01_wp-0a-baseline.md §2.2
+tooiyume_use_agility_sdk(RendererDemoApp)

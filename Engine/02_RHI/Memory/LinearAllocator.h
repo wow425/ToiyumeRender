@@ -114,7 +114,8 @@ public:
     // "large" pages.
     void FreeLargePages(uint64_t FenceID, const std::vector<LinearAllocationPage*>& Pages); // 释放页面
 
-    void Destroy(void) { m_PagePool.clear(); }
+    // [TD-05e] 实现移至 LinearAllocator.cpp：必须一并销毁 m_DeletionQueue 中的大页并清空所有队列。
+    void Destroy(void);
 
 private:
 

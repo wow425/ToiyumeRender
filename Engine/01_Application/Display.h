@@ -20,6 +20,8 @@ namespace Display
 	void Shutdown(void);
 	void Resize(uint32_t width, uint32_t height);
 	void Present();
+	// [TD-11b] 最小化恢复或长时间阻塞后重置帧计时基准，消除 dt 尖峰。
+	void ResetFrameTimer(void);
 	// 创建叠加层，水平模糊缓冲区
 	void ResizeDisplayDependentBuffers(uint32_t NativeWidth, uint32_t NativeHeight);
 }

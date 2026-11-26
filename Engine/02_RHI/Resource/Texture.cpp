@@ -1,15 +1,15 @@
 
-// DX12把resource分为buffer和texture, 被抽象为ID3D12Resource,但内存布局,访问方式,cache 行为,view 类型,shader 读取方式都不同
-// 区分二者靠D3D12_RESOURCE_DESC.Dimension 
-// Buff为线性连续内存.,有VB,IB,CBV,Structured Buffer,ByteAddressBuffer
-// texture为具有空间维度的数据,有Texture2D,TextureCube,Texture3D,Texture2DArray.
+// DX12鎶妑esource鍒嗕负buffer鍜宼exture, 琚娊璞′负ID3D12Resource,浣嗗唴瀛樺竷灞€,璁块棶鏂瑰紡,cache 琛屼负,view 绫诲瀷,shader 璇诲彇鏂瑰紡閮戒笉鍚?
+// 鍖哄垎浜岃€呴潬D3D12_RESOURCE_DESC.Dimension 
+// Buff涓虹嚎鎬ц繛缁唴瀛?,鏈塚B,IB,CBV,Structured Buffer,ByteAddressBuffer
+// texture涓哄叿鏈夌┖闂寸淮搴︾殑鏁版嵁,鏈塗exture2D,TextureCube,Texture3D,Texture2DArray.
 
 
 
 
 #include "00_Core/PCH.h"
 #include "Texture.h"
-#include "03_AssetSystem/Importers/Texture/DDSTextureLoader.h"
+#include "03_AssetSystem/Assets/Importers/Texture/DDSTextureLoader.h"
 #include "00_Core/Utility/FileUtility.h"
 #include "02_RHI/GraphicsCore.h"
 #include "02_RHI/Command/CommandContext.h"
@@ -35,6 +35,13 @@ static UINT BytesPerPixel(DXGI_FORMAT Format)
 void Texture::Create2D(size_t RowPitchBytes, size_t Width, size_t Height, DXGI_FORMAT Format, const void* InitialData)
 {
 	Destroy();
+	// [WP-3A / TD-06g] 绌烘寚閽?闆跺昂瀵稿墠缃畧鍗紝閬垮厤鍚?CreateCommittedResource 浼犲叆闈炴硶鎻忚堪绗︽垨绌烘簮鏁版嵁
+	if (g_Device == nullptr || Width == 0 || Height == 0 || RowPitchBytes == 0 || InitialData == nullptr)
+	{
+		LOG_ERROR(L"[Texture] Create2D 鍙傛暟闈炴硶 (W=%zu H=%zu pitch=%zu data=%p)\n",
+			Width, Height, RowPitchBytes, InitialData);
+		return;
+	}
 
 	m_UsageState = D3D12_RESOURCE_STATE_COPY_DEST;
 
@@ -74,13 +81,23 @@ void Texture::Create2D(size_t RowPitchBytes, size_t Width, size_t Height, DXGI_F
 	CommandContext::InitializeTexture(*this, 1, &texResource);
 
 	if (m_hCpuDescriptorHandle.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+	{
 		m_hCpuDescriptorHandle = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		m_OwnsDescriptor = true;
+	}
 	g_Device->CreateShaderResourceView(m_pResource.Get(), nullptr, m_hCpuDescriptorHandle);
 }
 
 void Texture::CreateCube(size_t RowPitchBytes, size_t Width, size_t Height, DXGI_FORMAT Format, const void* InitialData)
 {
 	Destroy();
+	// [WP-3A / TD-06g] 绌烘寚閽?闆跺昂瀵稿畧鍗?
+	if (g_Device == nullptr || Width == 0 || Height == 0 || RowPitchBytes == 0 || InitialData == nullptr)
+	{
+		LOG_ERROR(L"[Texture] CreateCube 鍙傛暟闈炴硶 (W=%zu H=%zu pitch=%zu data=%p)\n",
+			Width, Height, RowPitchBytes, InitialData);
+		return;
+	}
 
 	m_UsageState = D3D12_RESOURCE_STATE_COPY_DEST;
 
@@ -112,15 +129,25 @@ void Texture::CreateCube(size_t RowPitchBytes, size_t Width, size_t Height, DXGI
 
 	m_pResource->SetName(L"Texture");
 
-	D3D12_SUBRESOURCE_DATA texResource;
-	texResource.pData = InitialData;
-	texResource.RowPitch = RowPitchBytes;
-	texResource.SlicePitch = texResource.RowPitch * Height;
+	// [WP-3A / TD-06g] 淇 Cubemap 浠呬笂浼犵 0 闈㈠鑷村叾浣?5 涓潰娈嬬暀鏈垵濮嬪寲鏄惧瓨鐨?Bug锛?
+	// DepthOrArraySize=6 蹇呴』瀹屾暣鍒濆鍖栧叏閮?6 涓瓙璧勬簮闈紙subresources 0..5锛夈€?
+	const size_t slicePitch = RowPitchBytes * Height;
+	D3D12_SUBRESOURCE_DATA subResources[6] = {};
+	const uint8_t* baseBytes = static_cast<const uint8_t*>(InitialData);
+	for (uint32_t face = 0; face < 6; ++face)
+	{
+		subResources[face].pData      = baseBytes + static_cast<size_t>(face) * slicePitch;
+		subResources[face].RowPitch   = static_cast<LONG_PTR>(RowPitchBytes);
+		subResources[face].SlicePitch = static_cast<LONG_PTR>(slicePitch);
+	}
 
-	CommandContext::InitializeTexture(*this, 1, &texResource);
+	CommandContext::InitializeTexture(*this, 6, subResources);
 
 	if (m_hCpuDescriptorHandle.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+	{
 		m_hCpuDescriptorHandle = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		m_OwnsDescriptor = true;
+	}
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
 	srvDesc.Format = Format;
@@ -133,8 +160,14 @@ void Texture::CreateCube(size_t RowPitchBytes, size_t Width, size_t Height, DXGI
 }
 
 
-void Texture::CreateTGAFromMemory(const void* _filePtr, size_t, bool sRGB)
+void Texture::CreateTGAFromMemory(const void* _filePtr, size_t fileSize, bool sRGB)
 {
+	// [WP-3A / TD-06g] TGA 鏂囦欢澶撮暱搴︼紙18B锛変笌鍍忕礌鍖鸿竟鐣屾牎楠岋紝闃茬暩褰㈡枃浠惰秺鐣岃
+	if (_filePtr == nullptr || fileSize < 18)
+	{
+		LOG_ERROR(L"[Texture] CreateTGAFromMemory 杈撳叆鏃犳晥鎴栧皬浜?18 瀛楄妭 TGA 澶?(size=%zu)\n", fileSize);
+		return;
+	}
 	const uint8_t* filePtr = (const uint8_t*)_filePtr;
 
 	// Skip first two bytes
@@ -154,11 +187,23 @@ void Texture::CreateTGAFromMemory(const void* _filePtr, size_t, bool sRGB)
 	// Ignore another byte
 	filePtr++;
 
-	uint32_t* formattedData = new uint32_t[imageWidth * imageHeight];
-	uint32_t* iter = formattedData;
+	const uint8_t numChannels = bitCount / 8;
+	if (imageWidth == 0 || imageHeight == 0 || (numChannels != 3 && numChannels != 4))
+	{
+		LOG_ERROR(L"[Texture] CreateTGAFromMemory 涓嶆敮鎸佺殑灏哄鎴栦綅娣?(%ux%u, %u bpp)\n",
+			(unsigned)imageWidth, (unsigned)imageHeight, (unsigned)bitCount);
+		return;
+	}
+	const size_t pixelCount = static_cast<size_t>(imageWidth) * static_cast<size_t>(imageHeight);
+	const size_t numBytes = pixelCount * static_cast<size_t>(numChannels);
+	if (18u + numBytes > fileSize)
+	{
+		LOG_ERROR(L"[Texture] CreateTGAFromMemory 鏁版嵁鎴柇 (need=%zu, got=%zu)\n", 18u + numBytes, fileSize);
+		return;
+	}
 
-	uint8_t numChannels = bitCount / 8;
-	uint32_t numBytes = imageWidth * imageHeight * numChannels;
+	uint32_t* formattedData = new uint32_t[pixelCount];
+	uint32_t* iter = formattedData;
 
 	switch (numChannels)
 	{
@@ -187,13 +232,45 @@ void Texture::CreateTGAFromMemory(const void* _filePtr, size_t, bool sRGB)
 
 bool Texture::CreateDDSFromMemory(const void* filePtr, size_t fileSize, bool sRGB)
 {
+	if (filePtr == nullptr || fileSize == 0 || Graphics::g_Device == nullptr)
+	{
+		LOG_ERROR(L"[Texture] CreateDDSFromMemory 鍙傛暟闈炴硶 (ptr=%p size=%zu)\n", filePtr, fileSize);
+		return false;
+	}
 	if (m_hCpuDescriptorHandle.ptr == D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+	{
 		m_hCpuDescriptorHandle = AllocateDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		m_OwnsDescriptor = true;
+	}
 
 	HRESULT hr = CreateDDSTextureFromMemory(Graphics::g_Device,
 		(const uint8_t*)filePtr, fileSize, 0, sRGB, &m_pResource, m_hCpuDescriptorHandle);
 
 	return SUCCEEDED(hr);
+}
+
+void Texture::Destroy()
+{
+	GpuResource::Destroy();
+	// [TD-03d] 瑁?Texture 閫氳繃 Create2D/CreateCube/CreateDDSFromMemory 鍒嗛厤鐨?CPU SRV 妲?
+	// 蹇呴』鍦ㄦ褰掕繕缁欏叏灞€鍒嗛厤鍣紱闈炴嫢鏈夊瀷鏋勯€狅紙澶栭儴鍊熺敤鍙ユ焺锛夋垨宸插綊杩樺彞鏌勮烦杩囷紝鏉滅粷娉勬紡涓庨噸澶嶅綊杩樸€?
+	if (m_OwnsDescriptor && m_hCpuDescriptorHandle.ptr != D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+	{
+		Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV].Free(m_hCpuDescriptorHandle, 1);
+		m_OwnsDescriptor = false;
+	}
+	m_hCpuDescriptorHandle.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
+}
+
+void TextureCube::Destroy()
+{
+	GpuResource::Destroy();
+	if (m_OwnsDescriptor && m_hCpuDescriptorHandle.ptr != D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN)
+	{
+		Graphics::g_DescriptorAllocator[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV].Free(m_hCpuDescriptorHandle, 1);
+		m_OwnsDescriptor = false;
+	}
+	m_hCpuDescriptorHandle.ptr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN;
 }
 
 void Texture::CreatePIXImageFromMemory(const void* memBuffer, size_t fileSize)
@@ -205,10 +282,20 @@ void Texture::CreatePIXImageFromMemory(const void* memBuffer, size_t fileSize)
 		uint32_t Width;
 		uint32_t Height;
 	};
+	if (memBuffer == nullptr || fileSize < sizeof(Header))
+	{
+		LOG_ERROR(L"[Texture] CreatePIXImageFromMemory 杈撳叆鏃犳晥鎴栧皬浜庡ご澶у皬 (size=%zu)\n", fileSize);
+		return;
+	}
 	const Header& header = *(Header*)memBuffer;
-
-	ASSERT(fileSize >= header.Pitch * BytesPerPixel(header.Format) * header.Height + sizeof(Header),
-		"Raw PIX image dump has an invalid file size");
+	const size_t requiredBytes =
+		static_cast<size_t>(header.Pitch) * static_cast<size_t>(BytesPerPixel(header.Format)) *
+		static_cast<size_t>(header.Height) + sizeof(Header);
+	if (fileSize < requiredBytes)
+	{
+		LOG_ERROR(L"[Texture] CreatePIXImageFromMemory 鎴柇 (need=%zu got=%zu)\n", requiredBytes, fileSize);
+		return;
+	}
 
 	Create2D(header.Pitch, header.Width, header.Height, header.Format, (uint8_t*)memBuffer + sizeof(Header));
 }

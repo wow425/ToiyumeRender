@@ -170,6 +170,8 @@ public:
 
 	// 屏障
 	void TransitionResource(GpuResource& Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate = false);
+	// [WP-3A / 契约 3] 按需子资源状态转换：Subresource==ALL_SUBRESOURCES 时自动收敛回标量快速路径。
+	void TransitionSubresource(GpuResource& Resource, uint32_t Subresource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate = false);
 	void BeginResourceTransition(GpuResource& Resource, D3D12_RESOURCE_STATES NewState, bool FlushImmediate = false);
 	void InsertUAVBarrier(GpuResource& Resource, bool FlushImmediate = false);
 	void InsertAliasBarrier(GpuResource& Before, GpuResource& After, bool FlushImmediate = false);
@@ -185,7 +187,15 @@ public:
 	// 设置
 	void SetDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE Type, ID3D12DescriptorHeap* HeapPtr);
 	void SetDescriptorHeaps(UINT HeapCount, D3D12_DESCRIPTOR_HEAP_TYPE Type[], ID3D12DescriptorHeap* HeapPtrs[]);
+	// [WP-1B / 契约 1 观测] 统计本命令列表本次录制周期内实际下发 ID3D12CommandList::SetDescriptorHeaps 的次数，
+	// 供渲染主帧断言与性能面板核验「整帧 RenderScene 内 SetDescriptorHeaps <= 1」。
+	uint32_t GetSetDescriptorHeapsCount(void) const { return m_SetDescriptorHeapsCallCount; }
 	void SetPipelineState(const PSO& PSO);
+	// [WP-3B / 契约 7.2] 绑定热重载生成的独立 ID3D12PipelineState* 并同步更新 m_CurPipelineState 缓存
+	void SetPipelineStateRaw(ID3D12PipelineState* PipelineState);
+	// [WP-3A / 契约 3 NativePass 逃逸护栏] 清空图形/计算 RootSignature 与 PSO 缓存指针，
+	// 防止 DXR SetPipelineState1 / DirectML / ImGui 绕过封装直接改命令列表状态后污染后续光栅 Pass。
+	void InvalidateCachedPipelineState(void);
 	// 谓词渲染，高级特性，暂不实现
 	void SetPredication(ID3D12Resource* Buffer, UINT64 BufferOffset, D3D12_PREDICATION_OP Op);
 
@@ -212,6 +222,7 @@ protected:
 	UINT m_NumBarriersToFlush; // 已存储屏障计数器
 	// cpu端描述符堆
 	ID3D12DescriptorHeap* m_CurrentDescriptorHeaps[D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES]; // 当前CPU端描述符堆
+	uint32_t m_SetDescriptorHeapsCallCount = 0; // [WP-1B] 本命令列表实际 SetDescriptorHeaps 调用次数
 	LinearAllocator m_CpuLinearAllocator; // 用于CPU端的内存池
 	LinearAllocator m_GpuLinearAllocator; // 用于GPU端的内存池
 
@@ -233,6 +244,7 @@ public:
 	void ClearColor(ColorBuffer& Target, D3D12_RECT* Rect = nullptr);
 	void ClearColor(ColorBuffer& Target, float Colour[4], D3D12_RECT* Rect = nullptr);
 	void ClearDepth(DepthBuffer& Target);
+	void ClearDepthSlice(DepthBuffer& Target, uint32_t SliceIndex);
 	void ClearStencil(DepthBuffer& Target);
 	void ClearDepthAndStencil(DepthBuffer& Target);
 
@@ -374,7 +386,11 @@ inline void ComputeContext::SetRootSignature(const RootSignature& RootSig)
 
 inline void CommandContext::SetPipelineState(const PSO& PSO)
 {
-	ID3D12PipelineState* PipelineState = PSO.GetPipelineStateObject();
+	SetPipelineStateRaw(PSO.GetPipelineStateObject());
+}
+
+inline void CommandContext::SetPipelineStateRaw(ID3D12PipelineState* PipelineState)
+{
 	if (PipelineState == m_CurPipelineState)
 		return;
 

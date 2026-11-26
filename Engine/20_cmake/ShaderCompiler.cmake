@@ -289,6 +289,90 @@ endfunction()
 #
 #   用 OBJECT_DEPENDS 把生成头挂到源文件上，头变了就会触发重编。
 # ==========================================================
+# ==========================================================
+# compile_shader_bindless(
+#     TARGET_NAME
+#     SHADER_FILE
+#     ENTRY
+#     PROFILE
+# )
+# ----------------------------------------------------------
+# [WP-3A / 契约 7.1] SM 6.6 Bindless + FP16 着色器编译入口：
+#   - 附加 -HV 2021 -enable-16bit-types，解锁 ResourceDescriptorHeap[] 与 FP16 神经算子；
+#   - 若 PROFILE 为 lib_* 或 ENTRY 为空串，自动省略 -E（支持 DXR lib_6_6）；
+#   - 产物同样走镜像目录 + BinToHeader(inline constexpr)，与旧 compile_shader 100% 和平共存。
+# ==========================================================
+function(compile_shader_bindless TARGET_NAME SHADER_FILE ENTRY PROFILE)
+
+    get_filename_component(FILE_WE ${SHADER_FILE} NAME_WE)
+    set(SHADER_SOURCE "${CMAKE_SOURCE_DIR}/Engine/${SHADER_FILE}")
+
+    get_filename_component(SHADER_REL_DIR "${SHADER_FILE}" DIRECTORY)
+    string(REGEX REPLACE "^Shader/?/?" "" SHADER_REL_DIR "${SHADER_REL_DIR}")
+    if(SHADER_REL_DIR)
+        set(OUTPUT_DIR "${TOOIYUME_SHADER_OUT_DIR}/${SHADER_REL_DIR}")
+    else()
+        set(OUTPUT_DIR "${TOOIYUME_SHADER_OUT_DIR}")
+    endif()
+
+    file(MAKE_DIRECTORY ${OUTPUT_DIR})
+
+    set(CSO_FILE "${OUTPUT_DIR}/${FILE_WE}.cso")
+    set(HEADER_FILE "${OUTPUT_DIR}/${FILE_WE}.h")
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(DXC_FLAGS -HV 2021 -enable-16bit-types -Zi -Qembed_debug -Od)
+    else()
+        set(DXC_FLAGS -HV 2021 -enable-16bit-types -O3)
+    endif()
+
+    set(ENTRY_ARGS)
+    if(NOT "${ENTRY}" STREQUAL "" AND NOT PROFILE MATCHES "^lib_")
+        set(ENTRY_ARGS -E ${ENTRY})
+    endif()
+
+    include(${CMAKE_SOURCE_DIR}/Engine/20_cmake/ShaderDeps.cmake)
+    shader_collect_dependencies(
+        "${SHADER_SOURCE}"
+        "${CMAKE_SOURCE_DIR}/Engine/Shader"
+        SHADER_DEPENDS
+    )
+
+    add_custom_command(
+        OUTPUT ${CSO_FILE}
+        COMMAND ${DXC_EXECUTABLE}
+            ${ENTRY_ARGS}
+            -T ${PROFILE}
+            -I "${CMAKE_SOURCE_DIR}/Engine/Shader"
+            ${DXC_FLAGS}
+            -Fo ${CSO_FILE}
+            ${SHADER_SOURCE}
+        DEPENDS ${SHADER_DEPENDS}
+        COMMENT "Compiling SM6.6 Bindless Shader: ${SHADER_FILE} (${PROFILE})"
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT ${HEADER_FILE}
+        COMMAND ${CMAKE_COMMAND}
+            -DINPUT_FILE=${CSO_FILE}
+            -DOUTPUT_FILE=${HEADER_FILE}
+            -P ${CMAKE_SOURCE_DIR}/Engine/20_cmake/BinToHeader.cmake
+        DEPENDS ${CSO_FILE}
+        COMMENT "Generating Header: ${HEADER_FILE}"
+        VERBATIM
+    )
+
+    add_custom_target(
+        ${TARGET_NAME}_Shader
+        DEPENDS ${HEADER_FILE}
+    )
+
+    set(${TARGET_NAME}_HEADER ${HEADER_FILE} PARENT_SCOPE)
+    set(${TARGET_NAME}_HEADER_FILES ${HEADER_FILE} PARENT_SCOPE)
+
+endfunction()
+
 function(shader_attach_header_dependency SOURCE_FILE)
     if(NOT EXISTS "${SOURCE_FILE}")
         # 源文件可能还没生成（极少数情况），跳过而不是报错

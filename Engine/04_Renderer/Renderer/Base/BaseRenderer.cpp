@@ -1,6 +1,7 @@
 #include "00_Core/PCH.h"
 #include "BaseRenderer.h"
 #include "02_RHI/Descriptor/DescriptorHeap.h"
+#include "04_Renderer/RenderServices.h"
 #include "04_Renderer/Material/Material.h"
 #include "04_Renderer/Pipeline/PipelineDesc.h"
 #include "04_Renderer/Pipeline/PipelineStateCache.h"
@@ -8,8 +9,52 @@
 
 namespace Renderer
 {
-	DescriptorHeap s_TextureHeap;  // texture堆。存放CBV/SRV/UAV描述符堆
-	DescriptorHeap s_SamplerHeap;  // sampler堆
+	BaseRenderer::BaseRenderer() = default;
+
+	BaseRenderer::~BaseRenderer()
+	{
+		ReleaseServicesIfOwned();
+	}
+
+	bool BaseRenderer::AttachOrCreateServices(const RendererCreateDesc& desc)
+	{
+		if (desc.services != nullptr)
+		{
+			m_Services = desc.services;
+			m_OwnedServices.reset();
+			return m_Services->IsInitialized();
+		}
+
+		// 兼容独立旧 Demo（DeferredApp / ForwardApp / RayTracingApp）：未注入 RenderServices 时自建独占实例。
+		if (!m_OwnedServices)
+			m_OwnedServices = std::make_unique<RenderServices>();
+
+		if (!m_OwnedServices->IsInitialized() && !m_OwnedServices->Initialize())
+		{
+			m_OwnedServices.reset();
+			m_Services = nullptr;
+			return false;
+		}
+		m_Services = m_OwnedServices.get();
+		return true;
+	}
+
+	void BaseRenderer::ReleaseServicesIfOwned()
+	{
+		if (m_OwnedServices)
+		{
+			m_OwnedServices->Shutdown();
+			m_OwnedServices.reset();
+		}
+		m_Services = nullptr;
+		m_OwnedFrameCounter = 0;
+	}
+
+	void BaseRenderer::AdvanceOwnedServicesFrame()
+	{
+		if (m_OwnedServices && m_OwnedServices->IsInitialized())
+			m_OwnedServices->BeginFrame(++m_OwnedFrameCounter);
+	}
 }
 
 

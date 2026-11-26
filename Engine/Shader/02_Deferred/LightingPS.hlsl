@@ -102,10 +102,10 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
     //-----------------------------------
     // Position Reconstruction
     //-----------------------------------
-    // R1.5：像素中心 → UV 必须用**真实**渲染目标尺寸。
-    // 原先写死 float2(1920,1080)，只要窗口不是这个尺寸，
-    // 反投影出的世界坐标就会整体偏移，直接导致光照与视线方向全错。
-    float2 uv = (position.xy + 0.5) * InvRenderTargetSize;
+    // [TD-06d / D3D12 SV_POSITION 像素中心不变量]
+    // 在 D3D12 Pixel Shader 中，SV_POSITION.xy 已经位于像素中心 (pixel.x + 0.5, pixel.y + 0.5)。
+    // 原先额外 `+ 0.5` 会将采样与世界坐标反投影整体向右下偏移半个像素 (pixel + 1.0)。
+    float2 uv = position.xy * InvRenderTargetSize;
     float3 positionWS = ReconstructWorldPosition(uv, depth, InViewProj);
 
     float3 V = normalize(cameraPos.xyz - positionWS);
@@ -215,18 +215,12 @@ float4 MainPS(float4 position : SV_POSITION) : SV_TARGET0
         return float4(depth.xxx, 1.0);          // Depth
     }
 
-    //-----------------------------------
-    // Display 编码链（R4）
-    //-----------------------------------
-    // Exposure -> ToneMap -> sRGB 三步在 ColorPipeline.hlsli 中统一实现，
-    // Skybox 走同一个函数。这样天空与模型不会各自处在一个"别的曝光/伽马空间"里。
-    //   PostParams.x = Exposure, PostParams.w = EnableTonemap
-    //   DisplayParams.x = EnableSRGBEncode
-    float3 finalColor = EncodeDisplayColor(
-        hdrColor,
-        PostParams.x,
-        PostParams.w > 0.5,
-        DisplayParams.x > 0.5);
+    // [WP-2C / 契约 5] 已剥离内联 EncodeDisplayColor：LightingPass 直接输出场景线性 HDR (RGBA16F)，
+    // 统一交由下游唯一共享 TonemapPass 执行 Exposure -> ACES -> sRGB 显示编码。
+    if (debugView >= 8)
+    {
+        return float4(0.15, 0.05, 0.25, 1.0);
+    }
 
-    return float4(finalColor, 1.0);
+    return float4(hdrColor, 1.0);
 }

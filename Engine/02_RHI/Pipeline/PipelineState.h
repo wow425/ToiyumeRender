@@ -72,7 +72,9 @@ public:
 private:
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC m_PSODesc;
-	std::shared_ptr<const D3D12_INPUT_ELEMENT_DESC> m_InputLayouts; // 布局应共享
+	// [TD-05d / 分配器配对不变量] 使用 C++17+ 数组型 shared_ptr<const T[]>，保证与 new[] 严格配对
+	// 调用 delete[] 释放，消除原实现 malloc() + 默认标量 delete 导致的 CRT 调试堆/PageHeap 损坏。
+	std::shared_ptr<const D3D12_INPUT_ELEMENT_DESC[]> m_InputLayouts; // 布局应共享
 };
 
 class ComputePSO : public PSO

@@ -28,6 +28,7 @@
 //      不是"看起来像 PBR"。
 // ============================================================================
 
+#include "00_Common/PBRCommon.hlsli"
 #include "02_Deferred/ColorPipeline.hlsli"
 
 // 【必须】与 DeferredCommon.hlsli / Common.hlsli 保持一致：本项目 CPU 侧矩阵是
@@ -275,7 +276,7 @@ float2 LoadVertexUv(uint vertexOffsetInScene, uint vertexIndex, uint vertexStrid
 //      所以调用点直接乘，千万不要再除一次分母 —— 多除一次会让整个画面
 //      暗 4 倍且随视角变化，非常难归因。
 //    * FresnelSchlick：标量/向量两用，这里只用向量版。
-static const float kPI = 3.14159265359f;
+static const float kPI = kPBR_PI;
 static const float kMinRoughness = 0.045f;   // 避免 alpha=0 → GGX 除零，与 UE 一致
 
 float DistributionGGX(float nDotH, float alpha)
@@ -293,10 +294,7 @@ float VisibilitySmithGGXCorrelated(float nDotV, float nDotL, float alpha)
     return 0.5f / max(gv + gl, 1e-7f);
 }
 
-float3 FresnelSchlick(float vDotH, float3 f0)
-{
-    return f0 + (1.0f - f0) * pow(saturate(1.0f - vDotH), 5.0f);
-}
+// [WP-2B / TD-02c] FresnelSchlick 已抽取至共享 00_Common/PBRCommon.hlsli
 
 // ---------------------------------------------------------------------------
 //  R7 / D4：取本实例的 albedo（BaseColor 贴图 × baseColorFactor）
@@ -489,19 +487,14 @@ void RayGen()
     // 因此这里按 debugView 判断：非 Shaded 且**打到了几何**时跳过 EncodeDisplayColor。
     // 未命中（背景）仍走编码链 —— 这样背景与 Deferred 的 skybox 背景一致
     // （实测两边都是 (43,63,105)），只有模型像素是无编码的线性值，可比对。
+    // [WP-2C / 契约 5] 已剥离内联 EncodeDisplayColor：DXR 直接向 R16G16B16A16_FLOAT 输出线性 HDR，
+    // 统一交由下游唯一共享 TonemapPass 完成 Exposure -> ACES -> sRGB 编码。
+    // 逐像素调试旁路约定：RTDebugView!=0 且命中几何时写 alpha=0.0 通知 TonemapPS 旁路直通原始值，
+    // 未命中背景与正常着色像素写 alpha=1.0 正常走 Tonemap。
     const uint debugView = (uint)(g_RTParams2.z + 0.5f);
     const bool bypassDisplay = (debugView != 0u) && (payload.HitDistance >= 0.0f);
 
-    const float3 display = bypassDisplay
-        ? hdr
-        : EncodeDisplayColor(hdr,
-            g_DisplayParams.x,
-            g_DisplayParams.y > 0.5f,
-            g_DisplayParams.z > 0.5f);
-
-    // SceneColorBuffer 的 UAV 格式由 ColorBuffer::GetUAVFormat() 推导
-    // （R8G8B8A8_UNORM → R8G8B8A8_UNORM），因此这里直接写 float4。
-    g_OutputColor[pixel] = float4(display, 1.0f);
+    g_OutputColor[pixel] = float4(hdr, bypassDisplay ? 0.0f : 1.0f);
 }
 
 // ---------------------------------------------------------------------------

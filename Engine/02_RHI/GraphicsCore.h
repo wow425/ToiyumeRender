@@ -1,10 +1,11 @@
-﻿#pragma once
+#pragma once
 
 
 #include "02_RHI/Pipeline/PipelineState.h"
 #include "02_RHI/Descriptor/DescriptorHeap.h"
 #include "02_RHI/Pipeline/RootSignature.h"
 #include "02_RHI/Pipeline/GraphicsCommon.h"
+#include "02_RHI/Memory/DeferredReleaseQueue.h"
 
 class CommandListManager;
 class ContextManager;
@@ -17,8 +18,12 @@ namespace Graphics
     // g_全局变量
     using namespace Microsoft::WRL;
 
-    void Initialize(bool RequireDXRsupport = false);
+    // [TD-07a] 返回 bool 以允许上层（GameCore）感知设备创建失败并优雅中止，严禁半初始化继续运行。
+    bool Initialize(bool RequireDXRsupport = false);
     void Shutdown(void);
+
+    // [WP-1A / 契约 1] 全局帧尾延迟释放队列（仅允许 GameCore 在 UI 与 Present Copy 提交后盖章 FlushFrame）。
+    DeferredReleaseQueue& GetDeferredReleaseQueue();
 
     // GPU检测
     bool IsDeviceNvidia(ID3D12Device* pDevice);

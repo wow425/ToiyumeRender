@@ -2,15 +2,77 @@
 #include "RootSignature.h"
 #include "02_RHI/GraphicsCore.h"
 #include "00_Core/Utility/Hash.h"
+#include <cstring>
 #include <map>
-#include <thread>
 #include <mutex>
+#include <thread>
+#include <vector>
 
 using namespace Graphics;
 using namespace std;
 using Microsoft::WRL::ComPtr;
 
-static std::map< size_t, ComPtr<ID3D12RootSignature> > s_RootSignatureHashMap; // 根签名哈希表
+namespace
+{
+	// [TD-09c] 根签名缓存条目同时保存规范化描述字节串，命中哈希桶后做逐字节等价校验，
+	// 彻底消除仅靠 64-bit 哈希值导致的静默哈希碰撞与错绑根签名风险。
+	struct CachedRootSignature
+	{
+		std::vector<uint8_t> CanonicalKey;
+		ComPtr<ID3D12RootSignature> Signature;
+	};
+
+	template <typename T>
+	void AppendPodBytes(std::vector<uint8_t>& out, const T& value)
+	{
+		const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&value);
+		out.insert(out.end(), ptr, ptr + sizeof(T));
+	}
+
+	std::vector<uint8_t> BuildCanonicalRootSigKey(const D3D12_ROOT_SIGNATURE_DESC& desc)
+	{
+		std::vector<uint8_t> key;
+		key.reserve(256);
+		AppendPodBytes(key, desc.Flags);
+		AppendPodBytes(key, desc.NumParameters);
+		AppendPodBytes(key, desc.NumStaticSamplers);
+
+		for (UINT s = 0; s < desc.NumStaticSamplers; ++s)
+		{
+			AppendPodBytes(key, desc.pStaticSamplers[s]);
+		}
+
+		for (UINT p = 0; p < desc.NumParameters; ++p)
+		{
+			const D3D12_ROOT_PARAMETER& param = desc.pParameters[p];
+			// [TD-09c] 无论参数类型如何，必须纳入 ParameterType 与 ShaderVisibility，
+			// 否则两个仅可见性不同（如 VERTEX vs PIXEL）或参数类型不同的描述符表会错误复用同一根签名。
+			AppendPodBytes(key, param.ParameterType);
+			AppendPodBytes(key, param.ShaderVisibility);
+			switch (param.ParameterType)
+			{
+			case D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE:
+				AppendPodBytes(key, param.DescriptorTable.NumDescriptorRanges);
+				for (UINT r = 0; r < param.DescriptorTable.NumDescriptorRanges; ++r)
+					AppendPodBytes(key, param.DescriptorTable.pDescriptorRanges[r]);
+				break;
+			case D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS:
+				AppendPodBytes(key, param.Constants);
+				break;
+			case D3D12_ROOT_PARAMETER_TYPE_CBV:
+			case D3D12_ROOT_PARAMETER_TYPE_SRV:
+			case D3D12_ROOT_PARAMETER_TYPE_UAV:
+				AppendPodBytes(key, param.Descriptor);
+				break;
+			default:
+				break;
+			}
+		}
+		return key;
+	}
+}
+
+static std::map<size_t, std::vector<CachedRootSignature>> s_RootSignatureHashMap; // 根签名哈希表（带碰撞桶）
 
 void RootSignature::DestroyAll(void)
 {
@@ -73,10 +135,6 @@ void RootSignature::InitStaticSampler(UINT Register, const D3D12_SAMPLER_DESC& N
 // 最终化, 根签名类的难点
 void RootSignature::Finalize(const std::wstring& name, D3D12_ROOT_SIGNATURE_FLAGS Flags)
 {
-	// 1.检验是否被编译过，验证采样器数量一致与否
-	// 2. 双位图存储索引
-	// 3. 多线程并发控制模型编译根签名
-
 	// 确保一个根签名对象只被编译一次
 	if (m_Finalized)
 		return;
@@ -89,84 +147,82 @@ void RootSignature::Finalize(const std::wstring& name, D3D12_ROOT_SIGNATURE_FLAG
 	RootDesc.NumStaticSamplers = m_NumSamplers;
 	RootDesc.pStaticSamplers = (const D3D12_STATIC_SAMPLER_DESC*)m_SamplerArray.get();
 	RootDesc.Flags = Flags;
-	// =============================================================================================
-	// 基于哈希表的全局缓存机制
-	// =============================================================================================
 
-		// 双位图初始化
+	// 双位图初始化
 	m_DescriptorTableBitMap = 0;
 	m_SamplerTableBitMap = 0;
-	// 为根签名配置+静态采样器生成哈希值
-	size_t HashCode = Utility::HashState(&RootDesc.Flags);
-	HashCode = Utility::HashState(RootDesc.pStaticSamplers, m_NumSamplers, HashCode);
 
 	for (UINT Param = 0; Param < m_NumParameters; ++Param)
 	{
-
-		const D3D12_ROOT_PARAMETER& RootParam = RootDesc.pParameters[Param]; // 获取根签名指定索引的根参数
+		const D3D12_ROOT_PARAMETER& RootParam = RootDesc.pParameters[Param];
 		m_DescriptorTableSize[Param] = 0;
-		// 当前根参数为描述符表的话
 		if (RootParam.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE)
 		{
-			// 断言存在范围
 			ASSERT(RootParam.DescriptorTable.pDescriptorRanges != nullptr);
-			// 累加该根参数的哈希值
-			HashCode = Utility::HashState(RootParam.DescriptorTable.pDescriptorRanges,
-				RootParam.DescriptorTable.NumDescriptorRanges, HashCode);
-
-			// 记录该根参数位于哪张位图。采样器描述符表跟资源描述符表分开管理
-			if (RootParam.DescriptorTable.pDescriptorRanges->RangeType == D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER) // 采样器描述符表
-				m_SamplerTableBitMap |= (1 << Param); // 左移1位进行按位或
-			else // 资源描述符表
+			if (RootParam.DescriptorTable.pDescriptorRanges->RangeType == D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER)
+				m_SamplerTableBitMap |= (1 << Param);
+			else
 				m_DescriptorTableBitMap |= (1 << Param);
-			// 统计该根参数所包含的描述符数量
+
 			for (UINT TableRange = 0; TableRange < RootParam.DescriptorTable.NumDescriptorRanges; ++TableRange)
 				m_DescriptorTableSize[Param] += RootParam.DescriptorTable.pDescriptorRanges[TableRange].NumDescriptors;
 		}
-		else
-			HashCode = Utility::HashState(&RootParam, 1, HashCode);
 	}
-	// 验证所有权移交是否成功
-	// 无指针是硬件地址，单指针是指向硬件，m_Signature是单指针，*RSRef是单指针,s_RootSignatureHashMap存储双指针
-	ID3D12RootSignature** RSRef = nullptr;
-	bool firstCompile = false;
-	// 局部作用域配合lock_guard锁
+
+	// [TD-09c] 构造完整规范化字节序列（覆盖 Flags/NumParameters/NumSamplers/StaticSamplers/
+	// ParameterType/ShaderVisibility/DescriptorRanges）并做整块哈希 + 桶内逐字节等价校验。
+	std::vector<uint8_t> canonicalKey = BuildCanonicalRootSigKey(RootDesc);
+	const size_t HashCode = Utility::HashRange(
+		reinterpret_cast<const uint32_t*>(canonicalKey.data()),
+		reinterpret_cast<const uint32_t*>(canonicalKey.data() + (canonicalKey.size() & ~size_t(3))),
+		2166136261U);
+
+	static mutex s_HashMapMutex;
 	{
-		static mutex s_HashMapMutex;
 		lock_guard<mutex> CS(s_HashMapMutex);
-		auto iter = s_RootSignatureHashMap.find(HashCode);
-
-		// Reserve space so the next inquiry will find that someone got here first.
-		if (iter == s_RootSignatureHashMap.end()) // 该哈希值(对应的根签名）不存在时
+		auto& bucket = s_RootSignatureHashMap[HashCode];
+		for (const auto& entry : bucket)
 		{
-			RSRef = s_RootSignatureHashMap[HashCode].GetAddressOf(); // 访问不存在的键时，强行插入该键，并生成个初始值
-			firstCompile = true; // 首次编译
+			if (entry.CanonicalKey == canonicalKey)
+			{
+				m_Signature = entry.Signature.Get();
+				m_Finalized = TRUE;
+				return;
+			}
 		}
-		else
-			RSRef = iter->second.GetAddressOf();
 	}
 
-	if (firstCompile)
+	ComPtr<ID3DBlob> pOutBlob, pErrorBlob;
+	const HRESULT serHr = D3D12SerializeRootSignature(&RootDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		pOutBlob.GetAddressOf(), pErrorBlob.GetAddressOf());
+	if (FAILED(serHr))
 	{
-		ComPtr<ID3DBlob> pOutBlob, pErrorBlob;
-
-		ASSERT_SUCCEEDED(D3D12SerializeRootSignature(&RootDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-			pOutBlob.GetAddressOf(), pErrorBlob.GetAddressOf()));
-
-		ASSERT_SUCCEEDED(g_Device->CreateRootSignature(1, pOutBlob->GetBufferPointer(), pOutBlob->GetBufferSize(),
-			TY_IID_PPV_ARGS(&m_Signature)));
-
-		m_Signature->SetName(name.c_str());
-
-		s_RootSignatureHashMap[HashCode].Attach(m_Signature); // m_Signature所有权移交给s_RootSignatureHashMap，以进行管理
-		ASSERT(*RSRef == m_Signature);
+		if (pErrorBlob)
+			LOG_ERROR(L"[RootSignature] 序列化失败 (%ws, hr=0x%08X): %hs\n",
+				name.c_str(), (unsigned)serHr, (const char*)pErrorBlob->GetBufferPointer());
+		ASSERT_SUCCEEDED(serHr);
+		return;
 	}
-	else
+
+	ComPtr<ID3D12RootSignature> createdSig;
+	ASSERT_SUCCEEDED(g_Device->CreateRootSignature(1, pOutBlob->GetBufferPointer(), pOutBlob->GetBufferSize(),
+		TY_IID_PPV_ARGS(&createdSig)));
+	createdSig->SetName(name.c_str());
+
 	{
-		// 没抢到锁的就让出时间片等待其他线程完成编译后，拿现成的即可
-		while (*RSRef == nullptr)
-			this_thread::yield();
-		m_Signature = *RSRef;
+		lock_guard<mutex> CS(s_HashMapMutex);
+		auto& bucket = s_RootSignatureHashMap[HashCode];
+		for (const auto& entry : bucket)
+		{
+			if (entry.CanonicalKey == canonicalKey)
+			{
+				m_Signature = entry.Signature.Get();
+				m_Finalized = TRUE;
+				return;
+			}
+		}
+		bucket.push_back({ std::move(canonicalKey), createdSig });
+		m_Signature = createdSig.Get();
 	}
 
 	m_Finalized = TRUE;

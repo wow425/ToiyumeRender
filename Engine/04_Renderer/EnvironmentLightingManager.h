@@ -9,18 +9,18 @@
 #include "02_RHI/Pipeline/RootSignature.h"
 #include "02_RHI/Pipeline/SamplerManager.h"
 #include "02_RHI/Pipeline/PipelineState.h"
-#include "03_AssetSystem/Importers/Texture/TextureManager.h"
+#include "03_AssetSystem/Assets/Importers/Texture/TextureManager.h"
 
 
 /*
  EnvironmentLightingManager
-├── LoadHDRI() 加载HDR
-├── BuildEnvironment() 生成cubemap,生成 irradiance / prefilter / LUT
-├── GetSkyboxCube()
-├── GetIrradianceCube()
-├── GetPrefilterCube()
-├── GetBRDFLUT()
-└── RenderSkybox() 天空盒绘制
+鈹溾攢鈹€ LoadHDRI() 鍔犺浇HDR
+鈹溾攢鈹€ BuildEnvironment() 鐢熸垚cubemap,鐢熸垚 irradiance / prefilter / LUT
+鈹溾攢鈹€ GetSkyboxCube()
+鈹溾攢鈹€ GetIrradianceCube()
+鈹溾攢鈹€ GetPrefilterCube()
+鈹溾攢鈹€ GetBRDFLUT()
+鈹斺攢鈹€ RenderSkybox() 澶╃┖鐩掔粯鍒?
 */
 
 class Texture;
@@ -37,7 +37,7 @@ namespace Renderer { struct RenderParams; }
 namespace Renderer::EnvironmentLighting
 {
 
-	// environmentMap全套纹理
+	// environmentMap鍏ㄥ绾圭悊
 	struct EnvironmentMapTextures
 	{
 		TextureRef HDRTexture;				// HDR
@@ -47,13 +47,13 @@ namespace Renderer::EnvironmentLighting
 		TextureRef  BRDFLUTTexture;          // Specular BRDF LUT
 	};
 
-	//  environmentMap全套RootSig和PSO
+	//  environmentMap鍏ㄥRootSig鍜孭SO
 	struct EnvironmentMapRootSigAndPSOs
 	{
-		RootSignature m_EquirectToCubemapRootSig; // hdr转cubemap
+		RootSignature m_EquirectToCubemapRootSig; // hdr杞琧ubemap
 		ComputePSO   m_EquirectToCubemapPSO;
 
-		RootSignature m_SkyboxRootSig;		 // skybox绘制
+		RootSignature m_SkyboxRootSig;		 // skybox缁樺埗
 		GraphicsPSO     m_SkyboxPSO;
 
 		RootSignature m_IrradianceRootSig;		// Diffuse IBL
@@ -75,22 +75,19 @@ namespace Renderer::EnvironmentLighting
 		void Initialize(DXGI_FORMAT scene, DXGI_FORMAT depth);
 		void Shutdown();
 
-		void LoadHDR(const std::wstring& HDRPath);						// 加载hdr转换为dds
-		void BakeEnvironmentTextures(GraphicsContext& gfxContext);		// 将hdr纹理烘焙成skybox,IBL纹理
+		void LoadHDR(const std::wstring& HDRPath);						// 鍔犺浇hdr杞崲涓篸ds
+		void BakeEnvironmentTextures(GraphicsContext& gfxContext);		// 灏唄dr绾圭悊鐑樼剻鎴恠kybox,IBL绾圭悊
 
 
-		// R4：Skybox 现在参与曝光/色调映射/sRGB 链，必须拿到与 Lighting Pass 相同的参数。
-		// 传 const& 而不是内部去读全局状态，是为了让"天空和模型用同一份曝光"在类型上就成立。
-		void SkyboxPass(GraphicsContext& gfxcontext, const Scene::Camera::Camera& camera,
-		                const Renderer::RenderParams& params); // 绘制skybox
+		// [WP-2A] Skybox 娓叉煋绠＄嚎宸叉娊绂昏嚦鐙珛 Engine/04_Renderer/Passes/SkyboxPass.{h,cpp}銆?
 
 
 		const EnvironmentMapTextures& GetEnvironmentMapTextureRefs() const { return m_Textures; }
 
 
 		bool IsReady() const { return m_Ready; }
-		// R4：诊断用。"环境图加载成功"与"烘焙完成"是两件事，
-		// 分开暴露才能在启动日志里区分「资产缺失」与「烘焙没跑」。
+		// R4锛氳瘖鏂敤銆?鐜鍥惧姞杞芥垚鍔?涓?鐑樼剻瀹屾垚"鏄袱浠朵簨锛?
+		// 鍒嗗紑鏆撮湶鎵嶈兘鍦ㄥ惎鍔ㄦ棩蹇楅噷鍖哄垎銆岃祫浜х己澶便€嶄笌銆岀儤鐒欐病璺戙€嶃€?
 		bool IsHDRLoaded() const { return m_HDRLoaded; }
 
 		const ColorBuffer* GetEnvironmentCube() const { return m_EnvironmentCubeMap.get(); }
@@ -123,9 +120,9 @@ namespace Renderer::EnvironmentLighting
 		void CreateEquirectangularToCubemapPipeline();
 		void EquirectangularToCubemapPass(GraphicsContext& gfxContext);
 	private:
-		void CreateSkyboxPipeline(DXGI_FORMAT scene, DXGI_FORMAT depth) const;	// 创建RootSig和PSO
+		// [WP-2A] Skybox RootSig/PSO 宸茶縼鍏ョ嫭绔?SkyboxPass锛屾秷闄?SkyboxVS_cso/SkyboxPS_cso ODR 閲嶅瀹氫箟銆?
 		void CreatePrecomputePipelines(DXGI_FORMAT scene, DXGI_FORMAT depth) const; // TODO
-		void CreateSamplerDesc(); // 配置线性sampler
+		void CreateSamplerDesc(); // 閰嶇疆绾挎€ampler
 
 
 		// PreCompute

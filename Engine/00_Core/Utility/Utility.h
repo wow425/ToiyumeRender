@@ -39,21 +39,48 @@ namespace Utility
         }
     }
 
-    inline void Print(const char* msg) { OutputDebugStringA(msg); }
-    inline void Print(const wchar_t* msg) { OutputDebugString(msg); }
+    // [TD-07b / 统一落盘通道] 窄字符转宽字符并写入 tooiyume_log.txt。
+    // 项目全局开启 /utf-8，窄字符串字面量为 UTF-8；优先按 CP_UTF8 解码，失败时回退 CP_ACP。
+    inline void WriteLogFileA(const char* text)
+    {
+        if (text == nullptr || text[0] == '\0')
+            return;
+
+        wchar_t wide[2048] = {};
+        int written = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wide, static_cast<int>(_countof(wide)));
+        if (written == 0)
+        {
+            written = ::MultiByteToWideChar(CP_ACP, 0, text, -1, wide, static_cast<int>(_countof(wide)));
+        }
+        if (written > 0)
+        {
+            WriteLogFile(wide);
+        }
+    }
+
+    // [TD-07b] Utility::Print 同步写入 OutputDebugString 与磁盘日志文件，确保无调试器运行时
+    // ASSERT / ASSERT_SUCCEEDED / ERROR / WARN_ONCE_IF 的诊断信息也能完整落盘。
+    inline void Print(const char* msg)
+    {
+        OutputDebugStringA(msg);
+        WriteLogFileA(msg);
+    }
+
+    inline void Print(const wchar_t* msg)
+    {
+        OutputDebugStringW(msg);
+        WriteLogFile(msg);
+    }
 
     inline void Printf(const char* format, ...)
     {
         char buffer[2048];
         va_list ap;
         va_start(ap, format);
-        vsprintf_s(buffer, format, ap);
+        vsnprintf(buffer, _countof(buffer), format, ap);
         va_end(ap);
         OutputDebugStringA(buffer);
-
-        wchar_t wide[2048] = {};
-        ::MultiByteToWideChar(CP_ACP, 0, buffer, -1, wide, 2048);
-        WriteLogFile(wide);
+        WriteLogFileA(buffer);
     }
 
     inline void Printf(const wchar_t* format, ...)
@@ -61,8 +88,8 @@ namespace Utility
         wchar_t buffer[2048];
         va_list ap;
         va_start(ap, format);
-        // vswprintf_s 会根据 format 字符串的内容进行安全格式化
-        vswprintf_s(buffer, format, ap);
+        // _vsnwprintf_s(..., _TRUNCATE, ...) 在超长时截断而非触发 CRT invalid-parameter abort
+        _vsnwprintf_s(buffer, _countof(buffer), _TRUNCATE, format, ap);
         va_end(ap);
         OutputDebugStringW(buffer);
         WriteLogFile(buffer);
@@ -73,24 +100,24 @@ namespace Utility
     inline void PrintSubMessage(const char* format, ...)
     {
         Print("--> ");
-        char buffer[256];
+        char buffer[1024];
         va_list ap;
         va_start(ap, format);
-        vsprintf_s(buffer, 256, format, ap);
+        vsnprintf(buffer, _countof(buffer), format, ap);
         va_end(ap);
         Print(buffer);
         Print("\n");
     }
     inline void PrintSubMessage(const wchar_t* format, ...)
     {
-        Print("--> ");
-        wchar_t buffer[256];
+        Print(L"--> ");
+        wchar_t buffer[1024];
         va_list ap;
         va_start(ap, format);
-        vswprintf(buffer, 256, format, ap);
+        _vsnwprintf_s(buffer, _countof(buffer), _TRUNCATE, format, ap);
         va_end(ap);
         Print(buffer);
-        Print("\n");
+        Print(L"\n");
     }
     inline void PrintSubMessage(void)
     {
@@ -138,6 +165,7 @@ namespace Utility
 // `Utility::Printf`；同文件上面的 ERROR/DEBUGPRINT 之所以能直接写 Printf，
 // 是因为它们在命名空间内部。
 #define LOG_INFO( fmt, ... )  Utility::Printf( fmt, ##__VA_ARGS__ )
+#define LOG_ERROR( fmt, ... ) Utility::Printf( fmt, ##__VA_ARGS__ )
 #ifdef TOOIYUME_VERBOSE_LOG
 #define LOG_TRACE( fmt, ... ) Utility::Printf( fmt, ##__VA_ARGS__ )
 #else
@@ -160,7 +188,15 @@ namespace Utility
 #define WARN_ONCE_IF_NOT( isTrue, ... ) (void)(isTrue);
 #define ERROR( msg, ... ) ;
 #define DEBUGPRINT( msg, ... ) do {} while(0)
-#define ASSERT_SUCCEEDED( hr, ... ) (void)(hr);
+// [TD-07b / 单次求值不变量] hr 表达式只求值一次，避免失败或 Release 下产生额外副作用；
+// 同步记录失败的十六进制 HRESULT 到 tooiyume_log.txt，消除 Release 下静默吞错。
+#define ASSERT_SUCCEEDED( hr, ... ) \
+    { \
+        const HRESULT _ty_hr = (hr); \
+        if (FAILED(_ty_hr)) { \
+            Utility::Printf("\n[ERROR] HRESULT failed in %s @ %d (hr = 0x%08X)\n", __FILE__, __LINE__, static_cast<unsigned int>(_ty_hr)); \
+        } \
+    }
 
 #else	// !RELEASE
 
@@ -175,13 +211,20 @@ namespace Utility
             __debugbreak(); \
         }
 
+// [TD-07b / 单次求值 + 同步落盘] 原宏把参数 hr 直接展开在 FAILED(hr) 与 PrintSubMessage(..., hr)
+// 两处：当调用方传入带副作用的 DX12 创建调用（如 CreateGraphicsPipelineState）且首次失败时，
+// 宏会二次执行同一 DX12 调用！改为先捕获进局部 const HRESULT _ty_hr，保证严格单次求值，
+// 并经 Utility::Print 同步写入 OutputDebugString 与 tooiyume_log.txt。
 #define ASSERT_SUCCEEDED( hr, ... ) \
-        if (FAILED(hr)) { \
-            Utility::Print("\nHRESULT failed in " STRINGIFY_BUILTIN(__FILE__) " @ " STRINGIFY_BUILTIN(__LINE__) "\n"); \
-            Utility::PrintSubMessage("hr = 0x%08X", hr); \
-            Utility::PrintSubMessage(__VA_ARGS__); \
-            Utility::Print("\n"); \
-            __debugbreak(); \
+        { \
+            const HRESULT _ty_hr = (hr); \
+            if (FAILED(_ty_hr)) { \
+                Utility::Print("\nHRESULT failed in " STRINGIFY_BUILTIN(__FILE__) " @ " STRINGIFY_BUILTIN(__LINE__) "\n"); \
+                Utility::PrintSubMessage("hr = 0x%08X", static_cast<unsigned int>(_ty_hr)); \
+                Utility::PrintSubMessage(__VA_ARGS__); \
+                Utility::Print("\n"); \
+                __debugbreak(); \
+            } \
         }
 
 
