@@ -75,6 +75,7 @@ namespace GFL2
 				};
 				if (matchBare("NaN", 3))       { out.append("0.0"); i += 3; continue; }
 				if (matchBare("-Infinity", 9)) { out.append("0.0"); i += 9; continue; }
+				if (matchBare("+Infinity", 9)) { out.append("0.0"); i += 9; continue; }
 				if (matchBare("Infinity", 8))  { out.append("0.0"); i += 8; continue; }
 				out.push_back(c);
 				++i;
@@ -95,24 +96,23 @@ namespace GFL2
 			if (!ifs.read(raw.data(), sz))
 				return false;
 
-			try
+			// 剥离可选 UTF-8 BOM 并在解析前清洗 NaN/Infinity（避免 MSVC 调试器捕获首chance parse_error 异常）
+			if (raw.size() >= 3 &&
+				static_cast<unsigned char>(raw[0]) == 0xEF &&
+				static_cast<unsigned char>(raw[1]) == 0xBB &&
+				static_cast<unsigned char>(raw[2]) == 0xBF)
 			{
-				outJson = json::parse(raw);
-				return true;
+				raw.erase(0, 3);
 			}
-			catch (...)
+
+			const std::string sanitized = SanitizeJsonNonFiniteTokens(raw);
+			outJson = json::parse(sanitized, nullptr, /*allow_exceptions=*/false);
+			if (outJson.is_discarded())
 			{
-				try
-				{
-					outJson = json::parse(SanitizeJsonNonFiniteTokens(raw));
-					return true;
-				}
-				catch (const std::exception& e)
-				{
-					LOG_ERROR(L"[GFL2][M0] JSON parse error in %ws: %hs\n", filePath.c_str(), e.what());
-					return false;
-				}
+				LOG_ERROR(L"[GFL2][M0] JSON parse error in %ws\n", filePath.c_str());
+				return false;
 			}
+			return true;
 		}
 
 		bool GetExeDirectory(fs::path& outDir)

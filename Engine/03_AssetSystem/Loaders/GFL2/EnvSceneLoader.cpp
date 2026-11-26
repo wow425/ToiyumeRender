@@ -66,6 +66,7 @@ namespace GFL2
 				};
 				if (matchBare("NaN", 3))       { out.append("0.0"); i += 3; continue; }
 				if (matchBare("-Infinity", 9)) { out.append("0.0"); i += 9; continue; }
+				if (matchBare("+Infinity", 9)) { out.append("0.0"); i += 9; continue; }
 				if (matchBare("Infinity", 8))  { out.append("0.0"); i += 8; continue; }
 				out.push_back(c);
 				++i;
@@ -85,23 +86,23 @@ namespace GFL2
 			ifs.seekg(0, std::ios::beg);
 			if (!ifs.read(raw.data(), sz))
 				return false;
-			try
+
+			if (raw.size() >= 3 &&
+				static_cast<unsigned char>(raw[0]) == 0xEF &&
+				static_cast<unsigned char>(raw[1]) == 0xBB &&
+				static_cast<unsigned char>(raw[2]) == 0xBF)
 			{
-				outJson = json::parse(raw);
-				return true;
+				raw.erase(0, 3);
 			}
-			catch (...)
+
+			const std::string sanitized = SanitizeJsonNonFiniteEnv(raw);
+			outJson = json::parse(sanitized, nullptr, /*allow_exceptions=*/false);
+			if (outJson.is_discarded())
 			{
-				try
-				{
-					outJson = json::parse(SanitizeJsonNonFiniteEnv(raw));
-					return true;
-				}
-				catch (...)
-				{
-					return false;
-				}
+				LOG_ERROR(L"[GFL2][M6] JSON parse error in %ws\n", filePath.c_str());
+				return false;
 			}
+			return true;
 		}
 
 		bool TryResolveAssetRootFromAncestor(const fs::path& start, int maxDepth, fs::path& outDir)
@@ -368,7 +369,7 @@ namespace GFL2
 						std::string nameLower = t.value("name", "");
 						for (char& ch : nameLower) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
 
-						if (nameLower.rfind("_n") == nameLower.size() - 2 || nameLower.find("_n_") != std::string::npos)
+						if ((nameLower.size() >= 2 && nameLower.rfind("_n") == nameLower.size() - 2) || nameLower.find("_n_") != std::string::npos)
 							matData.NormalIdx = bIdx;
 						else if (nameLower.find("_smoe") != std::string::npos || nameLower.find("_smo") != std::string::npos)
 							matData.RmoOrSdfIdx = bIdx;
