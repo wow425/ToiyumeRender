@@ -10,10 +10,12 @@
 #include "02_RHI/Resource/DepthBuffer.h"
 #include "03_AssetSystem/Assets/Constants/GFL2SharedTypes.h"
 #include "04_Renderer/BufferManager.h"
+#include "04_Renderer/Passes/TAAPass.h"
 #include "04_Renderer/RenderParams.h"
 #include "04_Renderer/RenderServices.h"
 #include "04_Renderer/UnifiedDescriptorHeap.h"
 #include "04_Renderer/Renderer/RendererConfig.h"
+#include "05_Scene/Camera/Camera.h"
 
 #include "02_Deferred/FullScreenVS.h"
 #include "08_Character/GFL2SSAOCS.h"
@@ -201,9 +203,10 @@ namespace Renderer::GFL2
 
 	void GFL2PostProcessPass::ResetHistory()
 	{
-		m_TaaHistoryValid = false;
-		m_TaaReadSlot     = 0;
-		m_PrevViewProj    = Math::Matrix4(Math::kIdentity);
+		m_TaaHistoryValid        = false;
+		m_TaaReadSlot            = 0;
+		m_TaaJitterPhase         = 0;
+		m_PrevUnjitteredViewProj = Math::Matrix4(Math::kIdentity);
 	}
 
 	void GFL2PostProcessPass::Shutdown()
@@ -385,9 +388,38 @@ namespace Renderer::GFL2
 		context.PIXEndEvent();
 	}
 
+	void GFL2PostProcessPass::PrepareTaaFrame(
+		const Scene::Camera::Camera* camera,
+		uint32_t width,
+		uint32_t height,
+		bool taaEnabled,
+		::GFL2::GFL2FrameConstants& inOutFrameCB,
+		Math::Matrix4& outUnjitteredViewProj)
+	{
+		outUnjitteredViewProj = inOutFrameCB.ViewProj;
+
+		// TAA 开关任意方向切换时立刻清空历史，防止启用瞬间或重新开启时混入陈旧帧造成拖糊
+		if (taaEnabled != m_PrevTaaEnabled)
+		{
+			ResetHistory();
+			m_PrevTaaEnabled = taaEnabled;
+		}
+
+		if (!taaEnabled || camera == nullptr || width == 0 || height == 0)
+			return;
+
+		const DirectX::XMFLOAT2 jitterPx = TAAMath::ComputeHaltonJitterPixels(m_TaaJitterPhase, 1.0f);
+		const Math::Matrix4 jitteredProj = TAAMath::ApplyJitterToProjMatrixLH(
+			camera->GetProjMatrix(), width, height, jitterPx.x, jitterPx.y);
+		inOutFrameCB.Proj        = jitteredProj;
+		inOutFrameCB.ViewProj    = inOutFrameCB.View * jitteredProj;
+		inOutFrameCB.InvViewProj = Math::Invert(inOutFrameCB.ViewProj);
+	}
+
 	void GFL2PostProcessPass::ExecuteTAA(
 		GraphicsContext& context,
 		const ::GFL2::GFL2FrameConstants& frameCB,
+		const Math::Matrix4& unjitteredViewProj,
 		const Renderer::RenderParams& params,
 		GFL2PostTargets& targets,
 		ColorBuffer& linearHDR,
@@ -435,11 +467,13 @@ namespace Renderer::GFL2
 
 		struct alignas(16) TAACB
 		{
-			Math::Matrix4     PrevViewProj;
+			Math::Matrix4     CurUnjitteredViewProj;
+			Math::Matrix4     PrevUnjitteredViewProj;
 			DirectX::XMFLOAT4 Params;
 		} taaCB;
-		taaCB.PrevViewProj = m_PrevViewProj;
-		taaCB.Params       = { m_TaaHistoryValid ? 1.0f : 0.0f, 0.06f, 0.25f, 0.0f };
+		taaCB.CurUnjitteredViewProj  = unjitteredViewProj;
+		taaCB.PrevUnjitteredViewProj = m_PrevUnjitteredViewProj;
+		taaCB.Params                 = { m_TaaHistoryValid ? 1.0f : 0.0f, 0.08f, 0.35f, 1.15f };
 		cc.SetDynamicConstantBufferView(2, sizeof(taaCB), &taaCB);
 
 		::GFL2::GFL2RootConstants rc = {};
@@ -454,9 +488,10 @@ namespace Renderer::GFL2
 		context.CopyBuffer(linearHDR, histWrite);
 		context.PIXEndEvent();
 
-		m_TaaReadSlot     = writeSlot;
-		m_TaaHistoryValid = true;
-		m_PrevViewProj    = frameCB.ViewProj;
+		m_TaaReadSlot            = writeSlot;
+		m_TaaHistoryValid        = true;
+		++m_TaaJitterPhase;
+		m_PrevUnjitteredViewProj = unjitteredViewProj;
 		m_PrevCamPos[0]   = frameCB.CameraPosAndNear.x;
 		m_PrevCamPos[1]   = frameCB.CameraPosAndNear.y;
 		m_PrevCamPos[2]   = frameCB.CameraPosAndNear.z;

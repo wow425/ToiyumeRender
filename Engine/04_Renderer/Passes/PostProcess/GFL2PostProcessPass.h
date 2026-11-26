@@ -32,6 +32,11 @@ namespace GFL2
 	struct GFL2FrameConstants;
 }
 
+namespace Scene::Camera
+{
+	class Camera;
+}
+
 namespace Renderer
 {
 	class RenderServices;
@@ -82,9 +87,18 @@ namespace Renderer::GFL2
 			const D3D12_RECT& scissor,
 			Renderer::RenderServices& services);
 
+		void PrepareTaaFrame(
+			const Scene::Camera::Camera* camera,
+			uint32_t width,
+			uint32_t height,
+			bool taaEnabled,
+			::GFL2::GFL2FrameConstants& inOutFrameCB,
+			Math::Matrix4& outUnjitteredViewProj);
+
 		void ExecuteTAA(
 			GraphicsContext& context,
 			const ::GFL2::GFL2FrameConstants& frameCB,
+			const Math::Matrix4& unjitteredViewProj,
 			const Renderer::RenderParams& params,
 			GFL2PostTargets& targets,
 			ColorBuffer& linearHDR,
@@ -138,9 +152,11 @@ namespace Renderer::GFL2
 		std::vector<uint8_t> m_BloomPS;
 		std::vector<uint8_t> m_UberPostPS;
 
-		bool          m_TaaHistoryValid = false;
-		uint32_t      m_TaaReadSlot     = 0;
-		Math::Matrix4 m_PrevViewProj    = Math::Matrix4(Math::kIdentity);
-		float         m_PrevCamPos[3]   = {};
+		bool          m_TaaHistoryValid       = false;
+		bool          m_PrevTaaEnabled        = false;
+		uint32_t      m_TaaReadSlot           = 0;
+		uint32_t      m_TaaJitterPhase        = 0;
+		Math::Matrix4 m_PrevUnjitteredViewProj = Math::Matrix4(Math::kIdentity);
+		float         m_PrevCamPos[3]         = {};
 	};
 }

@@ -58,6 +58,16 @@ namespace Renderer
 			return DirectX::XMFLOAT2(jx, jy);
 		}
 
+		inline Math::Matrix4 OffsetProjMatrixRow2(const Math::Matrix4& proj, float offsetX, float offsetY)
+		{
+			Math::Matrix4 jittered = proj;
+			Math::Vector4 row2 = jittered.GetZ();
+			row2.SetX(static_cast<float>(row2.GetX()) + offsetX);
+			row2.SetY(static_cast<float>(row2.GetY()) + offsetY);
+			jittered.SetZ(row2);
+			return jittered;
+		}
+
 		// 在右手系行主序透视投影矩阵上注入像素级亚像素抖动：
 		//   Camera::UpdateProjMatrix 的第 2 行为 (0, 0, Q1, -1)，行向量乘法下 clip.w = -view.z。
 		//   因此将 row2.x = -jitterNdcX、row2.y = -jitterNdcY 后，
@@ -70,13 +80,21 @@ namespace Renderer
 
 			const float jitterNdcX = (2.0f * jitterPxX) / static_cast<float>(width);
 			const float jitterNdcY = (-2.0f * jitterPxY) / static_cast<float>(height);
+			return OffsetProjMatrixRow2(unjitteredProj, -jitterNdcX, -jitterNdcY);
+		}
 
-			Math::Matrix4 jittered = unjitteredProj;
-			Math::Vector4 row2 = jittered.GetZ();
-			row2.SetX(static_cast<float>(row2.GetX()) - jitterNdcX);
-			row2.SetY(static_cast<float>(row2.GetY()) - jitterNdcY);
-			jittered.SetZ(row2);
-			return jittered;
+		// 在左手系行主序透视投影矩阵上注入像素级亚像素抖动（如 UE5/GFL2 LH Reverse-Z）：
+		//   Camera::UpdateProjMatrix (m_LeftHanded=true) 第 2 行为 (0, 0, Q1, +1)，行向量乘法下 clip.w = +view.z。
+		//   因此 row2.x += +jitterNdcX、row2.y += +jitterNdcY 即可使 clip.xy / clip.w 精确偏移 +jitterPx 像素。
+		inline Math::Matrix4 ApplyJitterToProjMatrixLH(const Math::Matrix4& unjitteredProj,
+			uint32_t width, uint32_t height, float jitterPxX, float jitterPxY)
+		{
+			if (width == 0 || height == 0)
+				return unjitteredProj;
+
+			const float jitterNdcX = (2.0f * jitterPxX) / static_cast<float>(width);
+			const float jitterNdcY = (-2.0f * jitterPxY) / static_cast<float>(height);
+			return OffsetProjMatrixRow2(unjitteredProj, +jitterNdcX, +jitterNdcY);
 		}
 	}
 

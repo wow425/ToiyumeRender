@@ -274,6 +274,21 @@ namespace Renderer::GFL2
 		const float w = (m_MainViewport.Width > 0.0f) ? m_MainViewport.Width : 1280.0f;
 		const float h = (m_MainViewport.Height > 0.0f) ? m_MainViewport.Height : 720.0f;
 		frameCB.ScreenSizeAndInv = { w, h, 1.0f / w, 1.0f / h };
+
+		const bool pipeOn     = activeParams.EnableGFL2CharacterPipeline;
+		const bool isFinalDbg = (activeParams.Debug == DebugView::Final);
+		const bool doTaa      = pipeOn && isFinalDbg && activeParams.GFL2EnableTAA && m_PostPass.IsInitialized();
+
+		// 若启用 Reverse-Z TAA，必须在全部几何 Pass 构建前为 frameCB 注入 Halton(2,3) 亚像素抖动，
+		// 同时保留无抖动 unjitteredViewProj 供 TAA 计算纯速度矢量，确保静止帧像素重投影严丝合缝。
+		Math::Matrix4 unjitteredViewProj = frameCB.ViewProj;
+		m_PostPass.PrepareTaaFrame(
+			frame.Camera,
+			static_cast<uint32_t>(w),
+			static_cast<uint32_t>(h),
+			doTaa,
+			frameCB,
+			unjitteredViewProj);
 		frameCB.ToggleFlags0     = {
 			static_cast<float>(static_cast<uint32_t>(activeParams.Debug)),
 			activeParams.GFL2EnableRamp ? 1.0f : 0.0f,
@@ -323,12 +338,10 @@ namespace Renderer::GFL2
 				ctx.ClearDepthAndStencil(*depth);
 			});
 
-		const bool pipeOn     = activeParams.EnableGFL2CharacterPipeline;
 		const bool doShadow   = pipeOn && activeParams.GFL2EnableShadow && m_ShadowPass.IsInitialized() && (shadowMap != nullptr);
 		const bool envReady   = m_EnvAssets.GetStats().Loaded && m_EnvPass.IsInitialized();
 		const bool doEnv      = pipeOn && activeParams.GFL2EnableEnvScene && envReady;
 		const bool doAddSh    = doShadow && doEnv && activeParams.GFL2EnableAdditionalLights && (addShadow1 != nullptr);
-		const bool isFinalDbg = (activeParams.Debug == DebugView::Final);
 
 		// Pass 1a：主光 4096x4096 Reverse-Z Shadow
 		if (doShadow)
@@ -507,17 +520,17 @@ namespace Renderer::GFL2
 		}
 
 		// Pass 9：M6 Reverse-Z TAA
-		if (pipeOn && isFinalDbg && activeParams.GFL2EnableTAA && m_PostPass.IsInitialized())
+		if (doTaa)
 		{
 			m_PassList.AddPass("GFL2TAAPass",
 				{
 					{ hdr,   PassAccess::ReadSRV_NonPixel },
 					{ depth, PassAccess::ReadSRV_NonPixel },
 				},
-				[this, hdr, depth, frameCB, activeParams](GraphicsContext& ctx)
+				[this, hdr, depth, frameCB, unjitteredViewProj, activeParams](GraphicsContext& ctx)
 				{
 					m_PostPass.ExecuteTAA(
-						ctx, frameCB, activeParams, m_Buffers->PostTargets,
+						ctx, frameCB, unjitteredViewProj, activeParams, m_Buffers->PostTargets,
 						*hdr, *depth, *m_Services);
 				});
 		}
