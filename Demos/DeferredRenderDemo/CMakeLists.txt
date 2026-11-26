@@ -11,11 +11,15 @@ target_include_directories(DeferredRenderDemoLib PUBLIC
     ${CMAKE_SOURCE_DIR}
 )
 
-target_link_libraries(DeferredRenderDemoLib PUBLIC DemoCommonLib)
+target_link_libraries(DeferredRenderDemoLib PUBLIC DemoWorkstationLib)
 
-add_executable(DeferredRenderDemo WIN32 Main.cpp)
+add_executable(DeferredRenderDemo WIN32
+    DeferredRenderDemoModule.h
+    DeferredRenderDemoModule.cpp
+)
 
-target_link_libraries(DeferredRenderDemo PRIVATE DeferredRenderDemoLib)
+target_compile_definitions(DeferredRenderDemo PRIVATE TOOIYUME_DEMO_STANDALONE=1)
+target_link_libraries(DeferredRenderDemo PRIVATE DemoWorkstationLib)
 
 tooiyume_set_output_dirs(DeferredRenderDemo "Demos/DeferredRenderDemo")
 tooiyume_deploy_runtime_dlls(DeferredRenderDemo)

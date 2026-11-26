@@ -4,27 +4,27 @@
 // ============================================================================
 #pragma once
 
-#include "Demos/Common/IDemoModule.h"
+#include "Demos/RendererDemoApp/DemoWorkstation.h"
 
 namespace DemoModules
 {
-	class GFL2RenderDemoModule final : public DemoCommon::IDemoModule
+	class GFL2RenderDemoModule final : public Demo::IDemoModule
 	{
 	public:
 		const char* GetDisplayName() const override { return "GFL2RenderDemo"; }
 		std::wstring GetPipelineName() const override { return L"GFL2CharacterPipeline"; }
 		bool ShouldEnsureDefaultModelOnActivate() const override { return false; }
 
-		void OnActivate(DemoCommon::DemoHostContext& ctx, bool isFirstActivation) override;
-		void OnDeactivate(DemoCommon::DemoHostContext& ctx) override;
-		void Update(DemoCommon::DemoHostContext& ctx, float deltaT) override;
-		void DrawPanels(DemoCommon::DemoHostContext& ctx) override;
-		void OnResetDefaults(DemoCommon::DemoHostContext& ctx) override;
+		void OnActivate(Demo::HostContext& ctx, bool isFirstActivation) override;
+		void OnDeactivate(Demo::HostContext& ctx) override;
+		void Update(Demo::HostContext& ctx, float deltaT) override;
+		void DrawPanels(Demo::HostContext& ctx) override;
+		void OnResetDefaults(Demo::HostContext& ctx) override;
 
 	private:
-		void DrawCharacterPipelinePanel(DemoCommon::DemoHostContext& ctx);
-		void DrawLightingPanel(DemoCommon::DemoHostContext& ctx);
-		void DrawDebugViewPanel(DemoCommon::DemoHostContext& ctx);
+		void DrawCharacterPipelinePanel(Demo::HostContext& ctx);
+		void DrawLightingPanel(Demo::HostContext& ctx);
+		void DrawDebugViewPanel(Demo::HostContext& ctx);
 
 	private:
 		bool  m_HasSavedPreviousSun  = false;

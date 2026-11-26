@@ -6,18 +6,17 @@
 
 #include "05_Scene/Camera/Camera.h"
 #include "05_Scene/Camera/CameraController.h"
-#include "Demos/Common/DemoSceneHelpers.h"
 
 #include "imgui.h"
 
 namespace DemoModules
 {
-	void ForwardRenderDemoModule::OnActivate(DemoCommon::DemoHostContext& ctx, bool isFirstActivation)
+	void ForwardRenderDemoModule::OnActivate(Demo::HostContext& ctx, bool isFirstActivation)
 	{
-		DemoCommon::SetupStandardRightHandedCamera(ctx, isFirstActivation);
+		Demo::SetupStandardRightHandedCamera(ctx, isFirstActivation);
 	}
 
-	void ForwardRenderDemoModule::Update(DemoCommon::DemoHostContext& ctx, float deltaT)
+	void ForwardRenderDemoModule::Update(Demo::HostContext& ctx, float deltaT)
 	{
 		if (ctx.Camera == nullptr)
 			return;
@@ -27,9 +26,9 @@ namespace DemoModules
 			(*ctx.CameraController)->Update(deltaT);
 	}
 
-	void ForwardRenderDemoModule::DrawPanels(DemoCommon::DemoHostContext& ctx)
+	void ForwardRenderDemoModule::DrawPanels(Demo::HostContext& ctx)
 	{
-		DemoCommon::DrawSceneModelPanel(ctx);
+		Demo::DrawSceneModelPanel(ctx);
 
 		ImGui::SetNextWindowPos(ImVec2(390, 16), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(340, 130), ImGuiCond_FirstUseEver);
@@ -42,3 +41,11 @@ namespace DemoModules
 		ImGui::End();
 	}
 }
+
+
+#ifdef TOOIYUME_DEMO_STANDALONE
+int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int cmd)
+{
+	return Demo::RunStandalone<DemoModules::ForwardRenderDemoModule>(L"ForwardRenderDemo", hInst, cmd);
+}
+#endif

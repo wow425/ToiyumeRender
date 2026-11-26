@@ -4,23 +4,23 @@
 // ============================================================================
 #pragma once
 
-#include "Demos/Common/IDemoModule.h"
+#include "Demos/RendererDemoApp/DemoWorkstation.h"
 
 namespace DemoModules
 {
-	class RayTracingRenderDemoModule final : public DemoCommon::IDemoModule
+	class RayTracingRenderDemoModule final : public Demo::IDemoModule
 	{
 	public:
 		const char* GetDisplayName() const override { return "RayTracingRenderDemo"; }
 		std::wstring GetPipelineName() const override { return L"RayTracingRenderer"; }
 
-		void OnActivate(DemoCommon::DemoHostContext& ctx, bool isFirstActivation) override;
-		void Update(DemoCommon::DemoHostContext& ctx, float deltaT) override;
-		void DrawPanels(DemoCommon::DemoHostContext& ctx) override;
-		void OnResetDefaults(DemoCommon::DemoHostContext& ctx) override;
+		void OnActivate(Demo::HostContext& ctx, bool isFirstActivation) override;
+		void Update(Demo::HostContext& ctx, float deltaT) override;
+		void DrawPanels(Demo::HostContext& ctx) override;
+		void OnResetDefaults(Demo::HostContext& ctx) override;
 
 	private:
-		void DrawRayTracingPanel(DemoCommon::DemoHostContext& ctx);
-		void DrawSunLightingPanel(DemoCommon::DemoHostContext& ctx);
+		void DrawRayTracingPanel(Demo::HostContext& ctx);
+		void DrawSunLightingPanel(Demo::HostContext& ctx);
 	};
 }

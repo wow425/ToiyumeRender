@@ -11,11 +11,15 @@ target_include_directories(GFL2RenderDemoLib PUBLIC
     ${CMAKE_SOURCE_DIR}
 )
 
-target_link_libraries(GFL2RenderDemoLib PUBLIC DemoCommonLib)
+target_link_libraries(GFL2RenderDemoLib PUBLIC DemoWorkstationLib)
 
-add_executable(GFL2RenderDemo WIN32 Main.cpp)
+add_executable(GFL2RenderDemo WIN32
+    GFL2RenderDemoModule.h
+    GFL2RenderDemoModule.cpp
+)
 
-target_link_libraries(GFL2RenderDemo PRIVATE GFL2RenderDemoLib)
+target_compile_definitions(GFL2RenderDemo PRIVATE TOOIYUME_DEMO_STANDALONE=1)
+target_link_libraries(GFL2RenderDemo PRIVATE DemoWorkstationLib)
 
 tooiyume_set_output_dirs(GFL2RenderDemo "Demos/GFL2RenderDemo")
 tooiyume_deploy_runtime_dlls(GFL2RenderDemo)

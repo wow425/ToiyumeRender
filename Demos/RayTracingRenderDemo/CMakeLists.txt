@@ -11,11 +11,15 @@ target_include_directories(RayTracingRenderDemoLib PUBLIC
     ${CMAKE_SOURCE_DIR}
 )
 
-target_link_libraries(RayTracingRenderDemoLib PUBLIC DemoCommonLib)
+target_link_libraries(RayTracingRenderDemoLib PUBLIC DemoWorkstationLib)
 
-add_executable(RayTracingRenderDemo WIN32 Main.cpp)
+add_executable(RayTracingRenderDemo WIN32
+    RayTracingRenderDemoModule.h
+    RayTracingRenderDemoModule.cpp
+)
 
-target_link_libraries(RayTracingRenderDemo PRIVATE RayTracingRenderDemoLib)
+target_compile_definitions(RayTracingRenderDemo PRIVATE TOOIYUME_DEMO_STANDALONE=1)
+target_link_libraries(RayTracingRenderDemo PRIVATE DemoWorkstationLib)
 
 tooiyume_set_output_dirs(RayTracingRenderDemo "Demos/RayTracingRenderDemo")
 tooiyume_deploy_runtime_dlls(RayTracingRenderDemo)

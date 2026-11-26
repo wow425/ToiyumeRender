@@ -11,13 +11,12 @@
 #include "05_Scene/Camera/Camera.h"
 #include "05_Scene/Camera/GFL2OrbitFPSCamera.h"
 #include "05_Scene/Lighting/LightingSystem.h"
-#include "Demos/Common/DemoSceneHelpers.h"
 
 #include "imgui.h"
 
 namespace DemoModules
 {
-	void GFL2RenderDemoModule::OnActivate(DemoCommon::DemoHostContext& ctx, bool isFirstActivation)
+	void GFL2RenderDemoModule::OnActivate(Demo::HostContext& ctx, bool isFirstActivation)
 	{
 		if (ctx.Params != nullptr)
 		{
@@ -50,7 +49,7 @@ namespace DemoModules
 		}
 	}
 
-	void GFL2RenderDemoModule::OnDeactivate(DemoCommon::DemoHostContext& ctx)
+	void GFL2RenderDemoModule::OnDeactivate(Demo::HostContext& ctx)
 	{
 		if (ctx.Params != nullptr)
 		{
@@ -75,7 +74,7 @@ namespace DemoModules
 		}
 	}
 
-	void GFL2RenderDemoModule::Update(DemoCommon::DemoHostContext& ctx, float deltaT)
+	void GFL2RenderDemoModule::Update(Demo::HostContext& ctx, float deltaT)
 	{
 		if (ctx.Camera == nullptr || ctx.CameraController == nullptr || ctx.Params == nullptr)
 			return;
@@ -95,14 +94,14 @@ namespace DemoModules
 			(*ctx.CameraController)->Update(deltaT);
 	}
 
-	void GFL2RenderDemoModule::DrawPanels(DemoCommon::DemoHostContext& ctx)
+	void GFL2RenderDemoModule::DrawPanels(Demo::HostContext& ctx)
 	{
 		DrawCharacterPipelinePanel(ctx);
 		DrawLightingPanel(ctx);
 		DrawDebugViewPanel(ctx);
 	}
 
-	void GFL2RenderDemoModule::OnResetDefaults(DemoCommon::DemoHostContext& ctx)
+	void GFL2RenderDemoModule::OnResetDefaults(Demo::HostContext& ctx)
 	{
 		if (ctx.Params == nullptr)
 			return;
@@ -114,7 +113,7 @@ namespace DemoModules
 		ctx.Params->SunIntensity = 1.0f;
 	}
 
-	void GFL2RenderDemoModule::DrawCharacterPipelinePanel(DemoCommon::DemoHostContext& ctx)
+	void GFL2RenderDemoModule::DrawCharacterPipelinePanel(Demo::HostContext& ctx)
 	{
 		if (ctx.Host == nullptr || ctx.Params == nullptr || ctx.Camera == nullptr)
 			return;
@@ -219,7 +218,7 @@ namespace DemoModules
 		{
 			const auto& assets = pipe->GetCharacterAssets();
 			const auto& st     = assets.GetStats();
-			ImGui::Text("Asset Dir: %s", DemoCommon::NarrowAscii(st.AssetDir).c_str());
+			ImGui::Text("Asset Dir: %s", Demo::NarrowAscii(st.AssetDir).c_str());
 			ImGui::Text("Draws: %u | Submeshes: %u | Tris: %u", st.DrawCallCount, st.UniqueSubmeshes, st.TotalTriangles);
 			ImGui::Text("Mesh: %s | Verts: %u | Indices: %u",
 				st.MeshLoaded ? "LOADED" : "MISSING", st.VertexCount, st.IndexCount);
@@ -246,7 +245,7 @@ namespace DemoModules
 		ImGui::End();
 	}
 
-	void GFL2RenderDemoModule::DrawLightingPanel(DemoCommon::DemoHostContext& ctx)
+	void GFL2RenderDemoModule::DrawLightingPanel(Demo::HostContext& ctx)
 	{
 		if (ctx.Params == nullptr)
 			return;
@@ -278,7 +277,7 @@ namespace DemoModules
 		ImGui::End();
 	}
 
-	void GFL2RenderDemoModule::DrawDebugViewPanel(DemoCommon::DemoHostContext& ctx)
+	void GFL2RenderDemoModule::DrawDebugViewPanel(Demo::HostContext& ctx)
 	{
 		if (ctx.Params == nullptr)
 			return;
@@ -307,3 +306,11 @@ namespace DemoModules
 		ImGui::End();
 	}
 }
+
+
+#ifdef TOOIYUME_DEMO_STANDALONE
+int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int cmd)
+{
+	return Demo::RunStandalone<DemoModules::GFL2RenderDemoModule>(L"GFL2RenderDemo", hInst, cmd);
+}
+#endif

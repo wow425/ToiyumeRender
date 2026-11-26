@@ -11,11 +11,15 @@ target_include_directories(ForwardRenderDemoLib PUBLIC
     ${CMAKE_SOURCE_DIR}
 )
 
-target_link_libraries(ForwardRenderDemoLib PUBLIC DemoCommonLib)
+target_link_libraries(ForwardRenderDemoLib PUBLIC DemoWorkstationLib)
 
-add_executable(ForwardRenderDemo WIN32 Main.cpp)
+add_executable(ForwardRenderDemo WIN32
+    ForwardRenderDemoModule.h
+    ForwardRenderDemoModule.cpp
+)
 
-target_link_libraries(ForwardRenderDemo PRIVATE ForwardRenderDemoLib)
+target_compile_definitions(ForwardRenderDemo PRIVATE TOOIYUME_DEMO_STANDALONE=1)
+target_link_libraries(ForwardRenderDemo PRIVATE DemoWorkstationLib)
 
 tooiyume_set_output_dirs(ForwardRenderDemo "Demos/ForwardRenderDemo")
 tooiyume_deploy_runtime_dlls(ForwardRenderDemo)

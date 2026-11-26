@@ -10,23 +10,22 @@
 #include "05_Scene/Camera/Camera.h"
 #include "05_Scene/Camera/CameraController.h"
 #include "05_Scene/Lighting/LightingSystem.h"
-#include "Demos/Common/DemoSceneHelpers.h"
 
 #include "imgui.h"
 
 namespace DemoModules
 {
-	void DeferredRenderDemoModule::OnActivate(DemoCommon::DemoHostContext& ctx, bool isFirstActivation)
+	void DeferredRenderDemoModule::OnActivate(Demo::HostContext& ctx, bool isFirstActivation)
 	{
-		DemoCommon::SetupStandardRightHandedCamera(ctx, isFirstActivation);
+		Demo::SetupStandardRightHandedCamera(ctx, isFirstActivation);
 	}
 
-	void DeferredRenderDemoModule::OnDeactivate(DemoCommon::DemoHostContext& ctx)
+	void DeferredRenderDemoModule::OnDeactivate(Demo::HostContext& ctx)
 	{
 		(void)ctx;
 	}
 
-	void DeferredRenderDemoModule::Update(DemoCommon::DemoHostContext& ctx, float deltaT)
+	void DeferredRenderDemoModule::Update(Demo::HostContext& ctx, float deltaT)
 	{
 		if (ctx.Camera == nullptr)
 			return;
@@ -36,21 +35,21 @@ namespace DemoModules
 			(*ctx.CameraController)->Update(deltaT);
 	}
 
-	void DeferredRenderDemoModule::DrawPanels(DemoCommon::DemoHostContext& ctx)
+	void DeferredRenderDemoModule::DrawPanels(Demo::HostContext& ctx)
 	{
-		DemoCommon::DrawSceneModelPanel(ctx);
+		Demo::DrawSceneModelPanel(ctx);
 		DrawDeferredFeaturesPanel(ctx);
 		DrawLightingPanel(ctx);
 		DrawDebugViewPanel(ctx);
 	}
 
-	void DeferredRenderDemoModule::OnResetDefaults(DemoCommon::DemoHostContext& ctx)
+	void DeferredRenderDemoModule::OnResetDefaults(Demo::HostContext& ctx)
 	{
 		if (ctx.Params != nullptr)
 			ctx.Params->ResetToDefaults();
 	}
 
-	void DeferredRenderDemoModule::DrawDeferredFeaturesPanel(DemoCommon::DemoHostContext& ctx)
+	void DeferredRenderDemoModule::DrawDeferredFeaturesPanel(Demo::HostContext& ctx)
 	{
 		if (ctx.Params == nullptr || ctx.Host == nullptr)
 			return;
@@ -130,7 +129,7 @@ namespace DemoModules
 		ImGui::End();
 	}
 
-	void DeferredRenderDemoModule::DrawLightingPanel(DemoCommon::DemoHostContext& ctx)
+	void DeferredRenderDemoModule::DrawLightingPanel(Demo::HostContext& ctx)
 	{
 		if (ctx.Params == nullptr)
 			return;
@@ -171,7 +170,7 @@ namespace DemoModules
 		ImGui::End();
 	}
 
-	void DeferredRenderDemoModule::DrawDebugViewPanel(DemoCommon::DemoHostContext& ctx)
+	void DeferredRenderDemoModule::DrawDebugViewPanel(Demo::HostContext& ctx)
 	{
 		if (ctx.Params == nullptr)
 			return;
@@ -195,3 +194,11 @@ namespace DemoModules
 		ImGui::End();
 	}
 }
+
+
+#ifdef TOOIYUME_DEMO_STANDALONE
+int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int cmd)
+{
+	return Demo::RunStandalone<DemoModules::DeferredRenderDemoModule>(L"DeferredRenderDemo", hInst, cmd);
+}
+#endif

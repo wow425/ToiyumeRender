@@ -10,18 +10,17 @@
 #include "05_Scene/Camera/Camera.h"
 #include "05_Scene/Camera/CameraController.h"
 #include "05_Scene/Lighting/LightingSystem.h"
-#include "Demos/Common/DemoSceneHelpers.h"
 
 #include "imgui.h"
 
 namespace DemoModules
 {
-	void RayTracingRenderDemoModule::OnActivate(DemoCommon::DemoHostContext& ctx, bool isFirstActivation)
+	void RayTracingRenderDemoModule::OnActivate(Demo::HostContext& ctx, bool isFirstActivation)
 	{
-		DemoCommon::SetupStandardRightHandedCamera(ctx, isFirstActivation);
+		Demo::SetupStandardRightHandedCamera(ctx, isFirstActivation);
 	}
 
-	void RayTracingRenderDemoModule::Update(DemoCommon::DemoHostContext& ctx, float deltaT)
+	void RayTracingRenderDemoModule::Update(Demo::HostContext& ctx, float deltaT)
 	{
 		if (ctx.Camera == nullptr)
 			return;
@@ -31,20 +30,20 @@ namespace DemoModules
 			(*ctx.CameraController)->Update(deltaT);
 	}
 
-	void RayTracingRenderDemoModule::DrawPanels(DemoCommon::DemoHostContext& ctx)
+	void RayTracingRenderDemoModule::DrawPanels(Demo::HostContext& ctx)
 	{
-		DemoCommon::DrawSceneModelPanel(ctx);
+		Demo::DrawSceneModelPanel(ctx);
 		DrawRayTracingPanel(ctx);
 		DrawSunLightingPanel(ctx);
 	}
 
-	void RayTracingRenderDemoModule::OnResetDefaults(DemoCommon::DemoHostContext& ctx)
+	void RayTracingRenderDemoModule::OnResetDefaults(Demo::HostContext& ctx)
 	{
 		if (ctx.Params != nullptr)
 			ctx.Params->ResetToDefaults();
 	}
 
-	void RayTracingRenderDemoModule::DrawRayTracingPanel(DemoCommon::DemoHostContext& ctx)
+	void RayTracingRenderDemoModule::DrawRayTracingPanel(Demo::HostContext& ctx)
 	{
 		if (ctx.Params == nullptr || ctx.Host == nullptr)
 			return;
@@ -104,7 +103,7 @@ namespace DemoModules
 		ImGui::End();
 	}
 
-	void RayTracingRenderDemoModule::DrawSunLightingPanel(DemoCommon::DemoHostContext& ctx)
+	void RayTracingRenderDemoModule::DrawSunLightingPanel(Demo::HostContext& ctx)
 	{
 		if (ctx.Params == nullptr)
 			return;
@@ -132,3 +131,11 @@ namespace DemoModules
 		ImGui::End();
 	}
 }
+
+
+#ifdef TOOIYUME_DEMO_STANDALONE
+int WINAPI wWinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int cmd)
+{
+	return Demo::RunStandalone<DemoModules::RayTracingRenderDemoModule>(L"RayTracingRenderDemo", hInst, cmd);
+}
+#endif

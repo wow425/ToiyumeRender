@@ -4,18 +4,18 @@
 // ============================================================================
 #pragma once
 
-#include "Demos/Common/IDemoModule.h"
+#include "Demos/RendererDemoApp/DemoWorkstation.h"
 
 namespace DemoModules
 {
-	class ForwardRenderDemoModule final : public DemoCommon::IDemoModule
+	class ForwardRenderDemoModule final : public Demo::IDemoModule
 	{
 	public:
 		const char* GetDisplayName() const override { return "ForwardRenderDemo"; }
 		std::wstring GetPipelineName() const override { return L"ForwardRenderer"; }
 
-		void OnActivate(DemoCommon::DemoHostContext& ctx, bool isFirstActivation) override;
-		void Update(DemoCommon::DemoHostContext& ctx, float deltaT) override;
-		void DrawPanels(DemoCommon::DemoHostContext& ctx) override;
+		void OnActivate(Demo::HostContext& ctx, bool isFirstActivation) override;
+		void Update(Demo::HostContext& ctx, float deltaT) override;
+		void DrawPanels(Demo::HostContext& ctx) override;
 	};
 }

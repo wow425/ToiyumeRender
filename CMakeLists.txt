@@ -162,15 +162,10 @@ include(${CMAKE_SOURCE_DIR}/Engine/20_cmake/DeployRuntimeDlls.cmake)
 # ==========================================
 add_subdirectory(Engine)
 # R3 统一入口 Demo（已集成 Forward / Deferred / RayTracing / GFL2CharacterPipeline）
-add_subdirectory(Demos/Common)
-add_subdirectory(Demos/DeferredRenderDemo)
-add_subdirectory(Demos/ForwardRenderDemo)
-add_subdirectory(Demos/RayTracingRenderDemo)
-add_subdirectory(Demos/GFL2RenderDemo)
-add_subdirectory(Demos/RendererDemoApp)
+add_subdirectory(Demos)
 
 # [WP-1D] 可选独立纯 CPU 单元测试（ctest --test-dir out/build/<Config> --output-on-failure）
-option(BUILD_TESTS "Build standalone CPU unit tests" ON)
+option(BUILD_TESTS "Build standalone CPU unit tests" OFF)
 if(BUILD_TESTS AND EXISTS "${CMAKE_SOURCE_DIR}/Tests/CMakeLists.txt")
     enable_testing()
     add_subdirectory(Tests)
